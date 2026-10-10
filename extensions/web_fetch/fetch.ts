@@ -15,6 +15,24 @@ export const USER_AGENTS = [
 const MAX_REDIRECTS = 10;
 const RETRY_AFTER_MAX_MS = 10_000;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"]);
+
+/** Drop credential-bearing headers, matching the Fetch standard for cross-origin redirects. */
+function dropCredentialHeaders(headers: Record<string, string>): Record<string, string> {
+  const next: Record<string, string> = {};
+  for (const [name, value] of Object.entries(headers)) {
+    if (!CREDENTIAL_HEADERS.has(name.toLowerCase())) next[name] = value;
+  }
+  return next;
+}
+
+function originOf(url: string): string | undefined {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
 
 interface AttemptArgs {
   url: string;
@@ -94,6 +112,8 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
   let currentUrl = args.url;
   let method = args.method;
   let body = args.body;
+  let headers = { ...args.headers };
+  let previousOrigin = originOf(currentUrl);
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     args.signal?.throwIfAborted();
@@ -125,7 +145,7 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
         "Accept-Language": "en-US,en;q=0.5",
         // Cloudflare's Markdown-for-Agents returns corrupted bytes with compression.
         "Accept-Encoding": "identity",
-        ...args.headers,
+        ...headers,
       },
       redirect: "manual",
       body,
@@ -190,6 +210,10 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
         method = "GET";
         body = undefined;
       }
+      if (previousOrigin !== undefined && next.origin !== previousOrigin) {
+        headers = dropCredentialHeaders(headers);
+      }
+      previousOrigin = next.origin;
       currentUrl = next.href;
       continue;
     }

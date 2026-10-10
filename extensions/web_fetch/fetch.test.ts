@@ -122,6 +122,52 @@ describe("loadPage", () => {
     }
   });
 
+  it("drops credentials on a cross-origin redirect", async () => {
+    let received: string | undefined;
+    const target = await startServer((req, res) => {
+      received = req.headers["authorization"];
+      res.end("ok");
+    });
+    const source = await startServer((_req, res) => {
+      res.writeHead(302, { Location: `${target.origin}/` });
+      res.end();
+    });
+    try {
+      const result = await loadPage(`${source.origin}/`, {
+        allowPrivateHosts: true,
+        headers: { Authorization: "Bearer secret" },
+      });
+      expect(result.ok).toBe(true);
+      expect(received).toBeUndefined();
+    } finally {
+      await source.close();
+      await target.close();
+    }
+  });
+
+  it("keeps credentials on a same-origin redirect", async () => {
+    let received: string | undefined;
+    const server = await startServer((req, res) => {
+      if (req.url === "/start") {
+        res.writeHead(302, { Location: "/end" });
+        res.end();
+        return;
+      }
+      received = req.headers["authorization"];
+      res.end("ok");
+    });
+    try {
+      const result = await loadPage(`${server.origin}/start`, {
+        allowPrivateHosts: true,
+        headers: { Authorization: "Bearer secret" },
+      });
+      expect(result.ok).toBe(true);
+      expect(received).toBe("Bearer secret");
+    } finally {
+      await server.close();
+    }
+  });
+
   it("blocks loopback unless private hosts are allowed", async () => {
     const server = await startServer((_req, res) => {
       res.end("secret");
