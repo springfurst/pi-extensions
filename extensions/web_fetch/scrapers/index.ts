@@ -3,12 +3,15 @@ import { handleCratesIo } from "./crates-io";
 import { handleDocsRs } from "./docs-rs";
 import { handleGitHub } from "./github";
 import { handleGitLab } from "./gitlab";
+import { handleHackerNews } from "./hackernews";
 import { handleMDN } from "./mdn";
 import { handleNpm } from "./npm";
 import { handlePubMed } from "./pubmed";
 import { handlePyPI } from "./pypi";
+import { handleReddit } from "./reddit";
 import { handleRfc } from "./rfc";
 import { handleSemanticScholar } from "./semantic-scholar";
+import { handleStackOverflow } from "./stackoverflow";
 import type { SpecialHandler } from "./types";
 import { handleWikipedia } from "./wikipedia";
 
@@ -26,6 +29,9 @@ export { handleMDN } from "./mdn";
 export { handlePubMed } from "./pubmed";
 export { cleanRfcText, extractRfcNumber, handleRfc } from "./rfc";
 export { extractPaperId, handleSemanticScholar } from "./semantic-scholar";
+export { handleStackOverflow, getSiteParam } from "./stackoverflow";
+export { decodeHNText, handleHackerNews } from "./hackernews";
+export { handleReddit } from "./reddit";
 export { handleWikipedia } from "./wikipedia";
 
 /**
@@ -49,4 +55,8 @@ export const specialHandlers: SpecialHandler[] = [
   handleSemanticScholar,
   handlePubMed,
   handleRfc,
+  // Social and Q&A
+  handleHackerNews,
+  handleReddit,
+  handleStackOverflow,
 ];
