@@ -63,17 +63,29 @@ export function formatAge(ageSeconds: number | null | undefined): string {
   return "just now";
 }
 
-/** Decode the small set of HTML entities produced by feeds and scraper markup. */
+/**
+ * Decode named and numeric HTML character references. Numeric references cover
+ * both decimal (`&#62;`) and hexadecimal (`&#x27;`) forms.
+ */
 export function decodeHtmlEntities(text: string): string {
   return text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&#x2F;/g, "/")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => codePointToString(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code: string) => codePointToString(Number.parseInt(code, 10)))
+    .replace(/&amp;/gi, "&");
+}
+
+function codePointToString(code: number): string {
+  if (!Number.isFinite(code) || code < 0 || code > 0x10ffff) return "";
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return "";
+  }
 }
 
 /** Collapse runs of whitespace, returning `undefined` for missing, non-string, or blank values. */

@@ -2,6 +2,7 @@
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
 import { parseXmlDocument } from "../../lib/dom";
+import { decodeHtmlEntities } from "../../lib/format";
 import { looksLikeHtml } from "./extract";
 import type { FetchContext } from "./types";
 
@@ -169,13 +170,9 @@ export function parseAlternateLinks(html: string, pageUrl: string): string[] {
 }
 
 function cleanFeedText(text: string): string {
-  return text
+  return decodeHtmlEntities(text)
     .replace(/<!\[CDATA\[/g, "")
     .replace(/\]\]>/g, "")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
     .replace(/<[^>]+>/g, "")
     .trim();
 }

@@ -56,8 +56,11 @@ describe("formatAge", () => {
 });
 
 describe("decodeHtmlEntities", () => {
-  it("decodes the common entities", () => {
+  it("decodes named and numeric references", () => {
     expect(decodeHtmlEntities("a &lt;b&gt; &amp; &quot;c&quot;&#39;s")).toBe('a <b> & "c"\'s');
+    expect(decodeHtmlEntities("&#62; quoted &#8217; text &#x27;ok&#x27; &amp; more")).toBe(
+      "> quoted \u2019 text 'ok' & more",
+    );
   });
 });
 

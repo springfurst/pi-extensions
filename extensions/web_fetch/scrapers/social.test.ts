@@ -101,6 +101,12 @@ describe("decodeHNText", () => {
       "Hello *world*\n```\n1 + 1\n```",
     );
   });
+
+  it("decodes numeric entities in comments", () => {
+    expect(decodeHNText("&#62; quoted &#8217; text &#x27;ok&#x27; &amp; more")).toBe(
+      "> quoted \u2019 text 'ok' & more",
+    );
+  });
 });
 
 describe("handleHackerNews", () => {
