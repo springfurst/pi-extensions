@@ -1,9 +1,16 @@
+import { handleArxiv } from "./arxiv";
 import { handleCratesIo } from "./crates-io";
+import { handleDocsRs } from "./docs-rs";
 import { handleGitHub } from "./github";
 import { handleGitLab } from "./gitlab";
+import { handleMDN } from "./mdn";
 import { handleNpm } from "./npm";
+import { handlePubMed } from "./pubmed";
 import { handlePyPI } from "./pypi";
+import { handleRfc } from "./rfc";
+import { handleSemanticScholar } from "./semantic-scholar";
 import type { SpecialHandler } from "./types";
+import { handleWikipedia } from "./wikipedia";
 
 export type { FetchContext, RenderResult, SpecialHandler } from "./types";
 export { buildResult, finalizeOutput, formatIsoDate, MAX_OUTPUT_CHARS } from "./types";
@@ -13,6 +20,13 @@ export { handleGitLab, parseGitLabUrl } from "./gitlab";
 export { handleCratesIo } from "./crates-io";
 export { handleNpm } from "./npm";
 export { handlePyPI } from "./pypi";
+export { handleArxiv } from "./arxiv";
+export { handleDocsRs, parseDocsRsUrl } from "./docs-rs";
+export { handleMDN } from "./mdn";
+export { handlePubMed } from "./pubmed";
+export { cleanRfcText, extractRfcNumber, handleRfc } from "./rfc";
+export { extractPaperId, handleSemanticScholar } from "./semantic-scholar";
+export { handleWikipedia } from "./wikipedia";
 
 /**
  * Site-specific handlers, tried in priority order before the generic pipeline.
@@ -26,4 +40,13 @@ export const specialHandlers: SpecialHandler[] = [
   handleNpm,
   handlePyPI,
   handleCratesIo,
+  // Developer documentation
+  handleMDN,
+  handleDocsRs,
+  // Academic and reference
+  handleWikipedia,
+  handleArxiv,
+  handleSemanticScholar,
+  handlePubMed,
+  handleRfc,
 ];
