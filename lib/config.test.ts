@@ -104,11 +104,39 @@ describe("loadConfig", () => {
     expect(config.browser.noSandbox).toBe(true);
   });
 
+  it("merges a browser user data directory from global and project config", () => {
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBeUndefined();
+    writeGlobalConfig({ browser: { userDataDir: "/global/profile" } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBe(
+      "/global/profile",
+    );
+    writeProjectConfig({ browser: { userDataDir: "/project/profile" } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBe(
+      "/project/profile",
+    );
+  });
+
+  it("preserves Windows user data directory separators", () => {
+    writeGlobalConfig({ browser: { userDataDir: "C:\\Users\\me\\profile" } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBe(
+      "C:\\Users\\me\\profile",
+    );
+    writeProjectConfig({ browser: { userDataDir: "C:/Users/me/profile" } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBe(
+      "C:/Users/me/profile",
+    );
+  });
+
   it("ignores malformed browser values but keeps valid siblings", () => {
     writeGlobalConfig({ browser: { maxPages: 0, enabled: false, noSandbox: "yes" } });
     const config = loadConfig(cwd, { agentDir, projectTrusted: true });
     expect(config.browser.maxPages).toBe(DEFAULT_CONFIG.browser.maxPages);
     expect(config.browser.enabled).toBe(false);
     expect(config.browser.noSandbox).toBe(false);
+  });
+
+  it("ignores a blank browser user data directory", () => {
+    writeGlobalConfig({ browser: { userDataDir: "   " } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBeUndefined();
   });
 });

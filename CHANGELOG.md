@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `web_search`: keyless meta-search across DuckDuckGo, Startpage, and SearXNG, with Google-style query directives, cross-engine aggregation, result caching, and structured output.
 - `web_search`: browser-backed Google, Ecosia, and Mojeek engines in the default pool, available automatically when a browser resolves.
 - Shared `browser` configuration with automatic Chrome/Chromium/Edge detection, a shared idle-closed browser process, per-render timeouts, a page cap, and `PUPPETEER_EXECUTABLE_PATH` support. The extension never downloads a browser, and the feature is off when none resolves.
+- Shared `browser.userDataDir` to reuse a persistent Chromium profile across launches, so cookies and storage warmed by a manually launched browser carry into later renders.
 - Configuration through `web-tools.json` in the agent directory and, for trusted projects, the project directory.
 
 ### Fixed

@@ -3,10 +3,12 @@ import {
   BrowserSession,
   createBrowserRenderer,
   detectSystemBrowser,
+  disposeSharedBrowser,
   isBlockedRequestUrl,
   resolveBrowserExecutable,
   systemBrowserCandidates,
   type BrowserInstance,
+  type BrowserLaunchOptions,
   type BrowserPage,
   type InterceptableRequest,
 } from "./browser";
@@ -238,6 +240,27 @@ describe("BrowserSession", () => {
     await expect(session.render("https://example.com/c")).rejects.toThrow(/disposed/);
   });
 
+  it("reuses a configured user data directory across launches", async () => {
+    const browser = new FakeBrowser();
+    const launches: BrowserLaunchOptions[] = [];
+    const session = new BrowserSession({
+      executablePath: "/fake/chrome",
+      userDataDir: "/profiles/warm",
+      allowPrivateHosts: true,
+      launch: async (options) => {
+        launches.push(options);
+        return browser;
+      },
+    });
+
+    await session.render("https://example.com/a");
+    await session.render("https://example.com/b");
+
+    expect(launches).toHaveLength(1);
+    expect(launches[0]?.userDataDir).toBe("/profiles/warm");
+    await session.dispose();
+  });
+
   it("warms cookies and waits for a ready selector", async () => {
     const browser = new FakeBrowser();
     const session = sessionFor(browser);
@@ -333,5 +356,25 @@ describe("createBrowserRenderer", () => {
     const page = await renderer!("https://example.com/");
     expect(page.html).toContain("rendered");
     await session.dispose();
+  });
+
+  it("passes the configured user data directory to the shared session", async () => {
+    const browser = new FakeBrowser();
+    const launches: BrowserLaunchOptions[] = [];
+    try {
+      const renderer = await createBrowserRenderer({
+        config: { ...DEFAULT_CONFIG.browser, userDataDir: "/profiles/warm" },
+        executablePath: "/fake/chrome",
+        launch: async (options) => {
+          launches.push(options);
+          return browser;
+        },
+      });
+      expect(renderer).toBeDefined();
+      await renderer!("https://example.com/");
+      expect(launches[0]?.userDataDir).toBe("/profiles/warm");
+    } finally {
+      await disposeSharedBrowser();
+    }
   });
 });

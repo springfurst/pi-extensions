@@ -23,7 +23,7 @@ Each tool ships its own README under `extensions/<tool>/`, covering parameters, 
 
 Both tools read `web-tools.json` from the pi agent directory (`~/.pi/agent/web-tools.json`) and, when the project is trusted, from `<cwd>/.pi/web-tools.json`. Project values override global values. Secrets stay in the environment. The per-tool READMEs list every key.
 
-Both tools share a `browser` section for headless-Chromium rendering. A browser is detected automatically from the system; `browser.enabled: false` turns the feature off and `browser.executablePath` pins a specific binary. The extension never downloads a browser: when none resolves, browser rendering is unavailable and the tools behave as before.
+Both tools share a `browser` section for headless-Chromium rendering. A browser is detected automatically from the system; `browser.enabled: false` turns the feature off and `browser.executablePath` pins a specific binary. `browser.userDataDir` points at a persistent Chromium profile so warmed cookies and storage carry across launches. The extension never downloads a browser: when none resolves, browser rendering is unavailable and the tools behave as before.
 
 ## Selecting resources
 

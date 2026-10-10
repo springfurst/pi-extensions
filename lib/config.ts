@@ -60,6 +60,12 @@ export interface BrowserConfig {
   enabled: boolean;
   /** Pin a specific Chrome/Chromium executable. */
   executablePath?: string;
+  /**
+   * Chromium user data directory to reuse across launches, keeping cookies and
+   * storage. Unset uses a throwaway profile per process. This is the parent of
+   * `Default`/`Profile N`, not a profile subdirectory.
+   */
+  userDataDir?: string;
   /** Reserved for future stealth patches; currently only a navigation baseline is applied. */
   stealth: boolean;
   /** Disable the Chromium sandbox for root/container environments. */
@@ -226,6 +232,8 @@ function pickBrowser(raw: Record<string, unknown> | undefined): Partial<BrowserC
   if (enabled !== undefined) out.enabled = enabled;
   const executablePath = asNonEmptyString(raw.executablePath);
   if (executablePath !== undefined) out.executablePath = executablePath;
+  const userDataDir = asNonEmptyString(raw.userDataDir);
+  if (userDataDir !== undefined) out.userDataDir = userDataDir;
   const stealth = asBoolean(raw.stealth);
   if (stealth !== undefined) out.stealth = stealth;
   const noSandbox = asBoolean(raw.noSandbox);

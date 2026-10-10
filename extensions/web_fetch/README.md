@@ -59,6 +59,7 @@ Notes: <semicolon-joined notes, omitted when empty>
 | `fetch.allowPrivateHosts`   | `false` | Disable the SSRF guard for local hosts.                                   |
 | `browser.enabled`           | `true`  | Enable browser rendering when a binary resolves.                          |
 | `browser.executablePath`    | unset   | Pin a specific Chrome/Chromium executable.                                |
+| `browser.userDataDir`       | unset   | Reuse a persistent Chromium profile across launches.                      |
 | `browser.stealth`           | `false` | Reserved for future stealth patches.                                      |
 | `browser.noSandbox`         | `false` | Add `--no-sandbox` for root/containers.                                   |
 | `browser.timeoutSeconds`    | `20`    | Per-render navigation deadline.                                           |
@@ -73,6 +74,18 @@ Secrets stay in the environment: `GITHUB_TOKEN` or `GH_TOKEN`, `NCBI_API_KEY`, a
 Browser rendering activates automatically when a Chrome, Chromium, or Edge binary resolves. Resolution order is `PUPPETEER_EXECUTABLE_PATH`, then `browser.executablePath`, then a detected system browser on `PATH` and the usual install locations. The extension never downloads a browser; when none resolves, browser rendering is silently unavailable and behavior is unchanged.
 
 A dedicated Chrome for Testing build is preferred over a daily-use browser: it keeps a stable Chromium version for `puppeteer-core` and avoids macOS handing a background launch the user's open-URL events. Download a build from the Chrome for Testing page, unpack it, and point `browser.executablePath` (or `PUPPETEER_EXECUTABLE_PATH`) at its executable.
+
+### Persistent browser profile
+
+By default the browser launches with a throwaway profile, so cookies and site storage do not survive the process. Set `browser.userDataDir` to a Chromium user data directory to reuse one profile across launches:
+
+```json
+{ "browser": { "userDataDir": "/home/you/.pi/web-tools-profile" } }
+```
+
+The path is the user data directory (the parent of `Default`/`Profile N`), not a profile subdirectory. An absolute path is recommended; a relative path resolves against the process working directory and a leading `~` is not expanded. Native absolute paths work on both platforms: `/home/you/profile` on Linux/macOS, and `C:/Users/you/profile` or `C:\\Users\\you\\profile` on Windows. Prefer forward slashes; a Windows path in JSON must double its backslashes, and a config file containing an invalid escape is ignored. The extension keeps the directory between renders and never deletes it.
+
+A profile can be warmed before use: launch the same browser with `--user-data-dir=<path>`, browse normally so cookies and storage are written, then close it. Later renders reuse that state. Chromium allows one instance per profile, so the manual browser must be closed before a render; otherwise the launch fails with a "browser is already running" error. Use a dedicated directory rather than a daily-use profile, since stored cookies and logins persist on disk and are shared by every browser render.
 
 ## Behavior and fallbacks
 
@@ -92,6 +105,7 @@ Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's mode
 - Browser rendering needs an installed Chrome, Chromium, or Edge; without one, JavaScript-rendered pages fall back to raw HTML.
 - The browser blocks non-`http(s)` schemes and literal private, loopback, link-local, and metadata hosts. It does not block a public hostname that resolves to a private address on every subresource, so per-hop DNS-rebinding hardening is best-effort at the initial navigation.
 - Browser launches are slow and memory-heavy; a shared browser is idle-closed and its page count is capped by `browser.maxPages`.
+- A persistent `browser.userDataDir` is single-instance: a render fails while a manually launched browser holds the same profile, and the directory keeps cookies and logins on disk.
 - The optional `trafilatura` and `lynx` readers are used only when already installed.
 - Public sites may block automated requests, including browser renders; the tool reports the failure rather than retrying indefinitely.
 

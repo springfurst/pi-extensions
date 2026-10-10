@@ -55,6 +55,7 @@ The result also carries a structured `{ title, url, snippet }[]` for codemode ca
 | `searxng.safesearch`        | unset                                                             | SearXNG safesearch level (`0`, `1`, or `2`).                              |
 | `browser.enabled`           | `true`                                                            | Enable browser rendering when a binary resolves.                          |
 | `browser.executablePath`    | unset                                                             | Pin a specific Chrome/Chromium executable.                                |
+| `browser.userDataDir`       | unset                                                             | Reuse a persistent Chromium profile across launches.                      |
 | `browser.stealth`           | `false`                                                           | Reserved for future stealth patches.                                      |
 | `browser.noSandbox`         | `false`                                                           | Add `--no-sandbox` for root/containers.                                   |
 | `browser.timeoutSeconds`    | `20`                                                              | Per-render navigation deadline.                                           |
@@ -70,13 +71,14 @@ Secrets and the SearXNG connection may also come from `SEARXNG_ENDPOINT`, `SEARX
 - **Aggregation** (default) fans out across the active engines, deduplicates by canonical URL, and ranks by cross-engine consensus, then best per-engine rank. It returns once the soft deadline passes with at least one success, and aborts stragglers at the hard deadline. Individual engine failures are tolerated; the tool fails only when every engine fails. Browser renders are therefore aborted when the HTTP engines already answered, and only get their full window when the HTTP engines fail.
 - **Fallback**: with aggregation off, engines are tried in priority order and the first success wins.
 - **Caching and cooldowns**: identical searches are cached for `search.cacheTtlSeconds`. An engine that returns a bot challenge is skipped for a short cooldown.
-- **Engines** use realistic browser navigation headers; browser-backed engines render the page in a shared headless Chromium with a desktop viewport and user agent.
+- **Engines** use realistic browser navigation headers; browser-backed engines render the page in a shared headless Chromium with a desktop viewport and user agent. Set `browser.userDataDir` to a Chromium user data directory to reuse one profile across renders, so warmed cookies and storage persist; the path is the directory, not a `Default`/`Profile N` subdirectory. Native absolute paths work on both platforms; on Windows prefer forward slashes (`C:/Users/you/profile`) or double the backslashes in JSON.
 
 ## Limitations
 
 - No credentialed providers and no model-grounded search.
 - Google, Ecosia, and Mojeek need an installed Chrome, Chromium, or Edge; without one they drop out of the pool and the HTTP engines alone are used.
 - Browser renders are slower and heavier than HTTP requests; a shared browser is idle-closed and capped by `browser.maxPages`.
+- A persistent `browser.userDataDir` is single-instance: a browser render fails while a manually launched browser holds the same profile, and the directory keeps cookies and logins on disk.
 - Public endpoints may throttle or block automated searches, including browser renders; results depend on the engine that happens to answer.
 
 ## License and provenance

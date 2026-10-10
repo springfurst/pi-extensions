@@ -83,6 +83,7 @@ export interface BrowserLaunchOptions {
   executablePath: string;
   noSandbox: boolean;
   headless: boolean;
+  userDataDir?: string;
   args: string[];
 }
 
@@ -330,6 +331,7 @@ export async function defaultBrowserLauncher(
   const browser = await launch({
     executablePath: options.executablePath,
     headless: options.headless,
+    userDataDir: options.userDataDir,
     args,
     ignoreDefaultArgs: ["--enable-automation"],
     protocolTimeout: LAUNCH_PROTOCOL_TIMEOUT_MS,
@@ -339,6 +341,7 @@ export async function defaultBrowserLauncher(
 
 export interface BrowserSessionOptions {
   executablePath: string;
+  userDataDir?: string;
   noSandbox?: boolean;
   allowPrivateHosts?: boolean;
   defaultTimeoutMs?: number;
@@ -354,6 +357,7 @@ export interface BrowserSessionOptions {
  */
 export class BrowserSession {
   private readonly executablePath: string;
+  private readonly userDataDir: string | undefined;
   private readonly noSandbox: boolean;
   private readonly allowPrivateHosts: boolean;
   private readonly defaultTimeoutMs: number;
@@ -371,6 +375,7 @@ export class BrowserSession {
 
   constructor(options: BrowserSessionOptions) {
     this.executablePath = options.executablePath;
+    this.userDataDir = options.userDataDir;
     this.noSandbox = options.noSandbox ?? false;
     this.allowPrivateHosts = options.allowPrivateHosts ?? false;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 20_000;
@@ -499,6 +504,7 @@ export class BrowserSession {
         executablePath: this.executablePath,
         noSandbox: this.noSandbox,
         headless: true,
+        userDataDir: this.userDataDir,
         args: [],
       });
     }
@@ -604,6 +610,7 @@ export async function createBrowserRenderer(
     options.session ??
     getSharedBrowserSession({
       executablePath,
+      userDataDir: options.config.userDataDir,
       noSandbox: options.config.noSandbox,
       allowPrivateHosts: options.config.allowPrivateHosts,
       defaultTimeoutMs: options.config.timeoutSeconds * 1000,
