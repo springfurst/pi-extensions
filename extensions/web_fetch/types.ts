@@ -66,6 +66,8 @@ export interface FetchContext {
   readonly fetch: FetchImpl;
   readonly loadPage: LoadPage;
   readonly resolve?: ResolveHost;
+  /** Directory for opportunistic caches, such as docs.rs rustdoc JSON. */
+  readonly cacheDir?: string;
   /** Bound `pi.exec`, used only for the optional `trafilatura`/`lynx` readers. */
   readonly exec?: ExecFn;
 }

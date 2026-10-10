@@ -28,6 +28,7 @@ export interface WebFetchToolContext {
   exec?: ExecFn;
   fetch?: FetchImpl;
   resolve?: ResolveHost;
+  cacheDir?: string;
 }
 
 export interface WebFetchToolResult {
@@ -60,6 +61,7 @@ export async function executeWebFetch(
     signal: toolCtx.signal,
     fetch: toolCtx.fetch,
     resolve: toolCtx.resolve,
+    cacheDir: toolCtx.cacheDir,
     exec: toolCtx.exec,
   });
   const result = await renderUrl(parsed.path, { raw, maxChars, ctx: fetchContext });

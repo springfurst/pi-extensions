@@ -14,6 +14,7 @@ export interface CreateFetchContextOptions {
   signal?: AbortSignal;
   fetch?: FetchImpl;
   resolve?: ResolveHost;
+  cacheDir?: string;
   exec?: ExecFn;
 }
 
@@ -41,6 +42,7 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
     fetch: fetchImpl,
     loadPage: loadPageBound,
     resolve: options.resolve,
+    cacheDir: options.cacheDir,
     exec: options.exec,
   };
 }

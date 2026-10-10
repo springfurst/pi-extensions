@@ -50,3 +50,34 @@ export function formatIsoDate(value?: string | number | Date): string {
     return "";
   }
 }
+
+/** Parse JSON defensively. */
+export function parseJson<T>(text: string): T | undefined {
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Run `fn` over `items` with at most `limit` concurrent calls, preserving order. */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+  signal?: AbortSignal,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    for (;;) {
+      signal?.throwIfAborted();
+      const index = next++;
+      if (index >= items.length) break;
+      results[index] = await fn(items[index]!, index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}

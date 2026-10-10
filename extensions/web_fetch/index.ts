@@ -1,4 +1,5 @@
 import { defineTool, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { join } from "node:path";
 import { Type } from "typebox";
 import { renderFetchCall, renderFetchResult } from "./render";
 import { executeWebFetch } from "./tool";
@@ -42,6 +43,7 @@ export default function webFetchExtension(pi: ExtensionAPI) {
         agentDir: getAgentDir(),
         trusted: ctx.isProjectTrusted(),
         signal,
+        cacheDir: join(getAgentDir(), "web-tools"),
         exec: (command, args, options) => pi.exec(command, args, options),
       });
     },
