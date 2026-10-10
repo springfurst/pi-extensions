@@ -47,7 +47,8 @@ npm install
 npm run format     # Prettier, writes
 npm run lint       # ESLint + markdownlint
 npm run typecheck  # tsc --noEmit
-npm run test       # Vitest
+npm run test       # Vitest, offline/local server only
+npm run test:live  # Vitest, live-network checks (opt-in)
 ```
 
 Run `format`, `lint`, `typecheck`, and `test` before committing (skip checks that have nothing to apply to yet). Extensions are plain TypeScript loaded by pi's module loader; there is no build step. Commits use conventional commit style.

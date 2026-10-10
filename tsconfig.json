@@ -12,5 +12,12 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["extensions/**/*.ts", "extensions/**/*.tsx", "lib/**/*.ts", "lib/**/*.tsx"]
+  "include": [
+    "extensions/**/*.ts",
+    "extensions/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "vitest.config.ts",
+    "vitest.live.config.ts"
+  ]
 }

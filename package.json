@@ -23,7 +23,8 @@
     "lint:ts": "eslint .",
     "lint:md": "markdownlint-cli2",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
