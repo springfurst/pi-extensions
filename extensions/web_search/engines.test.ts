@@ -107,6 +107,13 @@ describe("startpage", () => {
         html: STARTPAGE_HTML,
       }),
     ).toBe(false);
+    expect(
+      isChallengeResponse({
+        url: "https://www.startpage.com/sp/search",
+        status: 200,
+        html: '<script id="anubis-main" src="/.within.website/x/cmd/anubis/static/js/main.mjs"></script>',
+      }),
+    ).toBe(true);
   });
 
   it("searches via homepage-token flow and direct GET", async () => {

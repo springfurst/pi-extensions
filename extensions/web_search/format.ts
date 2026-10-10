@@ -27,5 +27,7 @@ export function formatForLLM(response: SearchResponse, notes: readonly string[] 
     for (const question of response.relatedQuestions) parts.push(`- ${question}`);
   }
 
+  if (response.sources.length === 0 && !response.answer) parts.push("No results found.");
+
   return parts.join("\n");
 }

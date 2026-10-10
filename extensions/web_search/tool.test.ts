@@ -78,6 +78,14 @@ describe("executeWebSearch", () => {
     expect(result.structuredContent).toHaveLength(2);
   });
 
+  it("renders an explicit message when no results are found", async () => {
+    writeConfig({ search: { engines: ["duckduckgo"], aggregate: false } });
+    const empty = htmlFetch([["duckduckgo.com", "<html><body>no results</body></html>"]]);
+    const result = await executeWebSearch({ query: "nothing" }, context(empty));
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain("No results found.");
+  });
+
   it("caches identical searches", async () => {
     writeConfig({ search: { engines: ["duckduckgo"], aggregate: false } });
     let calls = 0;

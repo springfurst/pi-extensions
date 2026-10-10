@@ -27,10 +27,17 @@ const RECENCY_TO_STARTPAGE_WITH_DATE: Record<NonNullable<EngineSearchParams["rec
   year: "y",
 };
 
-/** True when Startpage answered with its CAPTCHA/error shell instead of results. */
+/** True when Startpage answered with its CAPTCHA/Anubis challenge or error shell instead of results. */
 export function isChallengeResponse(page: LoadedPage): boolean {
   if (/\/(?:errors|captcha)\//.test(page.url) || page.url.includes("/sp/captcha")) return true;
-  return page.html.includes("component---src-pages-captcha") || page.html.includes("/sp/captcha");
+  const html = page.html;
+  return (
+    html.includes("component---src-pages-captcha") ||
+    html.includes("/sp/captcha") ||
+    html.includes("anubis-main") ||
+    html.includes("/.within.website/") ||
+    html.includes("Verifying your request")
+  );
 }
 
 /** Lift the hidden inputs from the homepage's `/sp/search` form. */

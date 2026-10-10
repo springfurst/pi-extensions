@@ -29,7 +29,7 @@ Note: no results matched `site:example.invalid`; the constraint was relaxed
     https://example.com/two
 ```
 
-The result also carries a structured `{ title, url, snippet }[]` for codemode callers.
+The result also carries a structured `{ title, url, snippet }[]` for codemode callers. When no engine returns a result, the body reads `No results found.`
 
 ## Configuration
 
