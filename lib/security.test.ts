@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkUrlAllowed, isPrivateAddress } from "./security";
+import { checkUrlAllowed, isBlockedHostname, isPrivateAddress } from "./security";
 
 describe("isPrivateAddress", () => {
   it("flags loopback, private, link-local, metadata, and reserved ranges", () => {
@@ -28,6 +28,16 @@ describe("isPrivateAddress", () => {
     for (const address of ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700::1111"]) {
       expect(isPrivateAddress(address), address).toBe(false);
     }
+  });
+});
+
+describe("isBlockedHostname", () => {
+  it("flags localhost aliases and metadata services", () => {
+    expect(isBlockedHostname("localhost")).toBe(true);
+    expect(isBlockedHostname("LOCALHOST")).toBe(true);
+    expect(isBlockedHostname("app.localhost")).toBe(true);
+    expect(isBlockedHostname("metadata.google.internal")).toBe(true);
+    expect(isBlockedHostname("example.com")).toBe(false);
   });
 });
 

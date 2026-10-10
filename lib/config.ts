@@ -48,10 +48,30 @@ export interface SearxngConfig {
   safesearch?: 0 | 1 | 2;
 }
 
+export interface BrowserConfig {
+  /** Enable browser rendering when a browser binary resolves. */
+  enabled: boolean;
+  /** Pin a specific Chrome/Chromium executable. */
+  executablePath?: string;
+  /** Reserved for future stealth patches; currently only a navigation baseline is applied. */
+  stealth: boolean;
+  /** Disable the Chromium sandbox for root/container environments. */
+  noSandbox: boolean;
+  /** Per-render navigation deadline in seconds. */
+  timeoutSeconds: number;
+  /** Close the shared browser after this many idle seconds; `0` disables idle close. */
+  idleCloseSeconds: number;
+  /** Maximum number of concurrent browser pages. */
+  maxPages: number;
+  /** Permit private/loopback hosts in the browser, mirroring `fetch.allowPrivateHosts`. */
+  allowPrivateHosts: boolean;
+}
+
 export interface WebToolsConfig {
   fetch: FetchConfig;
   search: SearchConfig;
   searxng: SearxngConfig;
+  browser: BrowserConfig;
 }
 
 /** Built-in defaults, before any config file. */
@@ -72,6 +92,15 @@ export const DEFAULT_CONFIG: WebToolsConfig = {
     cacheTtlSeconds: 300,
   },
   searxng: {},
+  browser: {
+    enabled: true,
+    stealth: false,
+    noSandbox: false,
+    timeoutSeconds: 20,
+    idleCloseSeconds: 120,
+    maxPages: 2,
+    allowPrivateHosts: false,
+  },
 };
 
 export interface LoadConfigOptions {
@@ -111,6 +140,11 @@ export function loadConfig(cwd: string, options: LoadConfigOptions): WebToolsCon
       ...pickSearxng(global?.searxng),
       ...pickSearxng(project?.searxng),
     },
+    browser: {
+      ...DEFAULT_CONFIG.browser,
+      ...pickBrowser(global?.browser),
+      ...pickBrowser(project?.browser),
+    },
   };
 
   config.searxng = { ...config.searxng, ...searxngFromEnv(config.searxng) };
@@ -121,6 +155,7 @@ interface RawConfig {
   fetch?: Record<string, unknown>;
   search?: Record<string, unknown>;
   searxng?: Record<string, unknown>;
+  browser?: Record<string, unknown>;
 }
 
 function readConfigFile(path: string): RawConfig | undefined {
@@ -133,6 +168,7 @@ function readConfigFile(path: string): RawConfig | undefined {
       fetch: asRecord(record.fetch),
       search: asRecord(record.search),
       searxng: asRecord(record.searxng),
+      browser: asRecord(record.browser),
     };
   } catch {
     // A malformed or unreadable config file falls back to the defaults.
@@ -173,6 +209,28 @@ function pickSearch(raw: Record<string, unknown> | undefined): Partial<SearchCon
   if (cacheTtlSeconds !== undefined) out.cacheTtlSeconds = cacheTtlSeconds;
   const provider = asNonEmptyString(raw.provider);
   if (provider !== undefined) out.provider = provider;
+  return out;
+}
+
+function pickBrowser(raw: Record<string, unknown> | undefined): Partial<BrowserConfig> {
+  if (!raw) return {};
+  const out: Partial<BrowserConfig> = {};
+  const enabled = asBoolean(raw.enabled);
+  if (enabled !== undefined) out.enabled = enabled;
+  const executablePath = asNonEmptyString(raw.executablePath);
+  if (executablePath !== undefined) out.executablePath = executablePath;
+  const stealth = asBoolean(raw.stealth);
+  if (stealth !== undefined) out.stealth = stealth;
+  const noSandbox = asBoolean(raw.noSandbox);
+  if (noSandbox !== undefined) out.noSandbox = noSandbox;
+  const timeoutSeconds = asPositiveNumber(raw.timeoutSeconds);
+  if (timeoutSeconds !== undefined) out.timeoutSeconds = timeoutSeconds;
+  const idleCloseSeconds = asNonNegativeNumber(raw.idleCloseSeconds);
+  if (idleCloseSeconds !== undefined) out.idleCloseSeconds = idleCloseSeconds;
+  const maxPages = asPositiveNumber(raw.maxPages);
+  if (maxPages !== undefined) out.maxPages = Math.max(1, Math.floor(maxPages));
+  const allowPrivateHosts = asBoolean(raw.allowPrivateHosts);
+  if (allowPrivateHosts !== undefined) out.allowPrivateHosts = allowPrivateHosts;
   return out;
 }
 

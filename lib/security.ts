@@ -1,6 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
-import type { ResolveHost } from "./types";
+
+/** Resolve a hostname to its addresses; injectable for tests. */
+export type ResolveHost = (hostname: string) => Promise<readonly string[]>;
 
 /**
  * Address ranges a model-callable fetch must not reach: loopback, private,
@@ -44,6 +46,19 @@ export function isPrivateAddress(address: string): boolean {
   return false;
 }
 
+/**
+ * Hostnames that name a metadata service or a local-machine alias rather than
+ * a routable site. Kept deliberately small; resolution still catches aliases
+ * that map to a private address.
+ */
+const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
+
+/** True when a hostname is a local alias or a known cloud metadata service. */
+export function isBlockedHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return host.endsWith(".localhost") || BLOCKED_HOSTNAMES.has(host);
+}
+
 export interface GuardOptions {
   /** Skip the guard entirely, for local development. */
   allowPrivateHosts: boolean;
@@ -76,6 +91,9 @@ export async function checkUrlAllowed(url: string, options: GuardOptions): Promi
   if (options.allowPrivateHosts) return { allowed: true };
 
   const host = parsed.hostname.replace(/^\[/, "").replace(/\]$/, "");
+  if (isBlockedHostname(host)) {
+    return { allowed: false, reason: `Blocked private host: ${host}` };
+  }
   if (isIP(host)) {
     return isPrivateAddress(host)
       ? { allowed: false, reason: `Blocked private address: ${host}` }

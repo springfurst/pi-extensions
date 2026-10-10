@@ -3,7 +3,7 @@
 
 import { DEFAULT_MAX_BYTES } from "../../lib/config";
 import { normalizeMime, readLimitedBytes, withHardTimeout } from "../../lib/http";
-import { checkUrlAllowed } from "./security";
+import { checkUrlAllowed } from "../../lib/security";
 import type { FetchImpl, LoadPageOptions, LoadPageResult, ResolveHost } from "./types";
 
 export const USER_AGENTS = [

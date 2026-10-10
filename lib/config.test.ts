@@ -86,4 +86,29 @@ describe("loadConfig", () => {
     const config = loadConfig(cwd, { agentDir, projectTrusted: true });
     expect(config.searxng.endpoint).toBe("https://file.example.org");
   });
+
+  it("merges browser values over the defaults", () => {
+    writeGlobalConfig({ browser: { timeoutSeconds: 5, maxPages: 4 } });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.browser.timeoutSeconds).toBe(5);
+    expect(config.browser.maxPages).toBe(4);
+    expect(config.browser.enabled).toBe(true);
+    expect(config.browser.idleCloseSeconds).toBe(DEFAULT_CONFIG.browser.idleCloseSeconds);
+  });
+
+  it("lets trusted project browser values override global ones", () => {
+    writeGlobalConfig({ browser: { executablePath: "/global/chrome" } });
+    writeProjectConfig({ browser: { executablePath: "/project/chrome", noSandbox: true } });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.browser.executablePath).toBe("/project/chrome");
+    expect(config.browser.noSandbox).toBe(true);
+  });
+
+  it("ignores malformed browser values but keeps valid siblings", () => {
+    writeGlobalConfig({ browser: { maxPages: 0, enabled: false, noSandbox: "yes" } });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.browser.maxPages).toBe(DEFAULT_CONFIG.browser.maxPages);
+    expect(config.browser.enabled).toBe(false);
+    expect(config.browser.noSandbox).toBe(false);
+  });
 });

@@ -2,6 +2,9 @@
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
 import type { FetchConfig } from "../../lib/config";
+import type { ResolveHost } from "../../lib/security";
+
+export type { ResolveHost };
 
 /** One rendered URL read, after the pipeline has shaped the response. */
 export interface RenderResult {
@@ -44,8 +47,6 @@ export interface LoadPageResult {
 }
 
 export type FetchImpl = typeof fetch;
-/** Resolve a hostname to its addresses; injectable for tests. */
-export type ResolveHost = (hostname: string) => Promise<readonly string[]>;
 export type LoadPage = (url: string, options?: LoadPageOptions) => Promise<LoadPageResult>;
 
 export interface ExecResultLike {
