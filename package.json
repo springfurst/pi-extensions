@@ -11,6 +11,11 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "pi": {
+    "extensions": [
+      "extensions/*/index.ts"
+    ]
+  },
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -20,9 +25,21 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "linkedom": "^0.18.13",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/node": "^24.0.0",
+    "@types/turndown": "^5.0.6",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.0.0",
     "markdownlint-cli2": "^0.18.0",
