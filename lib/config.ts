@@ -2,7 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** Default engine priority when Aggregation is on and no explicit selection is configured. */
-export const DEFAULT_SEARCH_ENGINES = ["duckduckgo", "startpage", "searxng", "google"] as const;
+export const DEFAULT_SEARCH_ENGINES = [
+  "duckduckgo",
+  "startpage",
+  "searxng",
+  "google",
+  "ecosia",
+  "mojeek",
+] as const;
 
 /** Default response byte cap for `web_fetch` (50 MiB). */
 export const DEFAULT_MAX_BYTES = 50 * 1024 * 1024;

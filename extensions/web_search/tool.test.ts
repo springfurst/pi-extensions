@@ -24,6 +24,36 @@ const BROWSER_HTML = `
 </div>
 `;
 
+const STARTPAGE_HTML = `
+<div class="result">
+  <a class="result-link" href="https://start.example/one"><h2>Start One</h2></a>
+  <p class="description">Start snippet</p>
+</div>
+`;
+
+const GOOGLE_POOL_HTML = `
+<div class="Gx5Zad">
+  <a href="https://google.example/r"><h3>Google Result</h3></a>
+  <div class="VwiC3b">Google snippet</div>
+</div>
+`;
+
+const ECOSIA_POOL_HTML = `
+<article data-test-id="organic-result">
+  <a href="https://ecosia.example/r"><h2 data-test-id="result-title">Ecosia Result</h2></a>
+  <p data-test-id="web-result-description">Ecosia snippet</p>
+</article>
+`;
+
+const MOJEEK_POOL_HTML = `
+<ul class="results-standard">
+  <li>
+    <h2><a class="title" href="https://mojeek.example/r">Mojeek Result</a></h2>
+    <p class="s">Mojeek snippet</p>
+  </li>
+</ul>
+`;
+
 let dir: string;
 
 beforeEach(() => {
@@ -152,5 +182,34 @@ describe("executeWebSearch", () => {
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toHaveLength(3);
     expect(result.details.notes.join(" ")).toMatch(/browser/i);
+  });
+
+  it("includes all three browser engines in the default pool", async () => {
+    writeConfig({});
+    const renderPage: BrowserRenderer = async (url) => {
+      if (url.includes("google")) return { html: GOOGLE_POOL_HTML, status: 200, finalUrl: url };
+      if (url.includes("ecosia")) return { html: ECOSIA_POOL_HTML, status: 200, finalUrl: url };
+      if (url.includes("mojeek")) return { html: MOJEEK_POOL_HTML, status: 200, finalUrl: url };
+      return { html: "", status: 404, finalUrl: url };
+    };
+    const result = await executeWebSearch(
+      { query: "example" },
+      {
+        ...context(
+          htmlFetch([
+            ["duckduckgo.com", DDG_HTML],
+            ["startpage.com", STARTPAGE_HTML],
+          ]),
+        ),
+        renderPage,
+      },
+    );
+    expect(result.isError).toBeFalsy();
+    const urls = (result.structuredContent as Array<{ url: string }>).map((source) => source.url);
+    expect(urls).toContain("https://example.com/one");
+    expect(urls).toContain("https://start.example/one");
+    expect(urls).toContain("https://google.example/r");
+    expect(urls).toContain("https://ecosia.example/r");
+    expect(urls).toContain("https://mojeek.example/r");
   });
 });

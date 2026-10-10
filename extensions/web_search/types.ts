@@ -7,7 +7,8 @@ import type { StructuredQuery } from "./query";
 
 export type FetchImpl = typeof fetch;
 export type Recency = "day" | "week" | "month" | "year";
-export type SearchEngineId = "duckduckgo" | "startpage" | "searxng" | "google";
+export type SearchEngineId =
+  "duckduckgo" | "startpage" | "searxng" | "google" | "ecosia" | "mojeek";
 export type SearchProviderId = SearchEngineId | "public" | "none";
 
 /** One search result. */
@@ -71,6 +72,8 @@ export const SEARCH_ENGINE_LABELS: Record<SearchProviderId, string> = {
   startpage: "Startpage",
   searxng: "SearXNG",
   google: "Google",
+  ecosia: "Ecosia",
+  mojeek: "Mojeek",
   public: "Public Web",
   none: "None",
 };

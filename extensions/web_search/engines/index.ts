@@ -1,6 +1,8 @@
 import type { SearchEngine, SearchEngineId } from "../types";
 import { duckduckgoEngine } from "./duckduckgo";
+import { ecosiaEngine } from "./ecosia";
 import { googleEngine } from "./google";
+import { mojeekEngine } from "./mojeek";
 import { searxngEngine } from "./searxng";
 import { startpageEngine } from "./startpage";
 
@@ -9,10 +11,19 @@ export const ENGINES: Record<SearchEngineId, SearchEngine> = {
   startpage: startpageEngine,
   searxng: searxngEngine,
   google: googleEngine,
+  ecosia: ecosiaEngine,
+  mojeek: mojeekEngine,
 };
 
 /** Default engine priority; used as the fallback order and aggregation tiebreak. */
-export const ENGINE_PRIORITY: SearchEngineId[] = ["duckduckgo", "startpage", "searxng", "google"];
+export const ENGINE_PRIORITY: SearchEngineId[] = [
+  "duckduckgo",
+  "startpage",
+  "searxng",
+  "google",
+  "ecosia",
+  "mojeek",
+];
 
 /** True when `id` names a supported engine. */
 export function isEngineId(id: string): id is SearchEngineId {

@@ -19,6 +19,20 @@ import {
 } from "./engines/startpage";
 import { findSearxngAuth, searchSearXNG, stripExternalBangs } from "./engines/searxng";
 import {
+  buildSearchUrl as buildEcosiaSearchUrl,
+  isBlockedPage as isEcosiaBlockedPage,
+  parseHtmlResults as parseEcosiaResults,
+  resolveResultUrl as resolveEcosiaUrl,
+  searchEcosia,
+} from "./engines/ecosia";
+import {
+  buildSearchUrl as buildMojeekSearchUrl,
+  isRobotPage as isMojeekRobotPage,
+  normalizeResultUrl as normalizeMojeekUrl,
+  parseHtmlResults as parseMojeekResults,
+  searchMojeek,
+} from "./engines/mojeek";
+import {
   blockReason as googleBlockReason,
   buildSearchUrl as buildGoogleSearchUrl,
   parseHtmlResults as parseGoogleResults,
@@ -264,5 +278,91 @@ describe("google", () => {
     await expect(searchGoogle(engineParams({ query: "example" }))).rejects.toThrow(
       /no browser resolved/i,
     );
+  });
+});
+
+const ECOSIA_HTML = `
+<article data-test-id="organic-result">
+  <a href="https://example.com/a"><h2 data-test-id="result-title">Result A</h2></a>
+  <p data-test-id="web-result-description">Description A</p>
+</article>
+`;
+
+describe("ecosia", () => {
+  it("extracts results and rejects ecosia-internal links", () => {
+    expect(parseEcosiaResults(ECOSIA_HTML)).toEqual([
+      { title: "Result A", url: "https://example.com/a", snippet: "Description A" },
+    ]);
+    expect(resolveEcosiaUrl("https://www.ecosia.org/images?q=x")).toBeUndefined();
+    expect(resolveEcosiaUrl("javascript:void(0)")).toBeUndefined();
+  });
+
+  it("builds a search URL and ignores recency", () => {
+    const url = buildEcosiaSearchUrl(engineParams({ query: "rust", recency: "week" }));
+    expect(url).toContain("q=rust");
+    expect(url).not.toContain("freshness");
+  });
+
+  it("detects Cloudflare and firewall challenges", () => {
+    expect(isEcosiaBlockedPage({ html: "Ecosia Firewall", status: 200, url: "https://x" })).toBe(
+      true,
+    );
+    expect(isEcosiaBlockedPage({ html: "_cf_chl_opt", status: 200, url: "https://x" })).toBe(true);
+    expect(isEcosiaBlockedPage({ html: ECOSIA_HTML, status: 200, url: "https://x" })).toBe(false);
+  });
+
+  it("searches through an injected browser renderer", async () => {
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: ECOSIA_HTML,
+      status: 200,
+      finalUrl: url,
+    });
+    const response = await searchEcosia(engineParams({ query: "example", renderPage }));
+    expect(response.provider).toBe("ecosia");
+    expect(response.sources).toHaveLength(1);
+  });
+});
+
+const MOJEEK_HTML = `
+<ul class="results-standard">
+  <li>
+    <h2><a class="title" href="https://example.com/m">Mojeek Result</a></h2>
+    <p class="s">Mojeek snippet</p>
+  </li>
+</ul>
+`;
+
+describe("mojeek", () => {
+  it("parses results and rejects mojeek-internal links", () => {
+    expect(parseMojeekResults(MOJEEK_HTML)).toEqual([
+      { title: "Mojeek Result", url: "https://example.com/m", snippet: "Mojeek snippet" },
+    ]);
+    expect(normalizeMojeekUrl("https://www.mojeek.com/preferences")).toBeUndefined();
+    expect(normalizeMojeekUrl("https://example.com/m")).toBe("https://example.com/m");
+  });
+
+  it("maps recency onto since and the result count onto t", () => {
+    const url = buildMojeekSearchUrl(engineParams({ query: "rust", recency: "month" }), 7);
+    expect(url).toContain("since=month");
+    expect(url).toContain("t=7");
+    expect(url).not.toContain("t=0");
+  });
+
+  it("detects the ALTCHA robot wall", () => {
+    expect(
+      isMojeekRobotPage({ html: "<altcha-widget></altcha-widget>", status: 200, url: "https://x" }),
+    ).toBe(true);
+    expect(isMojeekRobotPage({ html: MOJEEK_HTML, status: 200, url: "https://x" })).toBe(false);
+  });
+
+  it("searches through an injected browser renderer", async () => {
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: MOJEEK_HTML,
+      status: 200,
+      finalUrl: url,
+    });
+    const response = await searchMojeek(engineParams({ query: "example", renderPage }));
+    expect(response.provider).toBe("mojeek");
+    expect(response.sources).toHaveLength(1);
   });
 });

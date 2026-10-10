@@ -86,4 +86,30 @@ describe("web_search live engines", () => {
     expect(result.isError).toBeFalsy();
     expect(result.content[0].text.length).toBeGreaterThan(0);
   });
+
+  it("returns Ecosia results through a real browser when one resolves", async (testCtx) => {
+    const executablePath = await resolveBrowserExecutable();
+    if (!executablePath) testCtx.skip();
+    reset();
+    writeConfig({ search: { engines: ["ecosia"], aggregate: false } });
+    const result = await executeWebSearch(
+      { query: "typescript release notes", limit: 5 },
+      context(),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text.length).toBeGreaterThan(0);
+  });
+
+  it("returns Mojeek results through a real browser when one resolves", async (testCtx) => {
+    const executablePath = await resolveBrowserExecutable();
+    if (!executablePath) testCtx.skip();
+    reset();
+    writeConfig({ search: { engines: ["mojeek"], aggregate: false } });
+    const result = await executeWebSearch(
+      { query: "typescript release notes", limit: 5 },
+      context(),
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text.length).toBeGreaterThan(0);
+  });
 });
