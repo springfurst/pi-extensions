@@ -12,6 +12,8 @@
 | `recency` | string | no       | Time window: `day`, `week`, `month`, or `year`.     |
 | `limit`   | number | no       | Maximum results; overrides `search.limit`.          |
 
+SearXNG only supports `day`, `month`, and `year` time ranges, so a `week` request through SearXNG widens to `month`.
+
 ### Query directives
 
 `site:`, `-site:`, `after:`/`before:` (`YYYY-MM-DD`), `inurl:`, `intitle:`, `filetype:`, `"quoted phrases"`, `-exclusions`, and `OR` groups. Directives an engine cannot parse are enforced with a lenient post-filter: a constraint that would remove every result is relaxed and reported rather than returning nothing.

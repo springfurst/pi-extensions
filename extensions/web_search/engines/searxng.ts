@@ -19,6 +19,7 @@ const MAX_NUM_RESULTS = 20;
 
 const RECENCY_MAP: Record<NonNullable<EngineSearchParams["recency"]>, string> = {
   day: "day",
+  // SearXNG only supports day/month/year, so a week window widens to month.
   week: "month",
   month: "month",
   year: "year",
