@@ -126,6 +126,19 @@ function isUrlSelectorToken(token: string): boolean {
 }
 
 /**
+ * True when `colonIndex` falls inside the URL authority (the `host:port` part)
+ * rather than the path, query, or fragment. Selectors are only peeled from the
+ * latter, so a bare `host:port` keeps its port.
+ */
+function colonIsInAuthority(path: string, colonIndex: number): boolean {
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(path);
+  const authorityStart = scheme ? scheme[0].length : 0;
+  const authorityEnd = path.slice(authorityStart).search(/[/?#]/);
+  if (authorityEnd === -1) return colonIndex >= authorityStart;
+  return colonIndex >= authorityStart && colonIndex < authorityStart + authorityEnd;
+}
+
+/**
  * Peel one or more selector tokens off the right of a URL string. Walks back
  * through trailing `:tok` segments while each token looks like a selector and
  * leaves a string that still parses as a URL.
@@ -142,6 +155,7 @@ export function tryExtractEmbeddedUrlSelector(
     const candidate = basePath.slice(lastColonIndex + 1);
     const remainder = basePath.slice(0, lastColonIndex);
     if (!isReadableUrlPath(remainder)) break;
+    if (colonIsInAuthority(basePath, lastColonIndex)) break;
     if (!isUrlSelectorToken(candidate)) break;
 
     try {

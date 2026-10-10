@@ -96,6 +96,18 @@ describe("parseReadUrlTarget", () => {
       path: "https://example.com:8080/foo",
       sel: { kind: "raw" },
     });
+    expect(parseReadUrlTarget("http://myserver:3000")).toEqual({
+      path: "http://myserver:3000",
+      sel: { kind: "none" },
+    });
+    expect(parseReadUrlTarget("https://example.com:8080")).toEqual({
+      path: "https://example.com:8080",
+      sel: { kind: "none" },
+    });
+    expect(parseReadUrlTarget("https://example.com:8080/foo:50")).toEqual({
+      path: "https://example.com:8080/foo",
+      sel: { kind: "lines", ranges: [{ startLine: 50, endLine: undefined }], raw: false },
+    });
   });
 
   it("treats trailing-colon selectors that do not parse as part of the URL", () => {
