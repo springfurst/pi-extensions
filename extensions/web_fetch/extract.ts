@@ -20,9 +20,10 @@ export interface HtmlRender {
 
 /**
  * Render HTML to markdown by trying reader backends in order: Readability
- * (in-process), `trafilatura`, `lynx`, then Jina. Every backend's output must
- * clear the same quality gate. When none does, the best low-quality output is
- * returned so the caller can still fall back to targeted probes or raw HTML.
+ * (in-process), `trafilatura`, `lynx`, Jina, then a headless browser. Every
+ * backend's output must clear the same quality gate. When none does, the best
+ * low-quality output is returned so the caller can still fall back to targeted
+ * probes or raw HTML.
  */
 export async function renderHtmlToText(
   html: string,
@@ -34,6 +35,7 @@ export async function renderHtmlToText(
     { method: "trafilatura", run: () => runTrafilatura(url, ctx) },
     { method: "lynx", run: () => runLynx(url, ctx) },
     { method: "jina", run: () => runJina(url, ctx) },
+    { method: "browser", run: () => runBrowser(url, ctx) },
   ];
 
   let lowQuality: { content: string; method: string } | null = null;
@@ -81,6 +83,14 @@ async function runLynx(url: string, ctx: FetchContext): Promise<string | null> {
     timeout: ctx.timeoutMs,
   });
   return result.code === 0 ? result.stdout : null;
+}
+
+/** Render the URL in a headless browser, then extract the live DOM with Readability. */
+async function runBrowser(url: string, ctx: FetchContext): Promise<string | null> {
+  if (!ctx.renderPage) return null;
+  const rendered = await ctx.renderPage(url, { signal: ctx.signal, timeoutMs: ctx.timeoutMs });
+  if (rendered.status < 200 || rendered.status >= 300) return null;
+  return readabilityToMarkdown(rendered.html);
 }
 
 async function runJina(url: string, ctx: FetchContext): Promise<string | null> {

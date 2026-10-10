@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
 import { loadConfig } from "../../lib/config";
 import { createFetchContext } from "./context";
 import {
@@ -35,6 +36,8 @@ export interface WebFetchToolContext {
   fetch?: FetchImpl;
   resolve?: ResolveHost;
   cacheDir?: string;
+  /** Optional headless-browser renderer; when omitted one is built from config. */
+  renderPage?: BrowserRenderer;
 }
 
 export interface WebFetchToolResult {
@@ -62,6 +65,8 @@ export async function executeWebFetch(
       : config.fetch.maxChars;
   const raw = params.raw === true || selectorWantsRaw(parsed.sel);
 
+  const renderPage =
+    toolCtx.renderPage ?? (await createBrowserRenderer({ config: config.browser }));
   const fetchContext = createFetchContext({
     config: config.fetch,
     signal: toolCtx.signal,
@@ -69,6 +74,7 @@ export async function executeWebFetch(
     resolve: toolCtx.resolve,
     cacheDir: toolCtx.cacheDir,
     exec: toolCtx.exec,
+    renderPage,
   });
   const result = await renderUrl(parsed.path, { raw, maxChars, ctx: fetchContext });
   // Select and save against the full rendered body; the render cap applies only

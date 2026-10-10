@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
+import type { BrowserRenderer } from "../../lib/browser";
 import type { FetchConfig } from "../../lib/config";
 import type { ResolveHost } from "../../lib/security";
 
@@ -74,4 +75,6 @@ export interface FetchContext {
   readonly cacheDir?: string;
   /** Bound `pi.exec`, used only for the optional `trafilatura`/`lynx` readers. */
   readonly exec?: ExecFn;
+  /** Optional headless-browser renderer; when absent the browser backend is skipped. */
+  readonly renderPage?: BrowserRenderer;
 }

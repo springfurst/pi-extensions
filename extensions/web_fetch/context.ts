@@ -1,3 +1,4 @@
+import type { BrowserRenderer } from "../../lib/browser";
 import type { FetchConfig } from "../../lib/config";
 import { loadPage } from "./fetch";
 import type {
@@ -16,6 +17,8 @@ export interface CreateFetchContextOptions {
   resolve?: ResolveHost;
   cacheDir?: string;
   exec?: ExecFn;
+  /** Optional headless-browser renderer, threaded through to the reader chain. */
+  renderPage?: BrowserRenderer;
 }
 
 /**
@@ -49,5 +52,6 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
     resolve: options.resolve,
     cacheDir: options.cacheDir,
     exec: options.exec,
+    renderPage: options.renderPage,
   };
 }

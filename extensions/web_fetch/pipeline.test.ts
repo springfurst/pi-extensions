@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { BrowserRenderer } from "../../lib/browser";
 import { DEFAULT_CONFIG } from "../../lib/config";
 import { startServer, type RequestHandler } from "./__fixtures__/test-server";
 import { createFetchContext } from "./context";
@@ -146,5 +147,70 @@ describe("renderUrl", () => {
     }, "/missing");
     expect(result.method).toBe("failed");
     expect(result.notes.join(" ")).toMatch(/404/);
+  });
+});
+
+const JS_GATED = `<!doctype html><html><head><title>App</title></head><body>
+<div id="root"></div>
+<noscript>Please enable JavaScript to view this page.</noscript>
+</body></html>`;
+
+const BASE_FETCH_CONFIG = {
+  ...DEFAULT_CONFIG.fetch,
+  allowPrivateHosts: true,
+  externalReaders: false,
+  remoteFallbacks: false,
+};
+
+async function renderWithBrowser(
+  html: string,
+  path: string,
+  renderPage: BrowserRenderer | undefined,
+) {
+  const server = await startServer((_req, res) => {
+    res.setHeader("Content-Type", "text/html");
+    res.end(html);
+  });
+  try {
+    const ctx = createFetchContext({ config: BASE_FETCH_CONFIG, renderPage });
+    return await renderUrl(`${server.origin}${path}`, {
+      raw: false,
+      maxChars: DEFAULT_CONFIG.fetch.maxChars,
+      ctx,
+    });
+  } finally {
+    await server.close();
+  }
+}
+
+describe("browser backend", () => {
+  it("renders a JavaScript-gated page through the browser", async () => {
+    let calls = 0;
+    const renderPage: BrowserRenderer = async (url) => {
+      calls++;
+      return { html: ARTICLE, status: 200, finalUrl: url };
+    };
+    const result = await renderWithBrowser(JS_GATED, "/app", renderPage);
+    expect(calls).toBe(1);
+    expect(result.method).toBe("browser");
+    expect(result.content).toContain("[link](https://example.com)");
+    expect(result.notes.join(" ")).toMatch(/JavaScript rendering/);
+  });
+
+  it("does not reach the browser for a page Readability can read", async () => {
+    let calls = 0;
+    const renderPage: BrowserRenderer = async (url) => {
+      calls++;
+      return { html: JS_GATED, status: 200, finalUrl: url };
+    };
+    const result = await renderWithBrowser(ARTICLE, "/article", renderPage);
+    expect(result.method).toBe("readability");
+    expect(calls).toBe(0);
+  });
+
+  it("preserves the raw-HTML fallback when no browser resolves", async () => {
+    const result = await renderWithBrowser(JS_GATED, "/app", undefined);
+    expect(result.method).toBe("raw-html");
+    expect(result.content).toContain("Please enable JavaScript");
   });
 });

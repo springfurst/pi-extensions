@@ -161,6 +161,9 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
 
     // 5E: reader-backend chain.
     const htmlResult = await renderHtmlToText(rawContent, finalUrl, ctx);
+    if (htmlResult.method === "browser") {
+      notes.push("Page required JavaScript rendering (browser)");
+    }
     if (!htmlResult.ok) {
       notes.push("html rendering failed (no reader backend produced usable output)");
       const llm = await tryLlmEndpoints(finalUrl, ctx);
