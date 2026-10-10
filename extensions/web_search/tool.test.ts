@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { BrowserRenderer } from "../../lib/browser";
 import { htmlFetch } from "./__fixtures__/search";
 import { engineCooldown, executeWebSearch, searchCache, type WebSearchToolContext } from "./tool";
 
@@ -13,6 +14,13 @@ const DDG_HTML = `
 <div class="result results_links web-result">
   <a class="result__a" href="https://example.com/two">Two</a>
   <div class="result__snippet">Snippet two</div>
+</div>
+`;
+
+const BROWSER_HTML = `
+<div class="Gx5Zad">
+  <a href="https://example.com/browser"><h3>Browser Result</h3></a>
+  <div class="VwiC3b">From Google</div>
 </div>
 `;
 
@@ -104,5 +112,45 @@ describe("executeWebSearch", () => {
     writeConfig({ search: { engines: ["searxng"], aggregate: false } });
     const result = await executeWebSearch({ query: "x" }, context(htmlFetch([])));
     expect(result.isError).toBe(true);
+  });
+
+  it("filters browser engines when no browser resolves", async () => {
+    writeConfig({ search: { engines: ["google"], aggregate: false }, browser: { enabled: false } });
+    const result = await executeWebSearch({ query: "example" }, context(htmlFetch([])));
+    expect(result.isError).toBe(true);
+    expect(result.details.error).toMatch(/unavailable/i);
+  });
+
+  it("uses a browser engine when a renderer is injected", async () => {
+    writeConfig({ search: { engines: ["google"], aggregate: false } });
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: BROWSER_HTML,
+      status: 200,
+      finalUrl: url,
+    });
+    const result = await executeWebSearch(
+      { query: "example" },
+      { ...context(htmlFetch([])), renderPage },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toHaveLength(1);
+    expect(result.details.engines).toEqual(["google"]);
+    expect(result.details.notes.join(" ")).toMatch(/browser/i);
+  });
+
+  it("aggregates HTTP and browser engines with a fake renderer", async () => {
+    writeConfig({ search: { engines: ["duckduckgo", "google"], aggregate: true } });
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: BROWSER_HTML,
+      status: 200,
+      finalUrl: url,
+    });
+    const result = await executeWebSearch(
+      { query: "example" },
+      { ...context(htmlFetch([["duckduckgo.com", DDG_HTML]])), renderPage },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toHaveLength(3);
+    expect(result.details.notes.join(" ")).toMatch(/browser/i);
   });
 });

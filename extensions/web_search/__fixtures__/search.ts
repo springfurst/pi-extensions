@@ -14,6 +14,7 @@ export function engineParams(
     timeoutMs: overrides.timeoutMs ?? 60_000,
     fetch: overrides.fetch ?? fetch,
     searxng: overrides.searxng,
+    renderPage: overrides.renderPage,
   };
 }
 

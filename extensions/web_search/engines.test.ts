@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { BrowserRenderer } from "../../lib/browser";
 import { engineParams, htmlFetch } from "./__fixtures__/search";
 import {
   createDuckDuckGoForm,
@@ -17,6 +18,13 @@ import {
   searchStartpage,
 } from "./engines/startpage";
 import { findSearxngAuth, searchSearXNG, stripExternalBangs } from "./engines/searxng";
+import {
+  blockReason as googleBlockReason,
+  buildSearchUrl as buildGoogleSearchUrl,
+  parseHtmlResults as parseGoogleResults,
+  searchGoogle,
+  unwrapResultUrl as unwrapGoogleUrl,
+} from "./engines/google";
 
 const DDG_HTML = `
 <div class="result results_links web-result">
@@ -173,5 +181,88 @@ describe("searxng", () => {
     });
     expect(response.answer).toBe("42");
     expect(response.relatedQuestions).toEqual(["more"]);
+  });
+});
+
+const GOOGLE_HTML = `
+<div class="Gx5Zad fP1Qef">
+  <a href="/url?q=https%3A%2F%2Fexample.com%2Fone&sa=U"><h3>Example One</h3></a>
+  <div class="VwiC3b">Snippet one</div>
+</div>
+<div class="Gx5Zad fP1Qef">
+  <a href="https://example.com/two"><h3>Example Two</h3></a>
+  <div class="IsZvec">Snippet two</div>
+</div>
+`;
+
+describe("google", () => {
+  it("unwraps /url redirects and rejects google-internal links", () => {
+    expect(unwrapGoogleUrl("/url?q=https%3A%2F%2Fexample.com%2Fone&sa=U")).toBe(
+      "https://example.com/one",
+    );
+    expect(unwrapGoogleUrl("https://example.com/two")).toBe("https://example.com/two");
+    expect(unwrapGoogleUrl("https://www.google.com/search?q=x")).toBeUndefined();
+    expect(unwrapGoogleUrl("javascript:void(0)")).toBeUndefined();
+  });
+
+  it("parses titles, urls, and snippets in document order", () => {
+    expect(parseGoogleResults(GOOGLE_HTML)).toEqual([
+      { title: "Example One", url: "https://example.com/one", snippet: "Snippet one" },
+      { title: "Example Two", url: "https://example.com/two", snippet: "Snippet two" },
+    ]);
+  });
+
+  it("builds a no-JS web-results URL with recency", () => {
+    const url = buildGoogleSearchUrl(engineParams({ query: "rust", recency: "week" }), 5);
+    expect(url).toContain("udm=14");
+    expect(url).toContain("num=5");
+    expect(url).toContain("tbs=qdr%3Aw");
+    expect(url).toContain("q=rust");
+  });
+
+  it("detects JS shells and traffic challenges", () => {
+    expect(
+      googleBlockReason({
+        html: '<a href="/httpservice/retry/enablejs">',
+        status: 200,
+        url: "https://www.google.com/search",
+      }),
+    ).toBe("javascript");
+    expect(
+      googleBlockReason({
+        html: "detected unusual traffic",
+        status: 200,
+        url: "https://www.google.com/search",
+      }),
+    ).toBe("traffic");
+    expect(
+      googleBlockReason({
+        html: GOOGLE_HTML,
+        status: 200,
+        url: "https://www.google.com/search",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("searches through an injected browser renderer", async () => {
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: GOOGLE_HTML,
+      status: 200,
+      finalUrl: url,
+    });
+    const response = await searchGoogle(engineParams({ query: "example", renderPage }));
+    expect(response.provider).toBe("google");
+    expect(response.sources).toHaveLength(2);
+    expect(response.sources[0]).toMatchObject({
+      title: "Example One",
+      url: "https://example.com/one",
+      snippet: "Snippet one",
+    });
+  });
+
+  it("throws a provider error when no browser is available", async () => {
+    await expect(searchGoogle(engineParams({ query: "example" }))).rejects.toThrow(
+      /no browser resolved/i,
+    );
   });
 });

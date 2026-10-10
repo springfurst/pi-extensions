@@ -1,8 +1,15 @@
 import type { JsonValue } from "@earendil-works/pi-ai";
+import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
 import { loadConfig } from "../../lib/config";
 import { aggregateSearch, type SearchFailure } from "./aggregate";
 import { CHALLENGE_COOLDOWN_MS, EngineCooldown, SearchCache, cacheKey } from "./cache";
-import { ENGINE_PRIORITY, isEngineId, resolveEngines } from "./engines";
+import {
+  ENGINES,
+  ENGINE_PRIORITY,
+  engineRequiresBrowser,
+  isEngineId,
+  resolveEngines,
+} from "./engines";
 import { formatForLLM } from "./format";
 import { applyQueryConstraints, parseSearchQuery } from "./query";
 import {
@@ -28,6 +35,8 @@ export interface WebSearchToolContext {
   trusted: boolean;
   signal?: AbortSignal;
   fetch?: FetchImpl;
+  /** Optional browser renderer; when omitted one is built for browser-backed engines. */
+  renderPage?: BrowserRenderer;
 }
 
 export interface StructuredSource {
@@ -106,13 +115,24 @@ export async function executeWebSearch(
   const parsedQuery = parseSearchQuery(params.query);
 
   const requested = config.search.provider ? [config.search.provider] : config.search.engines;
+  const wantsBrowser = requested.some((id) => isEngineId(id) && engineRequiresBrowser(id));
+  const renderPage = wantsBrowser
+    ? (toolCtx.renderPage ?? (await createBrowserRenderer({ config: config.browser })))
+    : undefined;
   const engineIds = requested
     .filter((id) => isEngineId(id))
-    .filter((id) => id !== "searxng" || config.searxng.endpoint !== undefined);
+    .filter((id) => id !== "searxng" || config.searxng.endpoint !== undefined)
+    .filter((id) => !engineRequiresBrowser(id) || renderPage !== undefined);
   if (engineIds.length === 0) {
+    const browserEnginesOnly =
+      requested.length > 0 &&
+      renderPage === undefined &&
+      requested.every((id) => isEngineId(id) && engineRequiresBrowser(id));
     const message = config.search.provider
       ? `Search provider "${config.search.provider}" is unavailable.`
-      : "No search engines are configured.";
+      : browserEnginesOnly
+        ? "The configured browser search engines are unavailable because no browser resolved."
+        : "No search engines are configured.";
     return errorResult(params.query, message, []);
   }
 
@@ -125,6 +145,7 @@ export async function executeWebSearch(
     timeoutMs: config.search.timeoutSeconds * 1000,
     fetch: fetchImpl,
     searxng: config.searxng,
+    renderPage,
   };
 
   const key = cacheKey(engineIds, params.query, params.recency, limit);
@@ -180,11 +201,18 @@ export async function executeWebSearch(
 
   if (!response) return errorResult(params.query, "No search results were returned.", engineIds);
 
+  const notes: string[] = [];
   for (const failure of failures) {
-    if (isChallenge(failure.error)) engineCooldown.mark(failure.provider.id, CHALLENGE_COOLDOWN_MS);
+    if (!isChallenge(failure.error)) continue;
+    engineCooldown.mark(failure.provider.id, CHALLENGE_COOLDOWN_MS);
+    if (isEngineId(failure.provider.id) && engineRequiresBrowser(failure.provider.id)) {
+      notes.push(`${ENGINES[failure.provider.id].label} blocked the browser with a challenge.`);
+    }
+  }
+  if (enginesUsed.some((id) => isEngineId(id) && engineRequiresBrowser(id))) {
+    notes.push("A JavaScript-rendered search page (browser) contributed results.");
   }
 
-  const notes: string[] = [];
   if (parsedQuery.hasConstraints && response.sources.length > 0) {
     const filtered = applyQueryConstraints(response.sources, parsedQuery);
     if (filtered.sources.length !== response.sources.length) {

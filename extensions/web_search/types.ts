@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
+import type { BrowserRenderer } from "../../lib/browser";
 import type { SearxngConfig } from "../../lib/config";
 import type { StructuredQuery } from "./query";
 
 export type FetchImpl = typeof fetch;
 export type Recency = "day" | "week" | "month" | "year";
-export type SearchEngineId = "duckduckgo" | "startpage" | "searxng";
+export type SearchEngineId = "duckduckgo" | "startpage" | "searxng" | "google";
 export type SearchProviderId = SearchEngineId | "public" | "none";
 
 /** One search result. */
@@ -34,6 +35,8 @@ export interface SearchResponse {
 export interface SearchEngine {
   id: SearchEngineId;
   label: string;
+  /** True when the engine needs a headless browser; skipped when none resolves. */
+  requiresBrowser?: boolean;
   search(params: EngineSearchParams): Promise<SearchResponse>;
 }
 
@@ -47,6 +50,8 @@ export interface EngineSearchParams {
   fetch: FetchImpl;
   /** SearXNG connection settings, when the engine is SearXNG. */
   searxng?: SearxngConfig;
+  /** Browser renderer, when the engine needs one. */
+  renderPage?: BrowserRenderer;
 }
 
 /** Provider-tagged error with an optional HTTP status. */
@@ -65,6 +70,7 @@ export const SEARCH_ENGINE_LABELS: Record<SearchProviderId, string> = {
   duckduckgo: "DuckDuckGo",
   startpage: "Startpage",
   searxng: "SearXNG",
+  google: "Google",
   public: "Public Web",
   none: "None",
 };
