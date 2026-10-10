@@ -7,8 +7,9 @@ import { looksLikeHtml } from "./extract";
 import type { FetchContext } from "./types";
 
 /**
- * Build `llms.txt`/`llms.md` candidates scoped to the requested URL: the
- * site root, then each ancestor path from deepest to shallowest.
+ * Build `llms.txt`/`llms.md` candidates scoped to the requested URL's ancestor
+ * directories, from deepest to shallowest. The site root is only probed for the
+ * root URL itself, not for pages below it.
  */
 export function buildLlmEndpointCandidates(url: string): string[] {
   try {
