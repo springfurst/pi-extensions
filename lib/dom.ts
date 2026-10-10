@@ -12,5 +12,5 @@ export function parseDocument(html: string): ParsedDocument {
  * non-void elements like `<link>`, which HTML parsing discards.
  */
 export function parseXmlDocument(xml: string): ParsedDocument {
-  return new DOMParser().parseFromString(xml, "text/xml") as ParsedDocument;
+  return new DOMParser().parseFromString(xml, "text/xml") as unknown as ParsedDocument;
 }

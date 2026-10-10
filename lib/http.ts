@@ -18,19 +18,21 @@ export function withHardTimeout(signal: AbortSignal | undefined, ms: number): Ab
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
-export interface LimitedText {
-  text: string;
+export interface LimitedBytes {
+  bytes: Uint8Array;
   /** True when the body was cut at `maxBytes`. */
   truncated: boolean;
-  bytes: number;
 }
 
 /**
- * Read a response body up to `maxBytes`, decoding as UTF-8. Over-cap bodies are
- * cut (not rejected) and reported through `truncated`.
+ * Read a response body up to `maxBytes`. Over-cap bodies are cut (not rejected)
+ * and reported through `truncated`.
  */
-export async function readLimitedText(response: Response, maxBytes: number): Promise<LimitedText> {
-  if (!response.body) return { text: "", truncated: false, bytes: 0 };
+export async function readLimitedBytes(
+  response: Response,
+  maxBytes: number,
+): Promise<LimitedBytes> {
+  if (!response.body) return { bytes: new Uint8Array(0), truncated: false };
   const reader = response.body.getReader();
   let buffer = new Uint8Array(Math.min(maxBytes, 64 * 1024));
   let bytes = 0;
@@ -61,7 +63,20 @@ export async function readLimitedText(response: Response, maxBytes: number): Pro
     reader.releaseLock();
   }
 
-  return { text: new TextDecoder().decode(buffer.subarray(0, bytes)), truncated, bytes };
+  return { bytes: buffer.subarray(0, bytes), truncated };
+}
+
+export interface LimitedText {
+  text: string;
+  /** True when the body was cut at `maxBytes`. */
+  truncated: boolean;
+  bytes: number;
+}
+
+/** Read a response body up to `maxBytes`, decoding as UTF-8. */
+export async function readLimitedText(response: Response, maxBytes: number): Promise<LimitedText> {
+  const { bytes, truncated } = await readLimitedBytes(response, maxBytes);
+  return { text: new TextDecoder().decode(bytes), truncated, bytes: bytes.byteLength };
 }
 
 /** Lowercase a MIME type and strip its parameters. */
