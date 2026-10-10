@@ -1,0 +1,34 @@
+{
+  "name": "@springfurst/pi-extensions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A collection of tools and extensions for the pi coding agent.",
+  "license": "MIT",
+  "keywords": [
+    "pi-package"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "npm run lint:ts && npm run lint:md",
+    "lint:ts": "eslint .",
+    "lint:md": "markdownlint-cli2",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^10.0.0",
+    "markdownlint-cli2": "^0.18.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}

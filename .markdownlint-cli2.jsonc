@@ -1,0 +1,10 @@
+{
+  // Line length fights with tables and examples; style is Prettier's job.
+  "config": {
+    "MD013": false,
+    "MD033": false,
+    "MD024": { "siblings_only": true },
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**"],
+}
