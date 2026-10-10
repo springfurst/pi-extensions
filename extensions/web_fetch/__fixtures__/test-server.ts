@@ -20,7 +20,13 @@ export async function startServer(handler: RequestHandler): Promise<TestServer> 
   const address = server.address() as AddressInfo;
   return {
     origin: `http://127.0.0.1:${address.port}`,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve());
+        // Clients such as a headless browser keep sockets alive, so close
+        // them explicitly or `close()` never settles.
+        server.closeAllConnections();
+      }),
   };
 }
 
