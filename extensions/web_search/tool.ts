@@ -53,6 +53,8 @@ export interface WebSearchDetails {
   provider: string;
   engines: string[];
   notes: string[];
+  /** Sources for the transcript renderer; `structuredContent` is not passed to renderers. */
+  sources: StructuredSource[];
   error?: string;
 }
 
@@ -67,8 +69,16 @@ export interface WebSearchToolResult {
 export const searchCache = new SearchCache();
 export const engineCooldown = new EngineCooldown();
 
-function toStructured(sources: readonly SearchSource[]): StructuredContent {
+function toStructuredSources(sources: readonly SearchSource[]): StructuredSource[] {
   return sources.map((source) => {
+    const item: StructuredSource = { title: source.title, url: source.url };
+    if (source.snippet !== undefined) item.snippet = source.snippet;
+    return item;
+  });
+}
+
+function toStructured(sources: readonly SearchSource[]): StructuredContent {
+  return toStructuredSources(sources).map((source) => {
     const item: Record<string, JsonValue> = { title: source.title, url: source.url };
     if (source.snippet !== undefined) item.snippet = source.snippet;
     return item;
@@ -88,7 +98,13 @@ function okResult(
   return {
     content: [{ type: "text", text: formatForLLM(response, notes) }],
     structuredContent: toStructured(response.sources),
-    details: { query, provider: response.provider, engines, notes },
+    details: {
+      query,
+      provider: response.provider,
+      engines,
+      notes,
+      sources: toStructuredSources(response.sources),
+    },
   };
 }
 
@@ -96,7 +112,7 @@ function errorResult(query: string, message: string, engines: string[]): WebSear
   return {
     content: [{ type: "text", text: `Error: ${message}` }],
     structuredContent: [],
-    details: { query, provider: "none", engines, notes: [], error: message },
+    details: { query, provider: "none", engines, notes: [], sources: [], error: message },
     isError: true,
   };
 }

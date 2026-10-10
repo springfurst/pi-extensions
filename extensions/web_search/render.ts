@@ -57,9 +57,11 @@ export function renderSearchResult(
     return new Text(theme.fg("error", firstText(result) || details.error), 0, 0);
   }
 
-  const sources = Array.isArray(result.structuredContent)
-    ? (result.structuredContent as StructuredSource[])
-    : [];
+  const sources: StructuredSource[] = Array.isArray(details?.sources)
+    ? details.sources
+    : Array.isArray(result.structuredContent)
+      ? (result.structuredContent as StructuredSource[])
+      : [];
   const engines = details?.engines?.length ? details.engines.join(", ") : (details?.provider ?? "");
   let text = theme.fg("success", `${sources.length} source${sources.length === 1 ? "" : "s"}`);
   if (engines) text += theme.fg("dim", ` · ${engines}`);

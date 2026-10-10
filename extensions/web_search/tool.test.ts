@@ -83,6 +83,7 @@ describe("executeWebSearch", () => {
     );
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toHaveLength(2);
+    expect(result.details.sources).toHaveLength(2);
     expect(result.content[0].text).toContain("[1] One");
   });
 

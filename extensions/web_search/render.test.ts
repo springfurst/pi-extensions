@@ -17,25 +17,28 @@ describe("web_search renderers", () => {
     expect(rendered).toContain("recency:week");
   });
 
-  it("renders a result summary with sources", () => {
+  it("renders sources from details, the shape pi passes to renderResult", () => {
     const details: WebSearchDetails = {
       query: "rust",
       provider: "public",
       engines: ["duckduckgo"],
       notes: [],
+      sources: [
+        { title: "A", url: "https://a.example" },
+        { title: "B", url: "https://b.example" },
+      ],
     };
+    // pi passes `{ content, details }`; `structuredContent` is not forwarded.
     const component = renderSearchResult(
-      {
-        details,
-        content: [{ type: "text", text: "[1] A https://a.example" }],
-        structuredContent: [{ title: "A", url: "https://a.example" }],
-      },
+      { details, content: [{ type: "text", text: "[1] A\n[2] B" }] },
       { expanded: false, isPartial: false },
       theme,
     );
     const rendered = component.render(80).join("\n");
-    expect(rendered).toContain("1 source");
+    expect(rendered).toContain("2 sources");
     expect(rendered).toContain("duckduckgo");
+    expect(rendered).toContain("[1] A");
+    expect(rendered).toContain("[2] B");
   });
 });
 
