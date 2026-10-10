@@ -124,6 +124,21 @@ describe("renderUrl", () => {
     expect(result.content).toBe(ARTICLE);
   });
 
+  it("returns the full body regardless of the render cap", async () => {
+    const body = Array.from({ length: 200 }, (_v, i) => `line ${i}`).join("\n");
+    const result = await render(
+      (_req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        res.end(body);
+      },
+      "/text",
+      false,
+      50,
+    );
+    expect(result.content).toBe(body);
+    expect(result.truncated).toBe(true);
+  });
+
   it("reports a failed fetch", async () => {
     const result = await render((_req, res) => {
       res.statusCode = 404;

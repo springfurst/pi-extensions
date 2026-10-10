@@ -6,12 +6,12 @@
 
 ## Parameters
 
-| Name        | Type    | Required | Description                                                                                       |
-| ----------- | ------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `url`       | string  | yes      | Absolute `http(s)` URL, optionally with a trailing selector.                                      |
-| `raw`       | boolean | no       | Return the response body verbatim, skipping text shaping.                                         |
-| `max_chars` | number  | no       | Per-call render cap in characters; overrides `fetch.maxChars`.                                    |
-| `save_path` | string  | no       | Write the full rendered body to this file (relative paths resolve against the working directory). |
+| Name        | Type    | Required | Description                                                                                                                        |
+| ----------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `url`       | string  | yes      | Absolute `http(s)` URL, optionally with a trailing selector.                                                                       |
+| `raw`       | boolean | no       | Return the response body verbatim, skipping text shaping.                                                                          |
+| `max_chars` | number  | no       | Per-call render cap in characters; overrides `fetch.maxChars`.                                                                     |
+| `save_path` | string  | no       | Write the full rendered content to this file (relative paths resolve against the working directory), so long output can be grep'd. |
 
 ### URL selectors
 
@@ -70,7 +70,7 @@ The pipeline runs hostname-gated site handlers first, then a generic fetch and e
 - **Fetch** uses rotating user agents, manual redirects, one `Retry-After`-aware 429 retry, a retry of bot challenges and 403s across user agents, a streamed byte cap, and charset decoding.
 - **Safety**: only `http` and `https` are allowed, and loopback, private, link-local, and cloud-metadata ranges are rejected unless `fetch.allowPrivateHosts` is set. Redirects are re-checked on every hop. External readers re-fetch the URL themselves, so they are skipped when the URL fails the guard.
 
-Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's model-safe limit. The result names which limit bound it and suggests a selector range or `save_path` for the rest; when `save_path` is set, the saved location is reported. A selector that reduces the body below both limits is not reported as truncated.
+Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's model-safe limit. Line selectors and `save_path` run against the full rendered body, and only the text returned to the model is capped: a tail selector reads the true tail, and a saved file is complete. The result names which limit bound it and suggests a selector range or `save_path` for the rest; when `save_path` is set, the saved location is reported. When the rendered document exceeds `fetch.maxChars`, the render cap is reported even if a selector reduced the returned text below it.
 
 ## Limitations
 

@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
-import { finalizeOutput } from "../output";
+import { cleanOutput, finalizeOutput } from "../output";
 import type { FetchContext, RenderResult } from "../types";
 
 export type { FetchContext, RenderResult };
 export { finalizeOutput };
-
-/** Default render cap used by site-specific handlers before the pipeline reapplies the per-call cap. */
-export const MAX_OUTPUT_CHARS = 500_000;
 
 /**
  * A site-specific URL renderer. Returns `null` for URLs it does not own or
@@ -25,17 +22,16 @@ export interface BuildResultOptions {
   contentType?: string;
 }
 
-/** Build a `RenderResult` from markdown content, finalizing the output. */
+/** Build a `RenderResult` from markdown content. The pipeline owns the render cap. */
 export function buildResult(md: string, opts: BuildResultOptions): RenderResult {
-  const output = finalizeOutput(md, MAX_OUTPUT_CHARS);
   return {
     url: opts.url,
     finalUrl: opts.finalUrl ?? opts.url,
     contentType: opts.contentType ?? "text/markdown",
     method: opts.method,
-    content: output.content,
+    content: cleanOutput(md),
     fetchedAt: opts.fetchedAt,
-    truncated: output.truncated,
+    truncated: false,
     notes: opts.notes ?? [],
   };
 }

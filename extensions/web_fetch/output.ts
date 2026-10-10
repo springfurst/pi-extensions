@@ -9,14 +9,31 @@ import {
 import { formatBytes } from "../../lib/format";
 import type { RenderResult } from "./types";
 
-/** Cap and clean rendered output: collapse blank runs, trim, and slice. */
+/** Collapse blank runs and trim rendered output. */
+export function cleanOutput(content: string): string {
+  return content.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Clean rendered output and report whether it exceeds the render cap. The
+ * content is not sliced: callers apply the cap only once, after selectors and
+ * `save_path` have seen the full body.
+ */
 export function finalizeOutput(
   content: string,
   maxChars: number,
 ): { content: string; truncated: boolean } {
-  const cleaned = content.replace(/\n{3,}/g, "\n\n").trim();
-  const truncated = cleaned.length > maxChars;
-  return { content: cleaned.slice(0, maxChars), truncated };
+  const cleaned = cleanOutput(content);
+  return { content: cleaned, truncated: cleaned.length > maxChars };
+}
+
+/** Slice text to the render cap, reporting whether anything was cut. */
+export function applyRenderCap(
+  content: string,
+  maxChars: number,
+): { text: string; truncated: boolean } {
+  if (content.length <= maxChars) return { text: content, truncated: false };
+  return { text: content.slice(0, maxChars), truncated: true };
 }
 
 /** The `URL / Content-Type / Method / Notes` header prepended to every read. */
@@ -64,7 +81,7 @@ export function truncationHint(
     ? `; full output saved to ${savedPath}`
     : " or pass save_path to write the full output to a file";
   if (binding === "render") {
-    return `\n\n[Content truncated at fetch.maxChars (${maxChars} characters); increase fetch.maxChars, request a selector range${saveHint}.]`;
+    return `\n\n[Rendered content exceeds fetch.maxChars (${maxChars} characters); increase fetch.maxChars, request a selector range${saveHint}.]`;
   }
   const nextRange = `:${limit.outputLines + 1}-${limit.totalLines}`;
   return `\n\n[Output truncated to ${DEFAULT_MAX_LINES} lines / ${formatBytes(DEFAULT_MAX_BYTES)}; request a selector range (e.g. ${nextRange})${saveHint}.]`;

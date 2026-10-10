@@ -63,7 +63,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
           return {
             ...result,
             content: output.content,
-            truncated: result.truncated || output.truncated,
+            truncated: output.truncated,
           };
         }
       } catch {

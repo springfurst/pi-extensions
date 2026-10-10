@@ -118,7 +118,36 @@ describe("executeWebFetch", () => {
     expect(result.details.truncationBinding).toBe("model");
   });
 
-  it("does not report truncation for a selector that fits under the cap", async () => {
+  it("applies a tail selector to the uncapped body", async () => {
+    const body = Array.from({ length: 200 }, (_v, i) => `line ${i}`).join("\n");
+    const result = await run(
+      (_req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        res.end(body);
+      },
+      (origin) => ({ url: `${origin}/lines:-2`, max_chars: 50 }),
+    );
+    expect(result.details.selector).toBe(":-2");
+    expect(result.content[0].text).toContain("line 198\nline 199");
+    expect(result.content[0].text).not.toContain("line 6");
+  });
+
+  it("writes the full body to save_path beyond the render cap", async () => {
+    const savePath = join(dir, "out.txt");
+    const body = Array.from({ length: 200 }, (_v, i) => `line ${i}`).join("\n");
+    const result = await run(
+      (_req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        res.end(body);
+      },
+      (origin) => ({ url: `${origin}/text`, max_chars: 50, save_path: savePath }),
+    );
+    expect(readFileSync(savePath, "utf-8")).toBe(body);
+    expect(result.details.truncationBinding).toBe("render");
+    expect(result.content[0].text).toContain(savePath);
+  });
+
+  it("reports render truncation for a small selector over a larger document", async () => {
     const body = Array.from({ length: 200 }, (_v, i) => `line ${i}`).join("\n");
     const result = await run(
       (_req, res) => {
@@ -127,7 +156,7 @@ describe("executeWebFetch", () => {
       },
       (origin) => ({ url: `${origin}/lines:1-2`, max_chars: 50 }),
     );
-    expect(result.details.truncationBinding).toBeUndefined();
-    expect(result.content[0].text).not.toContain("truncated");
+    expect(result.details.truncationBinding).toBe("render");
+    expect(result.content[0].text).toContain("fetch.maxChars");
   });
 });

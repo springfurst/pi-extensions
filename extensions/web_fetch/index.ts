@@ -32,7 +32,7 @@ export default function webFetchExtension(pi: ExtensionAPI) {
     promptSnippet: "Fetch and read a web page as text",
     promptGuidelines: [
       "Use web_fetch to read a known URL; use web_search to discover URLs first.",
-      "Append a line selector such as :100-200 to read a slice of long output instead of re-fetching.",
+      "Append a line selector such as :100-200 to read a slice of long output.",
     ],
     parameters: FetchParams,
     annotations: { readOnlyHint: true, openWorldHint: true },

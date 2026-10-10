@@ -19,7 +19,7 @@ import type { SpecialHandler } from "./types";
 import { handleWikipedia } from "./wikipedia";
 
 export type { FetchContext, RenderResult, SpecialHandler } from "./types";
-export { buildResult, finalizeOutput, formatIsoDate, MAX_OUTPUT_CHARS } from "./types";
+export { buildResult, finalizeOutput, formatIsoDate } from "./types";
 
 export { fetchGitHubApi, handleGitHub, parseGitHubUrl, stripActionsLogTimestamps } from "./github";
 export { handleGitLab, parseGitLabUrl } from "./gitlab";

@@ -2,7 +2,13 @@ import { writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { loadConfig } from "../../lib/config";
 import { createFetchContext } from "./context";
-import { applyModelSafeLimit, buildHeader, truncationHint, type TruncationBinding } from "./output";
+import {
+  applyModelSafeLimit,
+  applyRenderCap,
+  buildHeader,
+  truncationHint,
+  type TruncationBinding,
+} from "./output";
 import { renderUrl } from "./pipeline";
 import type { WebFetchDetails } from "./render";
 import {
@@ -65,6 +71,8 @@ export async function executeWebFetch(
     exec: toolCtx.exec,
   });
   const result = await renderUrl(parsed.path, { raw, maxChars, ctx: fetchContext });
+  // Select and save against the full rendered body; the render cap applies only
+  // to the text returned to the model, after selection and any save_path write.
   const body = applyLineSelector(result.content, parsed.sel);
 
   let savedPath: string | undefined;
@@ -82,11 +90,12 @@ export async function executeWebFetch(
     }
   }
 
-  const limited = applyModelSafeLimit(body);
+  const capped = applyRenderCap(body, maxChars);
+  const limited = applyModelSafeLimit(capped.text);
   let text = buildHeader(result) + limited.text;
   let truncationBinding: TruncationBinding | undefined;
   if (limited.truncated) truncationBinding = "model";
-  else if (result.truncated && body.length >= maxChars) truncationBinding = "render";
+  else if (result.truncated) truncationBinding = "render";
   if (truncationBinding) text += truncationHint(truncationBinding, maxChars, limited, savedPath);
   else if (savedPath) text += `\n\n[Saved to ${savedPath}]`;
 
