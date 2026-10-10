@@ -7,7 +7,10 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - `web_fetch`: read a URL as markdown or text, with site-specific handlers for GitHub, GitLab, npm, PyPI, crates.io, Wikipedia, arXiv, PubMed, RFC, Semantic Scholar, docs.rs, MDN, Hacker News, Reddit, and Stack Exchange; digestible-format discovery; an SSRF-guarded fetch layer; line selectors; and `save_path` for full output.
+- `web_fetch`: headless-Chromium rendering as the final reader backend, so JavaScript-gated pages are rendered and re-extracted (method `browser`) when an earlier reader produced nothing usable.
 - `web_search`: keyless meta-search across DuckDuckGo, Startpage, and SearXNG, with Google-style query directives, cross-engine aggregation, result caching, and structured output.
+- `web_search`: browser-backed Google, Ecosia, and Mojeek engines in the default pool, available automatically when a browser resolves.
+- Shared `browser` configuration with automatic Chrome/Chromium/Edge detection, a shared idle-closed browser process, per-render timeouts, a page cap, and `PUPPETEER_EXECUTABLE_PATH` support. The extension never downloads a browser, and the feature is off when none resolves.
 - Configuration through `web-tools.json` in the agent directory and, for trusted projects, the project directory.
 
 ### Fixed

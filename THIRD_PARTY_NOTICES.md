@@ -10,9 +10,11 @@ Derived code stays under its original license. The repository license (MIT, see 
 - Copyright: Copyright (c) 2025 Mario Zechner; Copyright (c) 2025-2026 Can Bölük; Copyright (c) 2026 Stencil Labs, Inc.
 - License: MIT
 - Affected paths:
-  - `extensions/web_fetch/` — URL reader pipeline, fetch layer, selectors, extraction, output shaping, and the site-specific scraper set
-  - `extensions/web_search/` — query parser and constraint filter, engine HTML/JSON parsers, aggregation, and result formatting
+  - `extensions/web_fetch/` — URL reader pipeline, fetch layer, selectors, extraction, output shaping, the site-specific scraper set, and the browser reader backend
+  - `extensions/web_search/` — query parser and constraint filter, engine HTML/JSON parsers, aggregation, result formatting, and the browser-backed Google/Ecosia/Mojeek engines
   - `lib/format.ts`, `lib/http.ts` — formatting and bounded-response helpers adapted from upstream utilities
+  - `lib/browser.ts` — headless browser session, page interception, and executable resolution adapted from oh-my-pi's browser launcher and search `browser-page.ts`
+  - `lib/security.ts` — the SSRF guard shared by the HTTP fetch layer and the browser session
 
 The behaviors and implementations above were adapted from oh-my-pi's web tools. The port drops oh-my-pi's runtime coupling (tool sessions, auth storage, model registry, native addon, settings framework), replaces the native HTML-to-markdown converter with Readability and Turndown, and reduces the search provider set to keyless engines.
 
@@ -24,5 +26,6 @@ These packages are imported by the extensions at runtime and remain under their 
 | ---------------------- | ---------- |
 | `linkedom`             | ISC        |
 | `@mozilla/readability` | Apache-2.0 |
+| `puppeteer-core`       | Apache-2.0 |
 | `turndown`             | MIT        |
 | `turndown-plugin-gfm`  | MIT        |
