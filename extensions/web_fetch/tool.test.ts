@@ -77,6 +77,7 @@ describe("executeWebFetch", () => {
     );
     expect(result.details.savedPath).toBe(savePath);
     expect(readFileSync(savePath, "utf-8")).toBe("hello world");
+    expect(result.content[0].text).toContain("Saved to");
   });
 
   it("hints when the render cap binds", async () => {
@@ -103,5 +104,30 @@ describe("executeWebFetch", () => {
     );
     expect(result.details.truncationBinding).toBe("model");
     expect(result.content[0].text).toContain("selector range");
+  });
+
+  it("binds to the model limit when both limits cut", async () => {
+    const body = Array.from({ length: 3000 }, (_v, i) => `line ${i} ${"x".repeat(24)}`).join("\n");
+    const result = await run(
+      (_req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        res.end(body);
+      },
+      (origin) => ({ url: `${origin}/text`, max_chars: 60000 }),
+    );
+    expect(result.details.truncationBinding).toBe("model");
+  });
+
+  it("does not report truncation for a selector that fits under the cap", async () => {
+    const body = Array.from({ length: 200 }, (_v, i) => `line ${i}`).join("\n");
+    const result = await run(
+      (_req, res) => {
+        res.setHeader("Content-Type", "text/plain");
+        res.end(body);
+      },
+      (origin) => ({ url: `${origin}/lines:1-2`, max_chars: 50 }),
+    );
+    expect(result.details.truncationBinding).toBeUndefined();
+    expect(result.content[0].text).not.toContain("truncated");
   });
 });

@@ -60,7 +60,9 @@ export function truncationHint(
   limit: ModelLimit,
   savedPath?: string,
 ): string {
-  const saveHint = savedPath ? "" : " or pass save_path to write the full output to a file";
+  const saveHint = savedPath
+    ? `; full output saved to ${savedPath}`
+    : " or pass save_path to write the full output to a file";
   if (binding === "render") {
     return `\n\n[Content truncated at fetch.maxChars (${maxChars} characters); increase fetch.maxChars, request a selector range${saveHint}.]`;
   }

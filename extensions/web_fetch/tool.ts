@@ -85,9 +85,10 @@ export async function executeWebFetch(
   const limited = applyModelSafeLimit(body);
   let text = buildHeader(result) + limited.text;
   let truncationBinding: TruncationBinding | undefined;
-  if (result.truncated) truncationBinding = "render";
-  else if (limited.truncated) truncationBinding = "model";
+  if (limited.truncated) truncationBinding = "model";
+  else if (result.truncated && body.length >= maxChars) truncationBinding = "render";
   if (truncationBinding) text += truncationHint(truncationBinding, maxChars, limited, savedPath);
+  else if (savedPath) text += `\n\n[Saved to ${savedPath}]`;
 
   const details: WebFetchDetails = {
     url: result.url,
