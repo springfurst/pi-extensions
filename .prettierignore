@@ -1,1 +1,4 @@
 node_modules/
+
+# Hidden directories are local tooling or agent workspaces, never committed.
+**/.*/**
