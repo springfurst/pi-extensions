@@ -138,7 +138,7 @@ async function callStartpageHtml(params: EngineSearchParams): Promise<string> {
   if (isChallengeResponse(page)) {
     throw new SearchProviderError(
       "startpage",
-      "Startpage blocked the request with a CAPTCHA challenge. Startpage rate-limits automated searches from datacenter IPs.",
+      "Startpage blocked the request with a bot challenge (CAPTCHA or Anubis proof-of-work). Startpage throttles automated searches from datacenter IPs.",
       429,
     );
   }

@@ -56,7 +56,7 @@ Secrets and the SearXNG connection may also come from `SEARXNG_ENDPOINT`, `SEARX
 
 ## Behavior and fallbacks
 
-- **Engines**: DuckDuckGo's no-JS HTML endpoint, Startpage's homepage-token form flow, and a user-configured SearXNG instance. SearXNG is skipped when no endpoint is set.
+- **Engines**: DuckDuckGo's no-JS HTML endpoint, Startpage's homepage-token form flow (a CAPTCHA or Anubis proof-of-work shell is an engine failure), and a user-configured SearXNG instance. SearXNG is skipped when no endpoint is set.
 - **Aggregation** (default) fans out across the active engines, deduplicates by canonical URL, and ranks by cross-engine consensus, then best per-engine rank. It returns once the soft deadline passes with at least one success, and aborts stragglers at the hard deadline. Individual engine failures are tolerated; the tool fails only when every engine fails.
 - **Fallback**: with aggregation off, engines are tried in priority order and the first success wins.
 - **Caching and cooldowns**: identical searches are cached for `search.cacheTtlSeconds`. An engine that returns a bot challenge is skipped for a short cooldown.

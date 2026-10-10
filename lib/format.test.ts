@@ -17,6 +17,7 @@ describe("formatNumber", () => {
     expect(formatNumber(1_500_000)).toBe("1.5M");
     expect(formatNumber(25_000_000)).toBe("25M");
     expect(formatNumber(1_500_000_000)).toBe("1.5B");
+    expect(formatNumber(Number.NaN)).toBe("0");
   });
 });
 

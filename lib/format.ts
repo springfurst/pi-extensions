@@ -3,6 +3,7 @@
 
 /** Format a number with K/M/B suffix for compact display. */
 export function formatNumber(n: number): string {
+  if (!Number.isFinite(n)) return "0";
   if (n < 1_000) return n.toString();
   if (n < 10_000) return `${trim1(n / 1_000)}K`;
   if (n < 1_000_000) return `${Math.round(n / 1_000)}K`;
