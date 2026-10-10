@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 import { Readability } from "@mozilla/readability";
 import { withHardTimeout } from "../../lib/http";
 import { parseDocument } from "../../lib/dom";

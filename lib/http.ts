@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 /** An error carrying an HTTP status when the failure came from a response. */
 export class HttpError extends Error {
   readonly status?: number;

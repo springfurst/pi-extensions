@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 import type { SearxngConfig } from "../../../lib/config";
 import { formatScraperQuery } from "../query";
 import { clampNumResults, dateToAgeSeconds } from "../utils";

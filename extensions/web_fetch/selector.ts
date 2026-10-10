@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 /** Inclusive line range describing one selector segment (e.g. `50-100`, `301-`, or `50+10`). */
 export interface LineRange {
   startLine: number;

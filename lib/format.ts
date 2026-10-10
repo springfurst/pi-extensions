@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 /** Format a number with K/M/B suffix for compact display. */
 export function formatNumber(n: number): string {
   if (n < 1_000) return n.toString();

@@ -12,11 +12,16 @@ The named ref pins the install. Use `--local` to write the declaration to a proj
 
 ## Tools
 
-| Tool         | Description |
-| ------------ | ----------- |
-| _(none yet)_ |             |
+| Tool         | Description                                                                     |
+| ------------ | ------------------------------------------------------------------------------- |
+| `web_fetch`  | Read a URL as markdown or text, with site-specific handlers and line selectors. |
+| `web_search` | Search keyless web engines and return ranked, deduplicated sources.             |
 
 Each tool ships its own README under `extensions/<tool>/`, covering parameters, output, configuration, behavior, and limitations.
+
+## Configuration
+
+Both tools read `web-tools.json` from the pi agent directory (`~/.pi/agent/web-tools.json`) and, when the project is trusted, from `<cwd>/.pi/web-tools.json`. Project values override global values. Secrets stay in the environment. The per-tool READMEs list every key.
 
 ## Selecting resources
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 import { DEFAULT_MAX_BYTES } from "../../lib/config";
 import { normalizeMime, readLimitedBytes, withHardTimeout } from "../../lib/http";
 import { checkUrlAllowed } from "./security";

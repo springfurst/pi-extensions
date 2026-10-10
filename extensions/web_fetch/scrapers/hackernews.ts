@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 import { decodeHtmlEntities } from "../../../lib/format";
 import type { FetchContext, RenderResult, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, mapWithConcurrency, parseJson } from "./types";

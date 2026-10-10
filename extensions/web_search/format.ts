@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 import { formatAge, formatCount, truncate } from "../../lib/format";
 import type { SearchResponse } from "./types";
 

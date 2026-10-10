@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
+
 import { clampNumResults, dateToAgeSeconds } from "../utils";
 import { formatScraperQuery, type QuerySyntax } from "../query";
 import {
