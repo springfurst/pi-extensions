@@ -62,45 +62,54 @@ function formatTimestamp(unixTime: number): string {
   return `${Math.floor(diff / (1000 * 60))}m ago`;
 }
 
-async function renderStory(item: HNItem, ctx: FetchContext, depth = 0): Promise<string> {
-  let output = "";
-  if (depth === 0) {
-    output += `# ${item.title}\n\n`;
-    if (item.url) output += `**URL:** ${item.url}\n\n`;
-    output += `**Posted by:** ${item.by} | **Score:** ${item.score ?? 0} | **Time:** ${formatTimestamp(item.time ?? 0)}`;
-    if (item.descendants) output += ` | **Comments:** ${item.descendants}`;
-    output += "\n\n";
+/** Render one comment and its replies, indenting each level. */
+async function renderComment(comment: HNItem, ctx: FetchContext, depth: number): Promise<string> {
+  const indent = "  ".repeat(depth - 1);
+  let output = `${indent}**${comment.by}** (${formatTimestamp(comment.time ?? 0)})`;
+  if (comment.score !== undefined) output += ` [${comment.score}]`;
+  output += "\n";
+  if (comment.text) {
+    output += `${decodeHNText(comment.text)
+      .split("\n")
+      .map((line) => `${indent}${line}`)
+      .join("\n")}\n\n`;
   }
-  if (item.text) output += `${decodeHNText(item.text)}\n\n`;
-
-  if (item.kids && item.kids.length > 0 && depth < 2) {
-    const topComments = item.kids.slice(0, depth === 0 ? 20 : 10);
-    const comments = await fetchItems(topComments, ctx, topComments.length);
-    if (comments.length > 0) {
-      if (depth === 0) output += "---\n\n## Comments\n\n";
+  if (depth < 2 && comment.kids && comment.kids.length > 0) {
+    const topReplies = comment.kids.slice(0, 10);
+    const replies = await fetchItems(topReplies, ctx, topReplies.length);
+    if (replies.length > 0) {
       const childOutputs = await mapWithConcurrency(
-        comments,
+        replies,
         HN_CHILD_THREAD_CONCURRENCY,
-        (comment) =>
-          comment.kids && comment.kids.length > 0 && depth < 1
-            ? renderStory(comment, ctx, depth + 1)
-            : Promise.resolve(""),
+        (reply) => renderComment(reply, ctx, depth + 1),
         ctx.signal,
       );
-      const indent = "  ".repeat(depth);
-      for (let i = 0; i < comments.length; i++) {
-        const comment = comments[i]!;
-        output += `${indent}**${comment.by}** (${formatTimestamp(comment.time ?? 0)})`;
-        if (comment.score !== undefined) output += ` [${comment.score}]`;
-        output += "\n";
-        if (comment.text) {
-          output += `${decodeHNText(comment.text)
-            .split("\n")
-            .map((line) => `${indent}${line}`)
-            .join("\n")}\n\n`;
-        }
-        output += childOutputs[i] ?? "";
-      }
+      for (const childOutput of childOutputs) output += childOutput;
+    }
+  }
+  return output;
+}
+
+async function renderStory(item: HNItem, ctx: FetchContext): Promise<string> {
+  let output = `# ${item.title}\n\n`;
+  if (item.url) output += `**URL:** ${item.url}\n\n`;
+  output += `**Posted by:** ${item.by} | **Score:** ${item.score ?? 0} | **Time:** ${formatTimestamp(item.time ?? 0)}`;
+  if (item.descendants) output += ` | **Comments:** ${item.descendants}`;
+  output += "\n\n";
+  if (item.text) output += `${decodeHNText(item.text)}\n\n`;
+
+  if (item.kids && item.kids.length > 0) {
+    const topComments = item.kids.slice(0, 20);
+    const comments = await fetchItems(topComments, ctx, topComments.length);
+    if (comments.length > 0) {
+      output += "---\n\n## Comments\n\n";
+      const rendered = await mapWithConcurrency(
+        comments,
+        HN_CHILD_THREAD_CONCURRENCY,
+        (comment) => renderComment(comment, ctx, 1),
+        ctx.signal,
+      );
+      for (const child of rendered) output += child;
     }
   }
   return output;
@@ -134,7 +143,7 @@ export const handleHackerNews: SpecialHandler = async (url, ctx): Promise<Render
     if (itemId) {
       const item = await fetchItem(parseInt(itemId, 10), ctx);
       if (!item) return null;
-      content = await renderStory(item, ctx, 0);
+      content = await renderStory(item, ctx);
       notes.push(`Fetched HN item ${itemId} with top-level comments (depth 2)`);
     } else if (parsed.pathname === "/" || parsed.pathname === "/news") {
       const { content: raw, ok } = await ctx.loadPage(`${API_BASE}/topstories.json`, {

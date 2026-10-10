@@ -86,6 +86,28 @@ describe("loadPage", () => {
     }
   });
 
+  it("retries a 403 with the next user agent", async () => {
+    const seen: string[] = [];
+    const server = await startServer((req, res) => {
+      const userAgent = req.headers["user-agent"] ?? "";
+      seen.push(userAgent);
+      if (userAgent.startsWith("curl/")) {
+        res.writeHead(403);
+        res.end();
+        return;
+      }
+      res.end("ok");
+    });
+    try {
+      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      expect(result.ok).toBe(true);
+      expect(result.content).toBe("ok");
+      expect(seen.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      await server.close();
+    }
+  });
+
   it("cuts a body at the byte cap", async () => {
     const server = await startServer((_req, res) => {
       res.end("0123456789");

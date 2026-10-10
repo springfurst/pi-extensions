@@ -76,4 +76,52 @@ describe("handleGitLab", () => {
     expect(result?.method).toBe("gitlab-raw");
     expect(result?.content).toBe("export const a = 1;");
   });
+
+  it("omits the issue count when the API does not provide it and reads the raw README", async () => {
+    const ctx = fixtureContext((url) => {
+      if (url === "https://gitlab.com/api/v4/projects/ns%2Fproj") {
+        return jsonResponse({
+          name: "proj",
+          star_count: 3,
+          forks_count: 1,
+          default_branch: "main",
+          visibility: "public",
+          created_at: "2024-01-01T00:00:00Z",
+          last_activity_at: "2024-02-01T00:00:00Z",
+          readme_url: "https://gitlab.com/ns/proj/-/blob/main/README.md",
+        });
+      }
+      if (url === "https://gitlab.com/ns/proj/-/raw/main/README.md")
+        return textResponse("# Readme");
+      return undefined;
+    });
+    const result = await handleGitLab("https://gitlab.com/ns/proj", ctx);
+    expect(result?.content).not.toContain("NaN");
+    expect(result?.content).toContain("# Readme");
+  });
+
+  it("preserves Markdown in issue descriptions", async () => {
+    const ctx = fixtureContext((url) => {
+      if (url === "https://gitlab.com/api/v4/projects/ns%2Fproj") return jsonResponse({ id: 7 });
+      if (url === "https://gitlab.com/api/v4/projects/7/issues/7") {
+        return jsonResponse({
+          title: "Issue",
+          state: "opened",
+          author: { name: "Ada", username: "ada" },
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-02T00:00:00Z",
+          labels: [],
+          upvotes: 0,
+          downvotes: 0,
+          user_notes_count: 0,
+          description: "Use `code` here.\n\n```ts\nconst x = 1;\n```",
+        });
+      }
+      return undefined;
+    });
+    const result = await handleGitLab("https://gitlab.com/ns/proj/-/issues/7", ctx);
+    expect(result?.content).toContain("Use `code` here.");
+    expect(result?.content).toContain("```ts");
+    expect(result?.content).not.toContain("\\`");
+  });
 });

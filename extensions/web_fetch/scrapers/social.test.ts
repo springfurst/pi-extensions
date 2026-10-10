@@ -128,6 +128,31 @@ describe("handleHackerNews", () => {
     expect(result?.content).toContain("A reply");
   });
 
+  it("does not duplicate a comment that has replies", async () => {
+    const ctx = fixtureContext((url) => {
+      if (url.endsWith("/item/1.json")) {
+        return jsonResponse({
+          id: 1,
+          title: "Story",
+          by: "alice",
+          score: 5,
+          time: 1_700_000_000,
+          kids: [2],
+        });
+      }
+      if (url.endsWith("/item/2.json")) {
+        return jsonResponse({ id: 2, by: "bob", text: "<p>Top comment</p>", kids: [3] });
+      }
+      if (url.endsWith("/item/3.json")) {
+        return jsonResponse({ id: 3, by: "carol", text: "<p>Nested reply</p>", kids: [] });
+      }
+      return undefined;
+    });
+    const result = await handleHackerNews("https://news.ycombinator.com/item?id=1", ctx);
+    expect(result?.content.match(/Top comment/g)?.length).toBe(1);
+    expect(result?.content).toContain("Nested reply");
+  });
+
   it("renders a listing", async () => {
     const ctx = fixtureContext((url) => {
       if (url.endsWith("/topstories.json")) return jsonResponse([1]);

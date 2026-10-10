@@ -2,7 +2,6 @@
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
 import { formatNumber } from "../../../lib/format";
-import { htmlToBasicMarkdown } from "../markdown";
 import type { FetchContext, RenderResult, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, parseJson } from "./types";
 
@@ -83,7 +82,7 @@ async function renderGitLabRepo(
     description?: string;
     star_count: number;
     forks_count: number;
-    open_issues_count: number;
+    open_issues_count?: number;
     default_branch: string;
     visibility: string;
     created_at: string;
@@ -95,13 +94,17 @@ async function renderGitLabRepo(
 
   let md = `# ${repo.name}\n\n`;
   if (repo.description) md += `${repo.description}\n\n`;
-  md += `**Stars:** ${formatNumber(repo.star_count)} · **Forks:** ${formatNumber(repo.forks_count)} · **Issues:** ${formatNumber(repo.open_issues_count)}\n`;
+  let stats = `**Stars:** ${formatNumber(repo.star_count)} · **Forks:** ${formatNumber(repo.forks_count)}`;
+  if (typeof repo.open_issues_count === "number")
+    stats += ` · **Issues:** ${formatNumber(repo.open_issues_count)}`;
+  md += `${stats}\n`;
   md += `**Visibility:** ${repo.visibility} · **Default Branch:** ${repo.default_branch}\n`;
   if (repo.topics && repo.topics.length > 0) md += `**Topics:** ${repo.topics.join(", ")}\n`;
   md += `**Created:** ${formatIsoDate(repo.created_at)} · **Last Activity:** ${formatIsoDate(repo.last_activity_at)}\n\n`;
 
   if (repo.readme_url) {
-    const readme = await ctx.loadPage(repo.readme_url, { signal: ctx.signal });
+    const rawUrl = repo.readme_url.replace("/-/blob/", "/-/raw/");
+    const readme = await ctx.loadPage(rawUrl, { signal: ctx.signal });
     if (readme.ok && readme.content.trim().length > 0)
       md += `---\n\n## README\n\n${readme.content}\n`;
   }
@@ -178,7 +181,7 @@ async function renderGitLabIssue(
   if (issue.assignees && issue.assignees.length > 0)
     md += `**Assignees:** ${issue.assignees.map((a) => a.name).join(", ")}\n`;
   md += `\n---\n\n## Description\n\n`;
-  md += issue.description ? await htmlToBasicMarkdown(issue.description) : "*No description*";
+  md += issue.description ? issue.description : "*No description*";
   return { content: md, ok: true };
 }
 
@@ -221,7 +224,7 @@ async function renderGitLabMr(
   if (mr.assignees && mr.assignees.length > 0)
     md += `**Assignees:** ${mr.assignees.map((a) => a.name).join(", ")}\n`;
   md += `\n---\n\n## Description\n\n`;
-  md += mr.description ? await htmlToBasicMarkdown(mr.description) : "*No description*";
+  md += mr.description ? mr.description : "*No description*";
   return { content: md, ok: true };
 }
 

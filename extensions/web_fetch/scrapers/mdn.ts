@@ -90,13 +90,19 @@ export const handleMDN: SpecialHandler = async (url, ctx): Promise<RenderResult 
     const data = parseJson<MDNDoc>(result.content);
     if (!data?.doc?.title) return null;
 
+    const body = data.doc.body ?? [];
+    const first = body[0];
+    const trimmedBody = first?.type === "prose" && !first.value.title ? body.slice(1) : body;
     const parts = [`# ${data.doc.title}`];
     if (data.doc.summary) parts.push(await htmlToBasicMarkdown(data.doc.summary));
-    if (data.doc.body?.length) parts.push(await convertMDNBody(data.doc.body));
+    if (trimmedBody.length) parts.push(await convertMDNBody(trimmedBody));
 
+    const finalUrl = data.doc.mdn_url
+      ? new URL(data.doc.mdn_url, "https://developer.mozilla.org").href
+      : result.finalUrl;
     return buildResult(parts.join("\n\n"), {
       url,
-      finalUrl: data.doc.mdn_url || result.finalUrl,
+      finalUrl,
       method: "mdn",
       fetchedAt: new Date().toISOString(),
     });

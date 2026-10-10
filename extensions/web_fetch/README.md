@@ -67,7 +67,7 @@ The pipeline runs hostname-gated site handlers first, then a generic fetch and e
 - **Site handlers** produce structured markdown for GitHub, GitLab, npm, PyPI, crates.io, Wikipedia, arXiv, PubMed, RFC, Semantic Scholar, docs.rs, MDN, Hacker News, Reddit, and Stack Exchange.
 - **Digestible formats** are preferred when available: a `<link rel="alternate" type="text/markdown">`, a `.md` URL variant, HTTP content negotiation, and feed alternates.
 - **Reader chain**: Readability with Turndown first, then `trafilatura`, then `lynx`, then Jina. Each backend must clear a quality gate before it is accepted.
-- **Fetch** uses rotating user agents, manual redirects, one `Retry-After`-aware 429 retry, bot-block retry, a streamed byte cap, and charset decoding.
+- **Fetch** uses rotating user agents, manual redirects, one `Retry-After`-aware 429 retry, a retry of bot challenges and 403s across user agents, a streamed byte cap, and charset decoding.
 - **Safety**: only `http` and `https` are allowed, and loopback, private, link-local, and cloud-metadata ranges are rejected unless `fetch.allowPrivateHosts` is set. Redirects are re-checked on every hop. External readers re-fetch the URL themselves, so they are skipped when the URL fails the guard.
 
 Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's model-safe limit. The result names which limit bound it and suggests a selector range or `save_path` for the rest; when `save_path` is set, the saved location is reported. A selector that reduces the body below both limits is not reported as truncated.

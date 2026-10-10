@@ -20,6 +20,7 @@ export const handleWikipedia: SpecialHandler = async (url, ctx): Promise<RenderR
     const fetchedAt = new Date().toISOString();
 
     let md = "";
+    let summaryExtract = "";
     const summaryResult = await ctx.loadPage(
       `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
       { signal: ctx.signal },
@@ -31,10 +32,11 @@ export const handleWikipedia: SpecialHandler = async (url, ctx): Promise<RenderR
       if (summary) {
         md = `# ${summary.title}\n\n`;
         if (summary.description) md += `*${summary.description}*\n\n`;
-        md += `${summary.extract}\n\n---\n\n`;
+        summaryExtract = summary.extract;
       }
     }
 
+    let renderedSections = false;
     const contentResult = await ctx.loadPage(
       `https://${lang}.wikipedia.org/api/rest_v1/page/mobile-html/${encodeURIComponent(title)}`,
       { signal: ctx.signal },
@@ -48,13 +50,18 @@ export const handleWikipedia: SpecialHandler = async (url, ctx): Promise<RenderR
         if (headingText) {
           const level = heading?.tagName === "H2" ? "##" : "###";
           md += `${level} ${headingText}\n\n`;
+          renderedSections = true;
         }
         for (const paragraph of Array.from(section.querySelectorAll("p"))) {
           const text = paragraph.textContent?.trim();
-          if (text && text.length > 20) md += `${text}\n\n`;
+          if (text && text.length > 20) {
+            md += `${text}\n\n`;
+            renderedSections = true;
+          }
         }
       }
     }
+    if (!renderedSections && summaryExtract) md += `${summaryExtract}\n\n`;
 
     if (!md) return null;
     return buildResult(md, {

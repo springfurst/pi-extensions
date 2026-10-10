@@ -14,3 +14,4 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - `web_search`: report `No results found.` instead of empty output when no engine returns a result, and detect Startpage's Anubis challenge page as an engine failure rather than an empty success.
 - `web_fetch`: report the truncation binding that actually cut the output (the model-safe limit takes precedence over the render cap), stop flagging selectors that fit under the cap, and report the `save_path` location in the output.
+- `web_fetch`: retry a 403 across the rotated user agents; fix GitLab repository output (missing issue count and raw README); preserve Markdown in GitLab issue and merge-request descriptions; render RFC author names and status/source metadata; stop duplicating Hacker News comments and Wikipedia/MDN lead text; and resolve MDN's absolute page URL.

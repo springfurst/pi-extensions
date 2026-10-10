@@ -74,10 +74,10 @@ export async function loadPage(
         attempt--;
         continue;
       }
-      if (
-        isBotBlocked(outcome.result.status, outcome.result.content) &&
-        attempt < USER_AGENTS.length - 1
-      ) {
+      const retryable =
+        outcome.result.status === 403 ||
+        isBotBlocked(outcome.result.status, outcome.result.content);
+      if (retryable && attempt < USER_AGENTS.length - 1) {
         continue;
       }
       return outcome.result;

@@ -36,6 +36,28 @@ describe("handleWikipedia", () => {
     expect(result?.content).toContain("# Widget");
     expect(result?.content).toContain("## History");
   });
+
+  it("does not duplicate the lead paragraph", async () => {
+    const ctx = fixtureContext((url) => {
+      if (url.includes("/page/summary/")) {
+        return jsonResponse({
+          title: "Widget",
+          description: "A thing",
+          extract: "Widgets are things.",
+        });
+      }
+      if (url.includes("/page/mobile-html/")) {
+        return textResponse(
+          "<html><body><section><p>Widgets are things and they are used in many places around the world.</p></section><section><h2>History</h2><p>This is a long enough paragraph about the history of widgets.</p></section></body></html>",
+          "text/html",
+        );
+      }
+      return undefined;
+    });
+    const result = await handleWikipedia("https://en.wikipedia.org/wiki/Widget", ctx);
+    expect(result?.content.match(/Widgets are things/g)?.length).toBe(1);
+    expect(result?.content).toContain("## History");
+  });
 });
 
 describe("handleArxiv", () => {
@@ -103,13 +125,22 @@ describe("rfc helpers", () => {
   it("renders metadata and full text", async () => {
     const ctx = fixtureContext((url) => {
       if (url.endsWith(".json"))
-        return jsonResponse({ title: "HTTP Semantics", abstract: "The abstract." });
+        return jsonResponse({
+          title: "HTTP Semantics",
+          authors: ["R. Fielding, Ed.", "M. Nottingham, Ed."],
+          status: "INTERNET STANDARD",
+          source: "HTTP",
+          abstract: "The abstract.",
+        });
       if (url.endsWith(".txt")) return textResponse("RFC body text");
       return undefined;
     });
     const result = await handleRfc("https://www.rfc-editor.org/rfc/rfc9110", ctx);
     expect(result?.method).toBe("rfc");
     expect(result?.content).toContain("RFC 9110");
+    expect(result?.content).toContain("R. Fielding, Ed., M. Nottingham, Ed.");
+    expect(result?.content).toContain("**Status:** INTERNET STANDARD");
+    expect(result?.content).toContain("**Stream:** HTTP");
     expect(result?.content).toContain("RFC body text");
   });
 });
@@ -143,6 +174,28 @@ describe("handleMDN", () => {
     expect(result?.content).toContain("# Array");
     expect(result?.content).toContain("## Description");
     expect(result?.content).toContain("```js");
+  });
+
+  it("resolves a relative final URL and drops the duplicate lead prose", async () => {
+    const ctx = fixtureContext((url) =>
+      url.endsWith("/index.json")
+        ? jsonResponse({
+            doc: {
+              title: "Widget",
+              summary: "<p>Lead text.</p>",
+              mdn_url: "/en-US/docs/Web/Widget",
+              body: [
+                { type: "prose", value: { content: "<p>Lead text.</p>" } },
+                { type: "prose", value: { title: "Usage", content: "<p>Usage.</p>" } },
+              ],
+            },
+          })
+        : undefined,
+    );
+    const result = await handleMDN("https://developer.mozilla.org/en-US/docs/Web/Widget", ctx);
+    expect(result?.finalUrl).toBe("https://developer.mozilla.org/en-US/docs/Web/Widget");
+    expect(result?.content.match(/Lead text\./g)?.length).toBe(1);
+    expect(result?.content).toContain("## Usage");
   });
 });
 

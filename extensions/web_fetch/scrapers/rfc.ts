@@ -6,13 +6,15 @@ import { buildResult, parseJson } from "./types";
 
 interface RfcMetadata {
   title: string;
-  authors?: Array<{ name: string; affiliation?: string }>;
+  authors?: Array<string | { name?: string; affiliation?: string }>;
+  status?: string;
+  source?: string;
   current_status?: string;
   stream?: string;
   area?: string;
   wg_acronym?: string;
   pub_date?: string;
-  page_count?: number;
+  page_count?: number | string;
   abstract?: string;
   keywords?: string[];
   obsoletes?: string[];
@@ -84,13 +86,20 @@ export const handleRfc: SpecialHandler = async (url, ctx): Promise<RenderResult 
       if (metadata.authors?.length) {
         md += `**Authors:** ${metadata.authors
           .map((author) =>
-            author.affiliation ? `${author.name} (${author.affiliation})` : author.name,
+            typeof author === "string"
+              ? author
+              : author.affiliation
+                ? `${author.name ?? ""} (${author.affiliation})`
+                : (author.name ?? ""),
           )
+          .filter(Boolean)
           .join(", ")}\n`;
       }
       if (metadata.pub_date) md += `**Published:** ${metadata.pub_date}\n`;
-      if (metadata.current_status) md += `**Status:** ${metadata.current_status}\n`;
-      if (metadata.stream) md += `**Stream:** ${metadata.stream}\n`;
+      const status = metadata.status ?? metadata.current_status;
+      if (status) md += `**Status:** ${status}\n`;
+      const stream = metadata.source ?? metadata.stream;
+      if (stream) md += `**Stream:** ${stream}\n`;
       if (metadata.area) md += `**Area:** ${metadata.area}\n`;
       if (metadata.wg_acronym) md += `**Working Group:** ${metadata.wg_acronym}\n`;
       if (metadata.page_count) md += `**Pages:** ${metadata.page_count}\n`;
