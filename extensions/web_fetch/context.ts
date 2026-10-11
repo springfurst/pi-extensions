@@ -1,5 +1,5 @@
-import type { BrowserRenderer } from "../../lib/browser";
-import type { FetchConfig } from "../../lib/config";
+import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
+import type { BrowserConfig, FetchConfig } from "../../lib/config";
 import { loadPage } from "./fetch";
 import type {
   ExecFn,
@@ -19,7 +19,16 @@ export interface CreateFetchContextOptions {
   exec?: ExecFn;
   /** Optional headless-browser renderer, threaded through to the reader chain. */
   renderPage?: BrowserRenderer;
+  /** Browser config; when set (and enabled) a renderer is created on first use. */
+  browserConfig?: BrowserConfig;
+  /** Renderer factory override; defaults to `createBrowserRenderer`. */
+  createRenderer?: BrowserRendererFactory;
 }
+
+/** Build a browser renderer from config; injectable so tests can observe laziness. */
+export type BrowserRendererFactory = (
+  config: BrowserConfig,
+) => Promise<BrowserRenderer | undefined>;
 
 /**
  * Bind configuration, cancellation, and injectable transport into the context
@@ -43,6 +52,10 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
       signal: loadOptions.signal ?? signal,
     });
 
+  const renderPage =
+    options.renderPage ??
+    lazyBrowserRenderer(options.browserConfig, options.createRenderer ?? defaultBrowserRenderer);
+
   return {
     timeoutMs: options.config.timeoutSeconds * 1000,
     signal,
@@ -52,6 +65,28 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
     resolve: options.resolve,
     cacheDir: options.cacheDir,
     exec: options.exec,
-    renderPage: options.renderPage,
+    renderPage,
+  };
+}
+
+const defaultBrowserRenderer: BrowserRendererFactory = (config) =>
+  createBrowserRenderer({ config });
+
+/**
+ * Build the renderer on first use, so a fetch that never reaches the browser
+ * backend (JSON, feeds, raw, or a site handler) skips browser detection and
+ * launch entirely.
+ */
+function lazyBrowserRenderer(
+  config: BrowserConfig | undefined,
+  create: BrowserRendererFactory,
+): BrowserRenderer | undefined {
+  if (!config?.enabled) return undefined;
+  let pending: Promise<BrowserRenderer | undefined> | undefined;
+  return async (url, renderOptions) => {
+    pending ??= create(config);
+    const renderer = await pending;
+    if (!renderer) throw new Error("No browser available for rendering");
+    return renderer(url, renderOptions);
   };
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BrowserRenderer } from "../../lib/browser";
 import { DEFAULT_CONFIG } from "../../lib/config";
 import { startServer, type RequestHandler } from "./__fixtures__/test-server";
@@ -212,5 +212,60 @@ describe("browser backend", () => {
     const result = await renderWithBrowser(JS_GATED, "/app", undefined);
     expect(result.method).toBe("raw-html");
     expect(result.content).toContain("Please enable JavaScript");
+  });
+
+  it("does not build a browser renderer for a JSON response", async () => {
+    const createRenderer = vi.fn(async () => {
+      throw new Error("renderer should not be built");
+    });
+    const server = await startServer((_req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      res.end('{"a":1}');
+    });
+    try {
+      const ctx = createFetchContext({
+        config: BASE_FETCH_CONFIG,
+        browserConfig: DEFAULT_CONFIG.browser,
+        createRenderer,
+      });
+      const result = await renderUrl(`${server.origin}/data.json`, {
+        raw: false,
+        maxChars: DEFAULT_CONFIG.fetch.maxChars,
+        ctx,
+      });
+      expect(result.method).toBe("json");
+      expect(createRenderer).not.toHaveBeenCalled();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("builds the browser renderer only when the backend runs", async () => {
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: ARTICLE,
+      status: 200,
+      finalUrl: url,
+    });
+    const createRenderer = vi.fn(async () => renderPage);
+    const server = await startServer((_req, res) => {
+      res.setHeader("Content-Type", "text/html");
+      res.end(JS_GATED);
+    });
+    try {
+      const ctx = createFetchContext({
+        config: BASE_FETCH_CONFIG,
+        browserConfig: DEFAULT_CONFIG.browser,
+        createRenderer,
+      });
+      const result = await renderUrl(`${server.origin}/app`, {
+        raw: false,
+        maxChars: DEFAULT_CONFIG.fetch.maxChars,
+        ctx,
+      });
+      expect(result.method).toBe("browser");
+      expect(createRenderer).toHaveBeenCalledTimes(1);
+    } finally {
+      await server.close();
+    }
   });
 });
