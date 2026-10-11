@@ -87,6 +87,10 @@ The path is the user data directory (the parent of `Default`/`Profile N`), not a
 
 A profile can be warmed before use: launch the same browser with `--user-data-dir=<path>`, browse normally so cookies and storage are written, then close it. Later renders reuse that state. Chromium allows one instance per profile, so the manual browser must be closed before a render; otherwise the launch fails with a "browser is already running" error. Use a dedicated directory rather than a daily-use profile, since stored cookies and logins persist on disk and are shared by every browser render.
 
+### Usage logging
+
+`web_fetch` records one JSONL line per call when `logging.enabled` is set. The line carries the tool input (unless `logging.includeArgs` is `false`), the parser that produced the content and its `parserKind`, the HTTP `status`, `contentType`, `finalUrl`, `charCount`, truncation binding, `savedPath`, and the pipeline `notes`. See the root [README](../../README.md#usage-logging) for the shared config keys and record format.
+
 ## Behavior and fallbacks
 
 The pipeline runs hostname-gated site handlers first, then a generic fetch and extraction path. Any handler that fails or does not apply returns control to the generic path, so layout drift never breaks a read.

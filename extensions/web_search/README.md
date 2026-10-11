@@ -65,6 +65,10 @@ The result also carries a structured `{ title, url, snippet }[]` for codemode ca
 
 Secrets and the SearXNG connection may also come from `SEARXNG_ENDPOINT`, `SEARXNG_TOKEN`, `SEARXNG_BASIC_USERNAME`, and `SEARXNG_BASIC_PASSWORD`; file values win. `PUPPETEER_EXECUTABLE_PATH` overrides the browser binary and takes precedence over `browser.executablePath`. A dedicated Chrome for Testing build is preferred over a daily-use browser for a stable Chromium version and to avoid macOS handing a background launch the user's open-URL events; point `browser.executablePath` at an installed build. The extension never downloads a browser.
 
+### Usage logging
+
+`web_search` records one JSONL line per call when `logging.enabled` is set. The line carries the tool input (unless `logging.includeArgs` is `false`), the winning `provider`, the requested and used engines, `cacheHit`, `resultCount`, relaxed constraints, and a `perEngine` entry for each engine with its status, raw `returned` count, unique `contributed` count, and `durationMs`. See the root [README](../../README.md#usage-logging) for the shared config keys and record format.
+
 ## Behavior and fallbacks
 
 - **Engines**: DuckDuckGo's no-JS HTML endpoint, Startpage's homepage-token form flow (a CAPTCHA or Anubis proof-of-work shell is an engine failure), and a user-configured SearXNG instance. SearXNG is skipped when no endpoint is set. Google, Ecosia, and Mojeek are browser-backed and join the pool only when a browser resolves; a challenge is reported as an engine failure and triggers the same cooldown.

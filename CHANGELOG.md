@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Shared `browser` configuration with automatic Chrome/Chromium/Edge detection, a shared idle-closed browser process, per-render timeouts, a page cap, and `PUPPETEER_EXECUTABLE_PATH` support. The extension never downloads a browser, and the feature is off when none resolves.
 - Shared `browser.userDataDir` to reuse a persistent Chromium profile across launches, so cookies and storage warmed by a manually launched browser carry into later renders.
 - Configuration through `web-tools.json` in the agent directory and, for trusted projects, the project directory.
+- Optional usage logging for both tools (`logging.enabled`): one JSONL record per call under the agent directory, carrying the tool input, parser resolution for `web_fetch`, per-engine result counts for `web_search`, and session/version metadata. `logging.includeArgs: false` omits URLs and queries.
 
 ### Fixed
 
