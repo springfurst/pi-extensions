@@ -139,4 +139,37 @@ describe("loadConfig", () => {
     writeGlobalConfig({ browser: { userDataDir: "   " } });
     expect(loadConfig(cwd, { agentDir, projectTrusted: true }).browser.userDataDir).toBeUndefined();
   });
+
+  it("disables usage logging by default", () => {
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.logging.enabled).toBe(false);
+    expect(config.logging.includeArgs).toBe(true);
+    expect(config.logging.dir).toBeUndefined();
+  });
+
+  it("merges logging values from global and trusted project config", () => {
+    writeGlobalConfig({ logging: { enabled: true, dir: "/global/usage" } });
+    const global = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(global.logging.enabled).toBe(true);
+    expect(global.logging.dir).toBe("/global/usage");
+
+    writeProjectConfig({ logging: { includeArgs: false } });
+    const merged = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(merged.logging.enabled).toBe(true);
+    expect(merged.logging.includeArgs).toBe(false);
+  });
+
+  it("ignores logging values from an untrusted project", () => {
+    writeProjectConfig({ logging: { enabled: true } });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: false });
+    expect(config.logging.enabled).toBe(false);
+  });
+
+  it("ignores malformed logging values but keeps valid siblings", () => {
+    writeGlobalConfig({ logging: { enabled: "yes", dir: "  ", includeArgs: false } });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.logging.enabled).toBe(false);
+    expect(config.logging.dir).toBeUndefined();
+    expect(config.logging.includeArgs).toBe(false);
+  });
 });

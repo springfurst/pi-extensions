@@ -55,6 +55,15 @@ export interface SearxngConfig {
   safesearch?: 0 | 1 | 2;
 }
 
+export interface LoggingConfig {
+  /** Record completed tool calls as JSONL under `dir`. */
+  enabled: boolean;
+  /** Usage directory; defaults to `<agentDir>/web-tools/usage`. */
+  dir?: string;
+  /** Record query/URL/params. Disable when URLs or queries may carry secrets. */
+  includeArgs: boolean;
+}
+
 export interface BrowserConfig {
   /** Enable browser rendering when a browser binary resolves. */
   enabled: boolean;
@@ -85,6 +94,7 @@ export interface WebToolsConfig {
   search: SearchConfig;
   searxng: SearxngConfig;
   browser: BrowserConfig;
+  logging: LoggingConfig;
 }
 
 /** Built-in defaults, before any config file. */
@@ -113,6 +123,10 @@ export const DEFAULT_CONFIG: WebToolsConfig = {
     idleCloseSeconds: 120,
     maxPages: 2,
     allowPrivateHosts: false,
+  },
+  logging: {
+    enabled: false,
+    includeArgs: true,
   },
 };
 
@@ -158,6 +172,11 @@ export function loadConfig(cwd: string, options: LoadConfigOptions): WebToolsCon
       ...pickBrowser(global?.browser),
       ...pickBrowser(project?.browser),
     },
+    logging: {
+      ...DEFAULT_CONFIG.logging,
+      ...pickLogging(global?.logging),
+      ...pickLogging(project?.logging),
+    },
   };
 
   config.searxng = { ...config.searxng, ...searxngFromEnv(config.searxng) };
@@ -169,6 +188,7 @@ interface RawConfig {
   search?: Record<string, unknown>;
   searxng?: Record<string, unknown>;
   browser?: Record<string, unknown>;
+  logging?: Record<string, unknown>;
 }
 
 function readConfigFile(path: string): RawConfig | undefined {
@@ -182,6 +202,7 @@ function readConfigFile(path: string): RawConfig | undefined {
       search: asRecord(record.search),
       searxng: asRecord(record.searxng),
       browser: asRecord(record.browser),
+      logging: asRecord(record.logging),
     };
   } catch {
     // A malformed or unreadable config file falls back to the defaults.
@@ -246,6 +267,18 @@ function pickBrowser(raw: Record<string, unknown> | undefined): Partial<BrowserC
   if (maxPages !== undefined) out.maxPages = Math.max(1, Math.floor(maxPages));
   const allowPrivateHosts = asBoolean(raw.allowPrivateHosts);
   if (allowPrivateHosts !== undefined) out.allowPrivateHosts = allowPrivateHosts;
+  return out;
+}
+
+function pickLogging(raw: Record<string, unknown> | undefined): Partial<LoggingConfig> {
+  if (!raw) return {};
+  const out: Partial<LoggingConfig> = {};
+  const enabled = asBoolean(raw.enabled);
+  if (enabled !== undefined) out.enabled = enabled;
+  const dir = asNonEmptyString(raw.dir);
+  if (dir !== undefined) out.dir = dir;
+  const includeArgs = asBoolean(raw.includeArgs);
+  if (includeArgs !== undefined) out.includeArgs = includeArgs;
   return out;
 }
 
