@@ -6,7 +6,7 @@ import { accessSync, constants, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { BrowserConfig } from "./config";
-import { checkUrlAllowed, isBlockedHostname, isPrivateAddress } from "./security";
+import { checkUrlAllowed, isBlockedHostname, isPrivateAddress, type ResolveHost } from "./security";
 
 /** One page rendered through a real browser: final HTML, status, and URL. */
 export interface RenderedPage {
@@ -42,6 +42,8 @@ export interface InterceptableRequest {
   url(): string;
   continue(): Promise<void>;
   abort(errorCode?: string): Promise<void>;
+  /** True for top-level and iframe navigations; used for the asynchronous DNS guard. */
+  isNavigationRequest?(): boolean;
 }
 
 /** The subset of a Puppeteer page the renderer uses. */
@@ -251,6 +253,12 @@ export interface ResolveBrowserOptions {
   detect?: (options?: BrowserDetectionOptions) => Promise<string | undefined>;
 }
 
+const detectionCache = new WeakMap<
+  NonNullable<ResolveBrowserOptions["detect"]>,
+  Promise<string | undefined>
+>();
+let defaultDetection: Promise<string | undefined> | undefined;
+
 /**
  * Resolve the browser binary in precedence order: `PUPPETEER_EXECUTABLE_PATH`,
  * then `browser.executablePath`, then a detected system browser. Returns
@@ -264,8 +272,28 @@ export async function resolveBrowserExecutable(
   if (fromEnv) return fromEnv;
   const configured = options.executablePath?.trim();
   if (configured) return configured;
-  const detect = options.detect ?? detectSystemBrowser;
-  return detect(options.detection);
+  if (options.detection) {
+    return (options.detect ?? detectSystemBrowser)(options.detection);
+  }
+  if (options.detect) {
+    const detect = options.detect;
+    let cached = detectionCache.get(detect);
+    if (!cached) {
+      cached = detect(undefined);
+      detectionCache.set(detect, cached);
+    }
+    return cached;
+  }
+  // Detection is a stable process-wide fact; run it once until the shared
+  // browser is torn down. Caching a `detect` function by identity keeps test
+  // injections isolated from the default cache.
+  defaultDetection ??= detectSystemBrowser();
+  return defaultDetection;
+}
+
+/** Forget the cached default detection result. */
+function resetBrowserDetection(): void {
+  defaultDetection = undefined;
 }
 
 function abortError(signal: AbortSignal): Error {
@@ -348,6 +376,8 @@ export interface BrowserSessionOptions {
   idleCloseMs?: number;
   maxPages?: number;
   launch?: BrowserLauncher;
+  /** DNS resolver for the guard; injectable for tests. */
+  resolveHost?: ResolveHost;
 }
 
 /**
@@ -364,6 +394,7 @@ export class BrowserSession {
   private readonly idleCloseMs: number;
   private readonly maxPages: number;
   private readonly launch: BrowserLauncher;
+  private readonly resolveHost: ResolveHost | undefined;
 
   private browser: BrowserInstance | undefined;
   private launchPromise: Promise<BrowserInstance> | undefined;
@@ -383,6 +414,7 @@ export class BrowserSession {
     this.maxPages = Math.max(1, options.maxPages ?? 1);
     this.availableSlots = this.maxPages;
     this.launch = options.launch ?? defaultBrowserLauncher;
+    this.resolveHost = options.resolveHost;
   }
 
   /** Render a URL and return its final HTML, status, and URL. */
@@ -393,7 +425,10 @@ export class BrowserSession {
     const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
 
     if (!this.allowPrivateHosts) {
-      const guard = await checkUrlAllowed(url, { allowPrivateHosts: false });
+      const guard = await checkUrlAllowed(url, {
+        allowPrivateHosts: false,
+        resolve: this.resolveHost,
+      });
       if (!guard.allowed) throw new Error(`Blocked URL: ${guard.reason ?? url}`);
     }
 
@@ -451,6 +486,11 @@ export class BrowserSession {
     }
   }
 
+  /** True once the session has been disposed; a disposed session cannot render. */
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
   /** Close the shared browser, if launched. Safe to call more than once. */
   async dispose(): Promise<void> {
     if (this.disposed) return;
@@ -487,11 +527,26 @@ export class BrowserSession {
 
   private async handleRequest(request: InterceptableRequest): Promise<void> {
     try {
-      if (isBlockedRequestUrl(request.url(), this.allowPrivateHosts)) {
+      const url = request.url();
+      if (isBlockedRequestUrl(url, this.allowPrivateHosts)) {
         await request.abort();
-      } else {
-        await request.continue();
+        return;
       }
+      if (!this.allowPrivateHosts && request.isNavigationRequest?.()) {
+        // The literal check above misses a public hostname that resolves to a
+        // private address. Resolve navigations (including redirects and scripted
+        // navigation) with the same policy as the initial guard. Subresources
+        // keep the literal check only, to avoid a DNS lookup per asset.
+        const guard = await checkUrlAllowed(url, {
+          allowPrivateHosts: false,
+          resolve: this.resolveHost,
+        });
+        if (!guard.allowed) {
+          await request.abort();
+          return;
+        }
+      }
+      await request.continue();
     } catch {
       // The request may already be settled after a navigation teardown.
     }
@@ -508,20 +563,26 @@ export class BrowserSession {
         args: [],
       });
     }
+    const promise = this.launchPromise;
     try {
-      const browser = await this.launchPromise;
-      this.browser = browser;
-      browser.on("disconnected", () => {
-        if (this.browser === browser) this.browser = undefined;
-      });
+      const browser = await promise;
+      if (!this.browser) {
+        this.browser = browser;
+        browser.on("disconnected", () => {
+          if (this.browser === browser) this.browser = undefined;
+          // Drop the resolved launch so the next render launches a fresh browser.
+          if (this.launchPromise === promise) this.launchPromise = undefined;
+        });
+      }
       return browser;
     } catch (error) {
-      this.launchPromise = undefined;
+      if (this.launchPromise === promise) this.launchPromise = undefined;
       throw error;
     }
   }
 
   private async acquireSlot(signal: AbortSignal): Promise<void> {
+    if (signal.aborted) throw abortError(signal);
     if (this.availableSlots > 0) {
       this.availableSlots--;
       return;
@@ -606,6 +667,7 @@ export async function createBrowserRenderer(
       detection: options.detection,
     }));
   if (!executablePath) return undefined;
+  const renderTimeoutMs = options.config.timeoutSeconds * 1000;
   const session =
     options.session ??
     getSharedBrowserSession({
@@ -613,16 +675,22 @@ export async function createBrowserRenderer(
       userDataDir: options.config.userDataDir,
       noSandbox: options.config.noSandbox,
       allowPrivateHosts: options.config.allowPrivateHosts,
-      defaultTimeoutMs: options.config.timeoutSeconds * 1000,
+      defaultTimeoutMs: renderTimeoutMs,
       idleCloseMs: options.config.idleCloseSeconds * 1000,
       maxPages: options.config.maxPages,
       launch: options.launch,
     });
-  return (url, renderOptions) => session.render(url, renderOptions);
+  // `browser.timeoutSeconds` is an upper bound on one navigation; the caller's
+  // own deadline still wins when it is shorter.
+  return (url, renderOptions = {}) =>
+    session.render(url, {
+      ...renderOptions,
+      timeoutMs: Math.min(renderOptions.timeoutMs ?? renderTimeoutMs, renderTimeoutMs),
+    });
 }
 
 function getSharedBrowserSession(options: BrowserSessionOptions): BrowserSession {
-  if (!sharedSession) {
+  if (!sharedSession || sharedSession.isDisposed) {
     sharedSession = new BrowserSession(options);
     registerExitHandler();
   }
@@ -633,6 +701,7 @@ function getSharedBrowserSession(options: BrowserSessionOptions): BrowserSession
 export async function disposeSharedBrowser(): Promise<void> {
   const session = sharedSession;
   sharedSession = undefined;
+  resetBrowserDetection();
   if (session) await session.dispose();
 }
 

@@ -16,10 +16,17 @@ import { DEFAULT_CONFIG } from "./config";
 
 class FakeRequest implements InterceptableRequest {
   readonly actions: string[] = [];
-  constructor(private readonly target: string) {}
+  constructor(
+    private readonly target: string,
+    private readonly navigation = false,
+  ) {}
 
   url(): string {
     return this.target;
+  }
+
+  isNavigationRequest(): boolean {
+    return this.navigation;
   }
 
   async continue(): Promise<void> {
@@ -74,8 +81,8 @@ class FakePage implements BrowserPage {
     return null;
   }
 
-  dispatch(url: string): FakeRequest {
-    const request = new FakeRequest(url);
+  dispatch(url: string, navigation = false): FakeRequest {
+    const request = new FakeRequest(url, navigation);
     this.requests.push(request);
     this.requestHandler?.(request);
     return request;
@@ -136,6 +143,22 @@ describe("resolveBrowserExecutable", () => {
     expect(
       await resolveBrowserExecutable({ env: {}, detect: async () => undefined }),
     ).toBeUndefined();
+  });
+
+  it("memoizes detection for the same detect function", async () => {
+    const detect = vi.fn(async () => "/detected/chrome");
+    expect(await resolveBrowserExecutable({ env: {}, detect })).toBe("/detected/chrome");
+    expect(await resolveBrowserExecutable({ env: {}, detect })).toBe("/detected/chrome");
+    expect(detect).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not share detection between different detect functions", async () => {
+    const first = vi.fn(async () => "/one/chrome");
+    const second = vi.fn(async () => "/two/chrome");
+    await resolveBrowserExecutable({ env: {}, detect: first });
+    expect(await resolveBrowserExecutable({ env: {}, detect: second })).toBe("/two/chrome");
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -325,6 +348,70 @@ describe("BrowserSession", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(browser.closeCount).toBe(1);
   });
+
+  it("relaunches after the browser disconnects", async () => {
+    const browsers: FakeBrowser[] = [];
+    const session = new BrowserSession({
+      executablePath: "/fake/chrome",
+      allowPrivateHosts: true,
+      launch: async () => {
+        const browser = new FakeBrowser();
+        browsers.push(browser);
+        return browser;
+      },
+    });
+
+    await session.render("https://example.com/a");
+    expect(browsers).toHaveLength(1);
+    browsers[0]!.disconnected?.();
+    await session.render("https://example.com/b");
+    expect(browsers).toHaveLength(2);
+    await session.dispose();
+  });
+
+  it("rejects an already-aborted signal when the page pool is saturated", async () => {
+    const browser = new FakeBrowser();
+    let releasePage: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      releasePage = resolve;
+    });
+    const originalNewPage = browser.newPage.bind(browser);
+    browser.newPage = async () => {
+      await gate;
+      return originalNewPage();
+    };
+    const session = sessionFor(browser, { maxPages: 1 });
+    const first = session.render("https://a.test/");
+    await tick();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      session.render("https://b.test/", { signal: controller.signal }),
+    ).rejects.toThrow();
+    releasePage?.();
+    await first;
+    await session.dispose();
+  });
+
+  it("DNS-guards navigations during interception", async () => {
+    const browser = new FakeBrowser();
+    const session = new BrowserSession({
+      executablePath: "/fake/chrome",
+      allowPrivateHosts: false,
+      resolveHost: async (host) => (host === "internal.example" ? ["10.0.0.5"] : ["93.184.216.34"]),
+      launch: async () => browser,
+    });
+    await session.render("https://93.184.216.34/");
+    const page = browser.pages[0]!;
+    const navigation = page.dispatch("https://internal.example/", true);
+    const subresource = page.dispatch("https://internal.example/app.js");
+    const allowed = page.dispatch("https://cdn.example.com/app.js", true);
+    await tick();
+    expect(navigation.actions).toEqual(["abort"]);
+    expect(subresource.actions).toEqual(["continue"]);
+    expect(allowed.actions).toEqual(["continue"]);
+    await session.dispose();
+  });
 });
 
 describe("createBrowserRenderer", () => {
@@ -376,5 +463,59 @@ describe("createBrowserRenderer", () => {
     } finally {
       await disposeSharedBrowser();
     }
+  });
+
+  it("starts a fresh shared session after the previous one idle-closes", async () => {
+    vi.useFakeTimers();
+    const browsers: FakeBrowser[] = [];
+    const launch = async () => {
+      const browser = new FakeBrowser();
+      browsers.push(browser);
+      return browser;
+    };
+    try {
+      const first = await createBrowserRenderer({
+        config: { ...DEFAULT_CONFIG.browser, idleCloseSeconds: 1 },
+        executablePath: "/fake/chrome",
+        launch,
+      });
+      await first!("https://example.com/a");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(browsers[0]!.closeCount).toBe(1);
+
+      const second = await createBrowserRenderer({
+        config: { ...DEFAULT_CONFIG.browser, idleCloseSeconds: 1 },
+        executablePath: "/fake/chrome",
+        launch,
+      });
+      await second!("https://example.com/b");
+      expect(browsers).toHaveLength(2);
+      expect(browsers[1]!.pages).toHaveLength(1);
+    } finally {
+      await disposeSharedBrowser();
+    }
+  });
+
+  it("clamps the render deadline to browser.timeoutSeconds", async () => {
+    const browser = new FakeBrowser();
+    const session = sessionFor(browser);
+    const renderSpy = vi.spyOn(session, "render");
+    const renderer = await createBrowserRenderer({
+      config: { ...DEFAULT_CONFIG.browser, timeoutSeconds: 5 },
+      executablePath: "/fake/chrome",
+      session,
+    });
+    expect(renderer).toBeDefined();
+    await renderer!("https://example.com/", { timeoutMs: 60_000 });
+    expect(renderSpy).toHaveBeenLastCalledWith(
+      "https://example.com/",
+      expect.objectContaining({ timeoutMs: 5_000 }),
+    );
+    await renderer!("https://example.com/", { timeoutMs: 1_000 });
+    expect(renderSpy).toHaveBeenLastCalledWith(
+      "https://example.com/",
+      expect.objectContaining({ timeoutMs: 1_000 }),
+    );
+    await session.dispose();
   });
 });

@@ -70,7 +70,7 @@ export interface BrowserConfig {
   stealth: boolean;
   /** Disable the Chromium sandbox for root/container environments. */
   noSandbox: boolean;
-  /** Per-render navigation deadline in seconds. */
+  /** Upper bound on a single browser navigation in seconds. */
   timeoutSeconds: number;
   /** Close the shared browser after this many idle seconds; `0` disables idle close. */
   idleCloseSeconds: number;

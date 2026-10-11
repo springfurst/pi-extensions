@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- `web_fetch`/`web_search`: recover the shared browser session after it is idle-closed or the Chromium process disconnects, so browser rendering keeps working for the rest of the process instead of failing silently.
+- `web_fetch`/`web_search`: reject an already-expired render immediately instead of waiting for a busy page slot, so a call cannot hang past its wall-clock deadline.
+- `web_fetch`: create the headless-browser renderer only when the browser backend actually runs, and resolve the browser executable once per process; JSON, feed, raw, and site-handler reads no longer pay for browser detection.
+- `web_fetch`: resolve the DNS for browser navigations (redirects and scripted navigation included) with the same private-address guard as the HTTP reader, instead of checking only literal hosts.
+- `browser.timeoutSeconds` now bounds a single navigation; previously the tool's own timeout always overrode it.
 - `web_fetch`: apply line selectors and `save_path` to the full rendered body before capping for the model, so tail selectors return the correct lines and saved files are complete; `fetch.maxChars`/`max_chars` now also govern site-handler output instead of a fixed 500,000-character handler cap.
 - `web_fetch`: keep the port on a bare `host:port` URL instead of reading it as a line selector; selectors after a path still peel.
 - `web_fetch`: bound each call with the documented wall-clock `fetch.timeoutSeconds` deadline; previously it applied per request, so multi-request handlers and digest probes could exceed it.
