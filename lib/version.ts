@@ -1,3 +1,4 @@
+import { VERSION } from "@earendil-works/pi-coding-agent";
 import { readFileSync } from "node:fs";
 
 /**
@@ -21,3 +22,6 @@ function readPackageVersion(): string {
 
 /** This package's version, read once at module load. */
 export const TOOL_VERSION = readPackageVersion();
+
+/** The running pi version, for correlating records with a pi release. */
+export const PI_VERSION = VERSION;

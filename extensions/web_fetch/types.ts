@@ -14,6 +14,8 @@ export interface RenderResult {
   /** The URL after redirects. */
   finalUrl: string;
   contentType: string;
+  /** HTTP status of the main response; undefined for site handlers and probes. */
+  status?: number;
   /** Name of the pipeline stage that produced the content. */
   method: string;
   content: string;

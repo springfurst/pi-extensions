@@ -38,6 +38,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     contentType: string,
     resultUrl: string,
     finalUrl: string,
+    status?: number,
   ): RenderResult => {
     const output = finalizeOutput(content, maxChars);
     return {
@@ -45,6 +46,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       finalUrl,
       contentType,
       method,
+      status,
       content: output.content,
       fetchedAt,
       truncated: output.truncated,
@@ -84,6 +86,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       finalUrl: response.finalUrl || normalized,
       contentType: response.contentType || "unknown",
       method: "failed",
+      status: response.status,
       content: "",
       fetchedAt,
       truncated: false,
@@ -98,17 +101,19 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     );
   }
 
-  if (raw) return finish(rawContent, "raw", mime, url, finalUrl);
-  if (mime.includes("json")) return finish(formatJson(rawContent), "json", mime, url, finalUrl);
+  if (raw) return finish(rawContent, "raw", mime, url, finalUrl, response.status);
+  if (mime.includes("json"))
+    return finish(formatJson(rawContent), "json", mime, url, finalUrl, response.status);
 
   const isXml = mime.includes("xml") && !mime.includes("html");
   const isFeed = mime.includes("rss") || mime.includes("atom") || mime.includes("feed");
   if (isFeed || (isXml && (rawContent.includes("<rss") || rawContent.includes("<feed")))) {
-    return finish(parseFeedToMarkdown(rawContent), "feed", mime, url, finalUrl);
+    return finish(parseFeedToMarkdown(rawContent), "feed", mime, url, finalUrl, response.status);
   }
 
   const isText = mime.includes("text/plain") || mime.includes("text/markdown");
-  if (isText && !looksLikeHtml(rawContent)) return finish(rawContent, "text", mime, url, finalUrl);
+  if (isText && !looksLikeHtml(rawContent))
+    return finish(rawContent, "text", mime, url, finalUrl, response.status);
 
   if (mime.includes("html") || mime.includes("xhtml") || looksLikeHtml(rawContent)) {
     const alternates = parseAlternateLinks(rawContent, finalUrl);
@@ -120,7 +125,14 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       const alt = await ctx.loadPage(resolved, { signal: ctx.signal });
       if (alt.ok && alt.content.trim().length > 100 && !looksLikeHtml(alt.content)) {
         notes.push(`Used markdown alternate: ${resolved}`);
-        return finish(alt.content, "alternate-markdown", "text/markdown", url, finalUrl);
+        return finish(
+          alt.content,
+          "alternate-markdown",
+          "text/markdown",
+          url,
+          finalUrl,
+          alt.status,
+        );
       }
     }
 
@@ -153,6 +165,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
           "application/feed",
           url,
           finalUrl,
+          alt.status,
         );
       }
     }
@@ -171,7 +184,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
         notes.push(`Used llms.txt fallback: ${llm.endpoint}`);
         return finish(llm.content, "llms.txt", "text/plain", url, finalUrl);
       }
-      return finish(rawContent, "raw-html", mime, url, finalUrl);
+      return finish(rawContent, "raw-html", mime, url, finalUrl, response.status);
     }
 
     if (isLowQualityOutput(htmlResult.content)) {
@@ -183,10 +196,10 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       notes.push("Page appears to require JavaScript or is mostly navigation");
     }
 
-    return finish(htmlResult.content, htmlResult.method, mime, url, finalUrl);
+    return finish(htmlResult.content, htmlResult.method, mime, url, finalUrl, response.status);
   }
 
-  return finish(rawContent, "raw", mime, url, finalUrl);
+  return finish(rawContent, "raw", mime, url, finalUrl, response.status);
 }
 
 function normalizeUrl(url: string): string {

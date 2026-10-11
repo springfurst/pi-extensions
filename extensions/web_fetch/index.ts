@@ -37,7 +37,7 @@ export default function webFetchExtension(pi: ExtensionAPI) {
     parameters: FetchParams,
     annotations: { readOnlyHint: true, openWorldHint: true },
 
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, signal, _onUpdate, ctx) {
       return executeWebFetch(params, {
         cwd: ctx.cwd,
         agentDir: getAgentDir(),
@@ -45,6 +45,11 @@ export default function webFetchExtension(pi: ExtensionAPI) {
         signal,
         cacheDir: join(getAgentDir(), "web-tools"),
         exec: (command, args, options) => pi.exec(command, args, options),
+        toolCallId,
+        sessionId: ctx.sessionManager.getSessionId(),
+        sessionFile: ctx.sessionManager.getSessionFile(),
+        sessionName: ctx.sessionManager.getSessionName(),
+        mode: ctx.mode,
       });
     },
 
