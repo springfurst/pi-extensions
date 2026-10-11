@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { engineParams, fakeEngine } from "./__fixtures__/search";
-import { aggregateSearch, dedupKey } from "./aggregate";
+import { AggregateFailureError, aggregateSearch, dedupKey } from "./aggregate";
 import type { SearchResponse } from "./types";
 
 function response(
@@ -46,6 +46,10 @@ describe("aggregateSearch", () => {
     expect(result.response.sources[0]?.url).toContain("example.com/shared");
     expect(result.response.sources[0]?.snippet).toBe("a much longer snippet");
     expect(result.enginesUsed.sort()).toEqual(["duckduckgo", "startpage"]);
+
+    const byId = Object.fromEntries(result.outcomes.map((outcome) => [outcome.id, outcome]));
+    expect(byId.duckduckgo).toMatchObject({ status: "ok", returned: 2, contributed: 2 });
+    expect(byId.startpage).toMatchObject({ status: "ok", returned: 2, contributed: 1 });
   });
 
   it("tolerates individual engine failures", async () => {
@@ -60,6 +64,11 @@ describe("aggregateSearch", () => {
     });
     expect(result.response.sources).toHaveLength(1);
     expect(result.failures).toHaveLength(1);
+    expect(result.outcomes.find((outcome) => outcome.id === "startpage")).toMatchObject({
+      status: "error",
+      returned: 0,
+      error: "boom",
+    });
   });
 
   it("throws when every engine fails", async () => {
@@ -68,6 +77,20 @@ describe("aggregateSearch", () => {
     await expect(
       aggregateSearch({ engines: [bad1, bad2], params: engineParams({ query: "x" }) }),
     ).rejects.toThrow(/All search engines failed/);
+  });
+
+  it("carries per-engine outcomes on the all-fail error", async () => {
+    const bad1 = fakeEngine("duckduckgo", new Error("a"));
+    const bad2 = fakeEngine("startpage", new Error("b"));
+    const error = await aggregateSearch({
+      engines: [bad1, bad2],
+      params: engineParams({ query: "x" }),
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(AggregateFailureError);
+    expect((error as AggregateFailureError).outcomes.map((outcome) => outcome.status)).toEqual([
+      "error",
+      "error",
+    ]);
   });
 
   it("returns once a fast engine succeeds despite a slow peer", async () => {
@@ -91,5 +114,6 @@ describe("aggregateSearch", () => {
     });
     expect(result.response.sources[0]?.url).toBe("https://fast.example");
     expect(Date.now() - started).toBeLessThan(150);
+    expect(result.outcomes.find((outcome) => outcome.id === "startpage")?.status).toBe("timeout");
   });
 });

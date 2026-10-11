@@ -55,6 +55,23 @@ export interface EngineSearchParams {
   renderPage?: BrowserRenderer;
 }
 
+/** Lifecycle status of one engine in a search call. */
+export type EngineOutcomeStatus =
+  "ok" | "empty" | "error" | "timeout" | "cooldown" | "skipped" | "cached";
+
+/** Per-engine accounting for one search call, recorded with usage events. */
+export interface EngineOutcome {
+  id: string;
+  label: string;
+  status: EngineOutcomeStatus;
+  /** Raw source count the engine returned, before deduplication. */
+  returned: number;
+  /** Dedup keys first seen from this engine. */
+  contributed: number;
+  durationMs: number;
+  error?: string;
+}
+
 /** Provider-tagged error with an optional HTTP status. */
 export class SearchProviderError extends Error {
   constructor(

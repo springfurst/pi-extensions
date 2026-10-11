@@ -5,6 +5,7 @@ import { withHardTimeout } from "../../lib/http";
 import {
   SearchProviderError,
   formatSearchProviderFailures,
+  type EngineOutcome,
   type EngineSearchParams,
   type SearchEngine,
   type SearchResponse,
@@ -30,6 +31,18 @@ export interface AggregateResult {
   response: SearchResponse;
   failures: SearchFailure[];
   enginesUsed: string[];
+  outcomes: EngineOutcome[];
+}
+
+/** All-engines-failed error carrying the per-engine accounting for logging. */
+export class AggregateFailureError extends SearchProviderError {
+  constructor(
+    message: string,
+    public readonly outcomes: EngineOutcome[],
+  ) {
+    super("public", message, 503);
+    this.name = "AggregateFailureError";
+  }
 }
 
 interface MergedSource {
@@ -82,6 +95,10 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Fan out across engines in parallel and consolidate by cross-engine consensus,
  * then best per-engine rank, then insertion order. Races a soft deadline
@@ -101,6 +118,8 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
   ]);
 
   const responses: Array<SearchResponse | undefined> = new Array(engines.length);
+  const errors: Array<unknown> = new Array(engines.length);
+  const durations: number[] = new Array(engines.length).fill(0);
   const failures: SearchFailure[] = [];
   const enginesUsed: string[] = [];
   let resolveFirstSuccess: () => void = () => {};
@@ -110,12 +129,16 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
 
   const all = Promise.all(
     engines.map(async (engine, index) => {
+      const started = Date.now();
       try {
         responses[index] = await engine.search({ ...params, signal });
         enginesUsed.push(engine.id);
         resolveFirstSuccess();
       } catch (error) {
+        errors[index] = error;
         failures.push({ provider: { id: engine.id, label: engine.label }, error });
+      } finally {
+        durations[index] = Date.now() - started;
       }
     }),
   );
@@ -127,15 +150,37 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
   straggler.abort();
 
   const merged = new Map<string, MergedSource>();
-  for (const response of responses) {
-    if (response) mergeSources(merged, response.sources);
+  const contribution: number[] = new Array(engines.length).fill(0);
+  for (let index = 0; index < responses.length; index += 1) {
+    const response = responses[index];
+    if (!response) continue;
+    const before = merged.size;
+    mergeSources(merged, response.sources);
+    contribution[index] = merged.size - before;
   }
 
+  const outcomes: EngineOutcome[] = engines.map((engine, index) => {
+    const response = responses[index];
+    const outcome: EngineOutcome = {
+      id: engine.id,
+      label: engine.label,
+      status: response ? (response.sources.length > 0 ? "ok" : "empty") : "timeout",
+      returned: response?.sources.length ?? 0,
+      contributed: contribution[index] ?? 0,
+      durationMs: durations[index] ?? 0,
+    };
+    const error = errors[index];
+    if (error !== undefined) {
+      outcome.status = "error";
+      outcome.error = errorMessage(error);
+    }
+    return outcome;
+  });
+
   if (merged.size === 0 && failures.length === engines.length) {
-    throw new SearchProviderError(
-      "public",
+    throw new AggregateFailureError(
       `All search engines failed: ${formatSearchProviderFailures(failures)}`,
-      503,
+      outcomes,
     );
   }
 
@@ -144,5 +189,5 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
     .slice(0, params.limit)
     .map((entry) => entry.source);
 
-  return { response: { provider: "public", sources }, failures, enginesUsed };
+  return { response: { provider: "public", sources }, failures, enginesUsed, outcomes };
 }

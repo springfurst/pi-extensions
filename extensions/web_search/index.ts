@@ -38,12 +38,17 @@ export default function webSearchExtension(pi: ExtensionAPI) {
     outputSchema: Type.Array(StructuredSource),
     annotations: { readOnlyHint: true, openWorldHint: true },
 
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, signal, _onUpdate, ctx) {
       return executeWebSearch(params, {
         cwd: ctx.cwd,
         agentDir: getAgentDir(),
         trusted: ctx.isProjectTrusted(),
         signal,
+        toolCallId,
+        sessionId: ctx.sessionManager.getSessionId(),
+        sessionFile: ctx.sessionManager.getSessionFile(),
+        sessionName: ctx.sessionManager.getSessionName(),
+        mode: ctx.mode,
       });
     },
 
