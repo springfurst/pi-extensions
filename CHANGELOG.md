@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the repository's tag-based release policy.
 
+## [0.1.1] - 2026-10-11
+
+### Changed
+
+- `web_search`: the SearXNG bearer token fallback is now read from `SEARXNG_SECRET` instead of `SEARXNG_TOKEN`. The config key `searxng.token` is unchanged.
+
+[0.1.1]: https://github.com/springfurst/pi-extensions/releases/tag/v0.1.1
+
 ## [0.1.0] - 2026-10-10
 
 Initial release: two pi tools, `web_fetch` and `web_search`, packaged as one pi package.
