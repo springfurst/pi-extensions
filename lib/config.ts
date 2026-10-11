@@ -309,8 +309,8 @@ function searxngFromEnv(config: SearxngConfig): SearxngConfig {
   const out: SearxngConfig = {};
   if (config.endpoint === undefined && process.env.SEARXNG_ENDPOINT)
     out.endpoint = process.env.SEARXNG_ENDPOINT;
-  if (config.token === undefined && process.env.SEARXNG_TOKEN)
-    out.token = process.env.SEARXNG_TOKEN;
+  if (config.token === undefined && process.env.SEARXNG_SECRET)
+    out.token = process.env.SEARXNG_SECRET;
   if (config.basicUsername === undefined && process.env.SEARXNG_BASIC_USERNAME) {
     out.basicUsername = process.env.SEARXNG_BASIC_USERNAME;
   }

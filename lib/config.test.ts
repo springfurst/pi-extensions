@@ -19,7 +19,7 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
   delete process.env.SEARXNG_ENDPOINT;
-  delete process.env.SEARXNG_TOKEN;
+  delete process.env.SEARXNG_SECRET;
 });
 
 function writeProjectConfig(value: unknown): void {
@@ -74,7 +74,7 @@ describe("loadConfig", () => {
 
   it("falls back to the environment for the SearXNG endpoint", () => {
     process.env.SEARXNG_ENDPOINT = "https://searx.example.org";
-    process.env.SEARXNG_TOKEN = "env-token";
+    process.env.SEARXNG_SECRET = "env-token";
     const config = loadConfig(cwd, { agentDir, projectTrusted: true });
     expect(config.searxng.endpoint).toBe("https://searx.example.org");
     expect(config.searxng.token).toBe("env-token");

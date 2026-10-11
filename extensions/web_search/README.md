@@ -63,7 +63,7 @@ The result also carries a structured `{ title, url, snippet }[]` for codemode ca
 | `browser.maxPages`          | `2`                                                               | Maximum concurrent browser pages.                                                 |
 | `browser.allowPrivateHosts` | `false`                                                           | Permit private hosts in the browser.                                              |
 
-Secrets and the SearXNG connection may also come from `SEARXNG_ENDPOINT`, `SEARXNG_TOKEN`, `SEARXNG_BASIC_USERNAME`, and `SEARXNG_BASIC_PASSWORD`; file values win. `PUPPETEER_EXECUTABLE_PATH` overrides the browser binary and takes precedence over `browser.executablePath`. A dedicated Chrome for Testing build is preferred over a daily-use browser for a stable Chromium version and to avoid macOS handing a background launch the user's open-URL events; point `browser.executablePath` at an installed build. The extension never downloads a browser.
+Secrets and the SearXNG connection may also come from `SEARXNG_ENDPOINT`, `SEARXNG_SECRET`, `SEARXNG_BASIC_USERNAME`, and `SEARXNG_BASIC_PASSWORD`; file values win. `PUPPETEER_EXECUTABLE_PATH` overrides the browser binary and takes precedence over `browser.executablePath`. A dedicated Chrome for Testing build is preferred over a daily-use browser for a stable Chromium version and to avoid macOS handing a background launch the user's open-URL events; point `browser.executablePath` at an installed build. The extension never downloads a browser.
 
 ### Usage logging
 
