@@ -712,6 +712,48 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       'Example: {action:"dialog", op:"policy", policy:"manual"}',
     );
   }
+
+  const closedSets: Array<[string, unknown, string[]]> = [
+    ["read format", action === "read" ? params.format : undefined, ["markdown", "text", "html"]],
+    [
+      "screenshot format",
+      action === "screenshot" ? params.format : undefined,
+      ["png", "jpeg", "webp"],
+    ],
+    [
+      "tabs op",
+      action === "tabs" ? params.op : undefined,
+      ["list", "new", "select", "close", "close_others", "cleanup"],
+    ],
+    [
+      "console/network op",
+      action === "console" || action === "network" ? params.op : undefined,
+      ["read", "clear"],
+    ],
+    ["dialog op", action === "dialog" ? params.op : undefined, ["accept", "dismiss", "policy"]],
+  ];
+  for (const [label, value, allowed] of closedSets) {
+    if (value !== undefined && !allowed.includes(String(value))) {
+      throw new BrowserPilotError(`${label} must be one of: ${allowed.join(", ")}.`);
+    }
+  }
+
+  const positive = ["tab", "max_nodes", "max_chars", "click_count", "limit", "timeout_ms"];
+  for (const key of positive) {
+    const value = params[key];
+    if (typeof value === "number" && value <= 0) {
+      throw new BrowserPilotError(`${key} must be greater than zero.`);
+    }
+  }
+  for (const key of ["delay_ms", "amount"]) {
+    const value = params[key];
+    if (typeof value === "number" && value < 0) {
+      throw new BrowserPilotError(`${key} must not be negative.`);
+    }
+  }
+  if (typeof params.quality === "number" && (params.quality < 0 || params.quality > 100)) {
+    throw new BrowserPilotError("quality must be between 0 and 100.");
+  }
 }
 
 /** Render help for the catalog, a group, or one action. */

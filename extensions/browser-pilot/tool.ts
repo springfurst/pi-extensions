@@ -9,7 +9,13 @@ import { detectChallenge, waitForHuman } from "./challenge";
 import { loadBrowserPilotConfig } from "./config";
 import { readPageContent } from "./content";
 import { evaluateInPage, formatEvalValue } from "./eval";
-import { shouldRunHeadless } from "./launcher";
+import {
+  instanceRecordPath,
+  pidAlive,
+  probeInstance,
+  readInstanceRecord,
+  shouldRunHeadless,
+} from "./launcher";
 import {
   capForModel,
   capText,
@@ -114,7 +120,12 @@ export async function executeBrowserPilot(
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const hintText = error instanceof BrowserPilotError ? error.hint : undefined;
+    const hintText =
+      error instanceof BrowserPilotError
+        ? error.hint
+        : /timeout/i.test(message)
+          ? "Increase timeout_ms, or inspect the page with status."
+          : undefined;
     const current = session ? currentPageLine(session) : undefined;
     outputText = [message, hintText ? hint(hintText) : undefined, current]
       .filter((line): line is string => !!line)
@@ -220,14 +231,25 @@ async function statusResult(
     session.profile ?? previewProfile(config, session.sessionId, session.agentDir, session.cwd);
   const mode = shouldRunHeadless(config) ? "headless" : "headful";
   if (!session.instance) {
-    const text = [
+    const lines = [
       "Browser: not running",
       `Profile: ${profile.label} (${profile.userDataDir}) ${profile.persistent ? "[persistent]" : "[isolated]"}`,
       `Mode: ${mode}`,
       "Tabs: 0",
-      "",
-      hint('call {action:"open"} to start Chrome.'),
-    ].join("\n");
+    ];
+    const record = readInstanceRecord(instanceRecordPath(session.agentDir, profile.key));
+    if (record && pidAlive(record.pid)) {
+      const probe = await probeInstance(record.port).catch(() => undefined);
+      if (probe) {
+        const owner = record.ownerSessionId ? `, session ${record.ownerSessionId}` : "";
+        lines.push(`Profile owner: pid ${record.pid}, port ${record.port}${owner}`);
+        lines.push(
+          hint('this profile is already in use; use profile:"session" or a named profile.'),
+        );
+      }
+    }
+    lines.push("", hint('call {action:"open"} to start Chrome.'));
+    const text = lines.join("\n");
     return {
       text,
       details: {
@@ -743,9 +765,10 @@ async function typeResult(
   if (humanize || (params.delay_ms ?? 0) > 0) {
     await locator.click();
     if (params.clear !== false) {
-      await tab.page.keyboard.down("Control");
+      const selectAll = process.platform === "darwin" ? "Meta" : "Control";
+      await tab.page.keyboard.down(selectAll);
       await tab.page.keyboard.press("A");
-      await tab.page.keyboard.up("Control");
+      await tab.page.keyboard.up(selectAll);
     } else {
       await tab.page.keyboard.press("End");
     }

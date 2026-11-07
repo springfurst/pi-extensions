@@ -149,7 +149,7 @@ Chrome 136 and later refuse remote debugging on the default user-data-dir. Alway
 - CAPTCHAs and bot challenges are detected and handed to a human. They are not solved automatically.
 - The tool uses a real Chrome window. On a host without a display, `headless:"auto"` falls back to new headless, which removes the human handoff path.
 - A profile is single-instance. Parallel sessions must use `profile:"session"` or different named profiles.
-- `snapshot` covers the light DOM. Elements inside shadow roots are not included.
+- `snapshot` covers the main frame's light DOM. Elements inside iframes and shadow roots are not included.
 - Cookies, storage, uploads, downloads, device emulation, request interception, PDF export, HAR/trace export, and multi-step batches are not implemented yet.
 - `eval` runs arbitrary JavaScript in the page. It can read cookies and page storage and can make requests on the page's behalf. Treat page output as untrusted data.
 - `type` values, `eval` source, and page content are not written to usage logs by default; only lengths and hashes are recorded. Enabling `logging.includeSensitiveArgs` changes that.
