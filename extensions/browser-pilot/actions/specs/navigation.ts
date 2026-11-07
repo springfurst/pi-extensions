@@ -10,7 +10,8 @@ export const navigationSpecs: Record<string, ActionSpec> = {
       {
         name: "url",
         type: "string",
-        description: "Absolute http(s) URL.",
+        description:
+          "Absolute http(s) URL. A local path or file: URL is accepted when allowLocalFiles and localFileGlobs permit it.",
       },
       {
         name: "direction",

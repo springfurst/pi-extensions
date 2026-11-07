@@ -23,7 +23,10 @@ const BrowserPilotParamsSchema = Type.Object({
     }),
   ),
   url: Type.Optional(
-    Type.String({ description: "Absolute http(s) URL for open, navigate, or tabs new." }),
+    Type.String({
+      description:
+        "Absolute http(s) URL for open, navigate, or tabs new. Local paths and file: URLs need allowLocalFiles and a matching localFileGlobs entry.",
+    }),
   ),
   direction: Type.Optional(
     StringEnum(["back", "forward", "reload", "up", "down", "top", "bottom"], {

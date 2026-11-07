@@ -44,7 +44,8 @@ export const lifecycleSpecs: Record<string, ActionSpec> = {
       {
         name: "url",
         type: "string",
-        description: "Optional http(s) URL to open in the current or new tab.",
+        description:
+          "Optional http(s) URL to open in the current or new tab. A local path or file: URL is accepted when allowLocalFiles and localFileGlobs permit it.",
       },
       {
         name: "profile",

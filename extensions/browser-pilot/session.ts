@@ -29,7 +29,7 @@ import {
   targetIdOf,
   trim,
 } from "./session-helpers";
-import { checkNavigationAllowed } from "./security";
+import { checkNavigationAllowed, type NavigationGuardOptions } from "./security";
 import type {
   BrowserPilotConfig,
   ChallengeInfo,
@@ -946,14 +946,14 @@ export class BrowserPilotSession {
         status = response?.status() ?? 200;
       }
     } else if (url) {
-      const guard = await checkNavigationAllowed(url, this.config.allowPrivateHosts);
+      const guard = await checkNavigationAllowed(url, this.navigationGuardOptions());
       if (!guard.allowed) {
         throw new BrowserPilotError(
           `Navigation blocked: ${guard.reason ?? url}`,
-          "Set allowPrivateHosts to true in browser-pilot.json to permit local development hosts.",
+          "Set allowPrivateHosts for local development hosts, or allowLocalFiles and localFileGlobs for local files, in browser-pilot.json.",
         );
       }
-      const response = await page.goto(url, { waitUntil: wait, timeout, signal });
+      const response = await page.goto(guard.url ?? url, { waitUntil: wait, timeout, signal });
       status = response?.status() ?? 200;
     } else {
       throw new BrowserPilotError(
@@ -975,6 +975,16 @@ export class BrowserPilotSession {
       title: await page.title().catch(() => ""),
       challenge: this.challenge,
       note,
+    };
+  }
+
+  /** The configuration the navigation guard needs, including the working directory. */
+  navigationGuardOptions(): NavigationGuardOptions {
+    return {
+      allowPrivateHosts: this.config.allowPrivateHosts,
+      allowLocalFiles: this.config.allowLocalFiles,
+      localFileGlobs: this.config.localFileGlobs,
+      cwd: this.cwd,
     };
   }
 

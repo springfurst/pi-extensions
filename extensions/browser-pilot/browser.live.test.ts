@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startServer, type TestServer } from "../web_fetch/__fixtures__/test-server";
 import { disposeAllSessions, disposeAllSessionsSync } from "./session";
@@ -125,6 +126,8 @@ describe("browser-pilot live", () => {
         headless: true,
         closeOnExit: true,
         allowPrivateHosts: true,
+        allowLocalFiles: true,
+        localFileGlobs: ["fixtures/**"],
         maxTabs: 3,
         tabOverflow: "reuse-blank",
         screenshotsDir: join(agentDir, "browser-pilot", "screenshots"),
@@ -618,6 +621,33 @@ describe("browser-pilot live", () => {
     const clipboardRead = await run({ action: "clipboard", op: "read" });
     expect(clipboardRead.isError, text(clipboardRead)).toBeUndefined();
     expect(text(clipboardRead)).toContain("pilot-clipboard");
+
+    await run({ action: "close", target: "browser" });
+  });
+
+  it("opens local files that match the configured globs", async () => {
+    const fixtures = join(cwd, "fixtures");
+    mkdirSync(fixtures, { recursive: true });
+    const page = join(fixtures, "local.html");
+    writeFileSync(
+      page,
+      "<!doctype html><html><head><title>Local Fixture</title></head><body><h1>Local Fixture</h1><p>A page on disk.</p></body></html>",
+    );
+
+    const relative = await run({ action: "open", url: "./fixtures/local.html" });
+    expect(relative.isError, text(relative)).toBeUndefined();
+    expect(text(relative)).toContain("Local Fixture");
+    expect(relative.details.url).toContain("file://");
+    expect(text(await run({ action: "read" }))).toContain("A page on disk");
+
+    const byUrl = await run({ action: "navigate", url: pathToFileURL(page).href });
+    expect(byUrl.isError, text(byUrl)).toBeUndefined();
+
+    const outside = join(cwd, "outside.html");
+    writeFileSync(outside, "<!doctype html><title>Outside</title>");
+    const blocked = await run({ action: "navigate", url: outside });
+    expect(blocked.isError).toBe(true);
+    expect(text(blocked)).toContain("does not match localFileGlobs");
 
     await run({ action: "close", target: "browser" });
   });

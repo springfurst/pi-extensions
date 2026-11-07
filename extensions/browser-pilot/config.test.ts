@@ -47,6 +47,37 @@ describe("loadBrowserPilotConfig", () => {
     expect(config.logging.outputs).toBe("snippet");
   });
 
+  it("defaults to no local file access", () => {
+    const agentDir = tempDir();
+    const cwd = tempDir();
+    const config = loadBrowserPilotConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.allowLocalFiles).toBe(false);
+    expect(config.localFileGlobs).toEqual([]);
+  });
+
+  it("reads local file access and its globs", () => {
+    const agentDir = tempDir();
+    const cwd = tempDir();
+    writeFileSync(
+      join(agentDir, "browser-pilot.json"),
+      JSON.stringify({ allowLocalFiles: true, localFileGlobs: ["fixtures/**", "docs/*.html"] }),
+    );
+    const config = loadBrowserPilotConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.allowLocalFiles).toBe(true);
+    expect(config.localFileGlobs).toEqual(["fixtures/**", "docs/*.html"]);
+  });
+
+  it("accepts a single glob string", () => {
+    const agentDir = tempDir();
+    const cwd = tempDir();
+    writeFileSync(
+      join(agentDir, "browser-pilot.json"),
+      JSON.stringify({ allowLocalFiles: true, localFileGlobs: "fixtures/**" }),
+    );
+    const config = loadBrowserPilotConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.localFileGlobs).toEqual(["fixtures/**"]);
+  });
+
   it("ignores project config when the project is untrusted", () => {
     const agentDir = tempDir();
     const cwd = tempDir();

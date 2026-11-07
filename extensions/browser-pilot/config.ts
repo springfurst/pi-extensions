@@ -25,6 +25,8 @@ export const DEFAULT_BROWSER_PILOT_CONFIG: BrowserPilotConfig = {
   stealth: "basic",
   humanize: false,
   allowPrivateHosts: true,
+  allowLocalFiles: false,
+  localFileGlobs: [],
   maxReadChars: 50_000,
   maxEvalChars: 20_000,
   maxSnapshotNodes: 200,
@@ -146,6 +148,10 @@ function pickConfig(raw: RawConfig): Partial<BrowserPilotConfig> {
   if (humanize !== undefined) out.humanize = humanize;
   const allowPrivateHosts = asBoolean(raw.allowPrivateHosts);
   if (allowPrivateHosts !== undefined) out.allowPrivateHosts = allowPrivateHosts;
+  const allowLocalFiles = asBoolean(raw.allowLocalFiles);
+  if (allowLocalFiles !== undefined) out.allowLocalFiles = allowLocalFiles;
+  const localFileGlobs = asStringList(raw.localFileGlobs);
+  if (localFileGlobs !== undefined) out.localFileGlobs = localFileGlobs;
   const screenshotsDir = asNonEmptyString(raw.screenshotsDir);
   if (screenshotsDir !== undefined) out.screenshotsDir = screenshotsDir;
   const downloadsDir = asNonEmptyString(raw.downloadsDir);
@@ -215,6 +221,15 @@ function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/** Accept a single glob as well as a list, so one entry does not need brackets. */
+function asStringList(value: unknown): string[] | undefined {
+  if (typeof value === "string") {
+    const single = value.trim();
+    return single.length > 0 ? [single] : undefined;
+  }
+  return asStringArray(value);
 }
 
 function asStringArray(value: unknown): string[] | undefined {

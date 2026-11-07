@@ -352,6 +352,10 @@ export interface BrowserPilotConfig {
   stealth: "off" | "basic" | "careful";
   humanize: boolean;
   allowPrivateHosts: boolean;
+  /** Allow navigation to local files that match `localFileGlobs`. */
+  allowLocalFiles: boolean;
+  /** Globs of local files that may be opened; relative globs resolve against the working directory. */
+  localFileGlobs: string[];
   screenshotsDir?: string;
   downloadsDir?: string;
   exportsDir?: string;

@@ -224,6 +224,8 @@ Use the id to fetch headers, request data, timing, and a body preview:
 | `stealth`                  | `basic`                                | `off`, `basic`, or `careful` (reserved for additional patches).                               |
 | `humanize`                 | `false`                                | Default for click/type mouse movement and key delays.                                         |
 | `allowPrivateHosts`        | `true`                                 | Permit localhost and private hosts; metadata endpoints stay blocked for top-level navigation. |
+| `allowLocalFiles`          | `false`                                | Permit navigation to local files that match `localFileGlobs`.                                 |
+| `localFileGlobs`           | `[]`                                   | Globs of allowed local files, relative to the working directory unless absolute.              |
 | `screenshotsDir`           | `<agentDir>/browser-pilot/screenshots` | Default screenshot directory.                                                                 |
 | `downloadsDir`             | `<agentDir>/browser-pilot/downloads`   | Directory for files downloaded by the browser.                                                |
 | `exportsDir`               | `<agentDir>/browser-pilot/exports`     | Default directory for PDF, HAR, and trace exports.                                            |
@@ -237,7 +239,18 @@ Use the id to fetch headers, request data, timing, and a body preview:
 
 Environment variables fill the binary and profile defaults when the configuration leaves them unset: `BROWSER_PILOT_EXECUTABLE_PATH`, `PUPPETEER_EXECUTABLE_PATH`, `CHROME_PATH`, and `BROWSER_PILOT_PROFILE`. An explicit `executablePath` in `browser-pilot.json` wins over the environment. Secrets stay in the environment; `type` can read a value with `text_env`.
 
-Path values accept a leading `~`, which expands to the home directory. Relative paths in `profile`, `executablePath`, `screenshotsDir`, `downloadsDir`, `exportsDir`, `logging.dir`, `save_path`, `path`, `text_file`, `files`, and `script_path` resolve against the working directory.
+Path values accept a leading `~`, which expands to the home directory. Relative paths in `profile`, `executablePath`, `screenshotsDir`, `downloadsDir`, `exportsDir`, `logging.dir`, `save_path`, `path`, `text_file`, `files`, `script_path`, and `localFileGlobs` resolve against the working directory.
+
+Local file navigation is off by default. Enable it and list the files that may be opened:
+
+```json
+{
+  "allowLocalFiles": true,
+  "localFileGlobs": ["fixtures/**", "reports/*.html", "/srv/shared/docs/**"]
+}
+```
+
+A relative glob matches files inside the working directory only; a glob that is written as an absolute path matches absolute paths. `localFileGlobs` accepts a single string as well as a list.
 
 ### Profiles
 
@@ -286,6 +299,7 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 - **Routing.** `route` installs page-level request interception rules. Matching requests can be aborted, continued, delayed, or fulfilled with a synthetic response. Rules are session-wide and apply to tabs managed when the rule is added and to new agent tabs; tabs opened by the user after a rule is added are attached without interception. Rule ids look like `rt1`. `clear` disables interception.
 - **Exports.** `pdf` prints the current page, `har` records request/response metadata and response bodies up to 1 MiB per entry, and `trace` records a Chrome trace. `har {op:"stop"}` requires an active recording; a second `har {op:"start"}` is rejected. A trace that does not receive `tracingComplete` within 10 seconds is written with an incomplete-capture warning. Each export writes to `exportsDir` unless `path` is set.
 - **External browsers.** `connect` attaches to an existing `ws://` or `http://` DevTools endpoint. Existing tabs are attached without changing their viewport, user agent, emulation, or download behavior, and `close {target:"browser"}` disconnects without closing Chrome.
+- **Local files.** `open`, `navigate`, and `tabs new` accept a local file only when `allowLocalFiles` is true and the resolved path matches one of `localFileGlobs`. A bare path such as `./fixtures/page.html` is resolved against the working directory and rewritten to a `file:` URL; a `file:` URL is accepted directly. A path that does not match, a path outside the working directory matched against a relative glob, or a glob list that is empty is rejected with the reason, before Chrome navigates. The guard also covers auth-state import origins.
 - **Content.** `read` uses Readability and Turndown for markdown, `innerText` for text, the live DOM for HTML, and a compact structural tree for `outline`. Inline `data:` image payloads are stripped.
 - **Dialogs.** Dialogs are dismissed automatically by default. Set `dialog {op:"policy", policy:"manual"}` to inspect and resolve them explicitly.
 - **Challenges.** Cloudflare, reCAPTCHA, hCaptcha, PerimeterX, DataDome, and generic access-denied pages are detected after navigation and inspection. A blocking challenge is reported with a hint to solve it in the window and call `wait {for:"human"}`. The tool never attempts to solve a challenge.
@@ -306,6 +320,7 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 - `state` exports storage for origins that are open in managed tabs at export time. Cookies are exported from the whole browser cookie store. Import accepts only `http(s)` origins and blocks metadata hosts.
 - `clipboard` requires a secure context (HTTPS or localhost) and a browser that permits clipboard access. `permissions` is browser-context-wide for the origin. A window that never gets focus, such as a fully backgrounded one on some window managers, can still be refused by the browser.
 - `annotate` draws boxes for refs in the main document and open shadow roots. Refs inside iframes are not annotated.
+- Local files are only reachable when `allowLocalFiles` is enabled and the path matches `localFileGlobs`; every other `file:` navigation is blocked before Chrome sees it. Chrome still applies its own file-origin rules, so a page opened from disk cannot fetch sibling files or `file:` URLs through `fetch` or `XMLHttpRequest` unless Chrome is started with `--allow-file-access-from-files` (add it to `args`). Pages opened from disk can read their own embedded content, and `eval` and `read` work as usual.
 - The navigation guard checks top-level navigations. Redirects and subresource requests are not re-checked, and metadata hostnames are blocked by name and known address spelling for the initial navigation only.
 - `metrics` reflects the current page and the most recent navigation timing entry; it is not a profiler. Use `trace` for detailed performance work.
 - `doctor` reports common environment problems but cannot detect every OS-specific Chrome failure.

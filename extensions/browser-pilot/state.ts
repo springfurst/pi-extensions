@@ -89,7 +89,7 @@ export async function stateResult(
   let importedOrigins = 0;
   let originFailures = 0;
   for (const origin of bundle.origins) {
-    const guard = await checkNavigationAllowed(origin.origin, session.config.allowPrivateHosts);
+    const guard = await checkNavigationAllowed(origin.origin, session.navigationGuardOptions());
     if (!guard.allowed) {
       originFailures++;
       continue;
@@ -235,7 +235,7 @@ async function importOriginStorageViaPage(
   session: BrowserPilotSession,
   origin: StorageStateBundle["origins"][number],
 ): Promise<void> {
-  const guard = await checkNavigationAllowed(origin.origin, session.config.allowPrivateHosts);
+  const guard = await checkNavigationAllowed(origin.origin, session.navigationGuardOptions());
   if (!guard.allowed) {
     throw new BrowserPilotError(`Blocked storage origin: ${guard.reason ?? origin.origin}`);
   }
