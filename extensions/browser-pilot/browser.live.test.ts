@@ -411,6 +411,132 @@ describe("browser-pilot live", () => {
 
     await run({ action: "close", target: "browser" });
   });
+
+  it("supports selector snapshots, ref reads, frames, network ids, doctor, metrics, state, and annotations", async () => {
+    await run({ action: "open", url: `${server.origin}/shadow` });
+
+    const doctor = await run({ action: "doctor" });
+    expect(doctor.isError, text(doctor)).toBeUndefined();
+    expect(text(doctor)).toContain("browser binary");
+    expect(text(doctor)).toContain("profile");
+
+    const scoped = text(await run({ action: "snapshot", selector: "#host" }));
+    expect(scoped).toContain("Shadow Button");
+    expect(scoped).not.toContain("Frame Button");
+    const shadowRef = refFor(scoped, /\[(e\d+)\] button "Shadow Button"/);
+
+    const readRef = await run({ action: "read", ref: shadowRef, format: "text" });
+    expect(readRef.isError, text(readRef)).toBeUndefined();
+    expect(text(readRef)).toContain("Shadow Button");
+
+    const outline = await run({ action: "read", format: "outline" });
+    expect(outline.isError, text(outline)).toBeUndefined();
+    expect(text(outline)).toContain("Shadow Button");
+
+    const refShot = join(agentDir, "ref-shot.png");
+    const refScreenshot = await run({ action: "screenshot", ref: shadowRef, path: refShot });
+    expect(refScreenshot.isError, text(refScreenshot)).toBeUndefined();
+    expect(existsSync(refShot)).toBe(true);
+
+    const annotatedPath = join(agentDir, "annotated.png");
+    const annotated = await run({
+      action: "screenshot",
+      path: annotatedPath,
+      annotate: true,
+    });
+    expect(annotated.isError, text(annotated)).toBeUndefined();
+    expect(annotated.details.annotated).toBeGreaterThan(0);
+
+    const frames = await run({ action: "frames", op: "list" });
+    expect(text(frames)).toContain("/frame");
+    const frameList = frames.details.frames as Array<{ index: number; url: string }>;
+    const frameIndex = frameList.find((frame) => frame.url.endsWith("/frame"))?.index;
+    expect(frameIndex).toBeGreaterThan(0);
+
+    await run({ action: "frames", op: "select", frame: frameIndex });
+    const frameRead = await run({ action: "read", format: "text" });
+    expect(text(frameRead)).toContain("Frame Button");
+    const frameEval = await run({ action: "eval", expression: "document.title" });
+    expect(text(frameEval)).toContain("Frame Test");
+    await run({ action: "frames", op: "main" });
+
+    await run({ action: "navigate", url: `${server.origin}/` });
+    await run({ action: "wait", for: "network_idle", timeout_ms: 5_000 });
+    const overview = await run({ action: "network", op: "read", filter: "/api" });
+    const overviewText = text(overview);
+    expect(overviewText).toMatch(/r\d+ 200 GET \/api/);
+    const requestId = /r\d+/.exec(overviewText)?.[0];
+    expect(requestId).toBeTruthy();
+
+    const detail = await run({ action: "network", op: "get", id: requestId });
+    expect(detail.isError, text(detail)).toBeUndefined();
+    expect(text(detail)).toContain("Response headers:");
+    expect(text(detail)).toContain('{"ok":true}');
+
+    const responseWait = await run({
+      action: "wait",
+      for: "response",
+      url_pattern: "/api",
+      include_body: true,
+      timeout_ms: 5_000,
+    });
+    expect(responseWait.isError, text(responseWait)).toBeUndefined();
+    expect(text(responseWait)).toMatch(/Response r\d+/);
+    expect(text(responseWait)).toContain('{"ok":true}');
+
+    const metrics = await run({ action: "metrics" });
+    expect(metrics.isError, text(metrics)).toBeUndefined();
+    expect(text(metrics)).toContain("Heap:");
+    expect(text(metrics)).toContain("DOM:");
+
+    const snapshot = text(await run({ action: "snapshot" }));
+    const goRef = refFor(snapshot, /\[(e\d+)\] button "Go"/);
+    const highlight = await run({ action: "highlight", ref: goRef, duration_ms: 500 });
+    expect(highlight.isError, text(highlight)).toBeUndefined();
+    expect(text(highlight)).toContain("Highlighted");
+
+    await run({
+      action: "cookies",
+      op: "set",
+      name: "pilot_state",
+      value: "yes",
+      url: server.origin,
+    });
+    await run({ action: "storage", op: "set", key: "theme", value: "dark" });
+    const bundlePath = join(cwd, "state.json");
+    const exported = await run({ action: "state", op: "export", path: bundlePath });
+    expect(exported.isError, text(exported)).toBeUndefined();
+    expect(existsSync(bundlePath)).toBe(true);
+    await run({ action: "cookies", op: "clear" });
+    await run({ action: "storage", op: "clear" });
+    const imported = await run({ action: "state", op: "import", path: bundlePath });
+    expect(imported.isError, text(imported)).toBeUndefined();
+    const importedCookies = await run({ action: "cookies", op: "list" });
+    expect(text(importedCookies)).toContain("pilot_state=yes");
+    const importedStorage = await run({ action: "storage", op: "get", key: "theme" });
+    expect(text(importedStorage)).toContain("dark");
+
+    const permissions = await run({
+      action: "emulate",
+      permissions: ["geolocation"],
+      origin: server.origin,
+    });
+    expect(permissions.isError, text(permissions)).toBeUndefined();
+    expect(text(permissions)).toContain("permissions");
+    await run({ action: "emulate", reset: true });
+
+    const clipboardWrite = await run({
+      action: "clipboard",
+      op: "write",
+      text: "pilot-clipboard",
+    });
+    expect(clipboardWrite.isError, text(clipboardWrite)).toBeUndefined();
+    const clipboardRead = await run({ action: "clipboard", op: "read" });
+    expect(clipboardRead.isError, text(clipboardRead)).toBeUndefined();
+    expect(text(clipboardRead)).toContain("pilot-clipboard");
+
+    await run({ action: "close", target: "browser" });
+  });
 });
 
 describe("browser-pilot profiles and tabs live", () => {
