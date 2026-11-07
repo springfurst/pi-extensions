@@ -2,13 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the repository's tag-based release policy.
 
-## [Unreleased]
+## [0.2.2] - 2026-11-07
 
 ### Added
 
 - `browser-pilot`: local files can be opened with `open`, `navigate`, and `tabs new`. The feature is off by default; `allowLocalFiles` enables it and `localFileGlobs` lists the files that may be opened. A bare path such as `./fixtures/page.html` resolves against the working directory and is rewritten to a `file:` URL, and a `file:` URL is accepted directly. Relative globs only match paths inside the working directory, absolute globs match absolute paths, and a path outside the globs is rejected with the reason before Chrome navigates.
 
-[Unreleased]: https://github.com/springfurst/pi-extensions/compare/v0.2.1...HEAD
+[0.2.2]: https://github.com/springfurst/pi-extensions/releases/tag/v0.2.2
 
 ## [0.2.1] - 2026-11-07
 
