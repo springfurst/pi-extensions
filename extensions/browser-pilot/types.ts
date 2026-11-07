@@ -1,4 +1,4 @@
-import type { Browser, Page } from "puppeteer-core";
+import type { Page } from "puppeteer-core";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import type { LoggingConfig } from "../../lib/config";
 import type { ActionName } from "./actions";
@@ -148,23 +148,6 @@ export interface ManagedTab {
   opener?: number;
   console: ConsoleEntry[];
   network: NetworkEntry[];
-}
-
-/** Runtime state for one pi session. */
-export interface SessionState {
-  sessionId: string;
-  profile: ProfileInfo;
-  instance: ChromeInstance;
-  browser: Browser;
-  tabs: Map<number, ManagedTab>;
-  current?: number;
-  nextHandle: number;
-  refs: Map<string, { selector: string; snapshot: number }>;
-  snapshotCount: number;
-  dialogPolicy: "dismiss" | "accept" | "manual";
-  pendingDialog?: DialogInfo;
-  challenge?: ChallengeInfo;
-  lastError?: string;
 }
 
 /** The logging section of the browser-pilot configuration. */
