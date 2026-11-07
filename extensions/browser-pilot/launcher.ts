@@ -362,6 +362,16 @@ function lastLines(stderr: string): string {
   return stderr.trim().split(/\r?\n/).filter(Boolean).slice(-3).join("\n");
 }
 
+function sameEndpoint(a: string, b: string): boolean {
+  try {
+    const left = new URL(a);
+    const right = new URL(b);
+    return left.port === right.port && left.pathname === right.pathname;
+  } catch {
+    return a === b;
+  }
+}
+
 function profileInUseText(stderr: string): boolean {
   return /profile.*in use|ProcessSingleton|SingletonLock|already running|Failed to create a ProcessSingleton/i.test(
     stderr,
@@ -389,7 +399,7 @@ export async function ensureChrome(options: {
     const sameSession = !existing.ownerSessionId || existing.ownerSessionId === options.sessionId;
     if (pidAlive(existing.pid)) {
       const probe = await probeInstance(existing.port);
-      if (probe && (!existing.wsEndpoint || probe.wsEndpoint === existing.wsEndpoint)) {
+      if (probe && (!existing.wsEndpoint || sameEndpoint(probe.wsEndpoint, existing.wsEndpoint))) {
         if (!sameSession) throw new ProfileInUseError(profile, existing);
         return {
           profile,
