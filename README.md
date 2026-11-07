@@ -12,11 +12,11 @@ The named ref pins the install. Use `--local` to write the declaration to a proj
 
 ## Tools
 
-| Tool            | Description                                                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `web_fetch`     | Read a URL as markdown or text, with site-specific handlers, line selectors, and browser rendering for JavaScript pages.    |
-| `web_search`    | Search keyless web engines — including browser-backed Google, Ecosia, and Mojeek — and return ranked, deduplicated sources. |
-| `browser-pilot` | Pilot a visible Chrome window: navigate, inspect, click, type, run JavaScript, and hand CAPTCHAs to a human.                |
+| Tool            | Description                                                                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web_fetch`     | Read a URL as markdown or text, with site-specific handlers, line selectors, and browser rendering for JavaScript pages.                      |
+| `web_search`    | Search keyless web engines — including browser-backed Google, Ecosia, and Mojeek — and return ranked, deduplicated sources.                   |
+| `browser-pilot` | Pilot a visible Chrome window: navigate, inspect, click, type, run JavaScript, record traffic, emulate devices, and hand CAPTCHAs to a human. |
 
 Each tool ships its own README under `extensions/<tool>/`, covering parameters, output, configuration, behavior, and limitations.
 
@@ -26,7 +26,7 @@ Each tool ships its own README under `extensions/<tool>/`, covering parameters, 
 
 Both web tools share a `browser` section for headless-Chromium rendering. A browser is detected automatically from the system; `browser.enabled: false` turns the feature off and `browser.executablePath` pins a specific binary. `browser.userDataDir` points at a persistent Chromium profile so warmed cookies and storage carry across launches. The extension never downloads a browser: when none resolves, browser rendering is unavailable and the tools behave as before.
 
-`browser-pilot` reads `browser-pilot.json` from the agent directory (`~/.pi/agent/browser-pilot.json`) and, when the project is trusted, from `<cwd>/.pi/browser-pilot.json`. It spawns a visible Chrome process with `--remote-debugging-port=0`, keeps a profile at `~/.pi/agent/browser-pilot/profiles/`, and exposes navigation, snapshots, interaction, screenshots, console and network capture, and CAPTCHA handoff. The default `shared` profile keeps cookies and logins warm but is single-instance; use `profile:"session"` or a named profile for parallel sessions. `browser-pilot` never downloads a browser. See [extensions/browser-pilot/README.md](extensions/browser-pilot/README.md) for every key and action.
+`browser-pilot` reads `browser-pilot.json` from the agent directory (`~/.pi/agent/browser-pilot.json`) and, when the project is trusted, from `<cwd>/.pi/browser-pilot.json`. It spawns a visible Chrome process with `--remote-debugging-port=0`, keeps a profile at `~/.pi/agent/browser-pilot/profiles/`, and exposes navigation, snapshots, interaction, uploads and downloads, PDF/HAR/trace export, cookies, storage, emulation, request interception, assertions, batches, console and network capture, and CAPTCHA handoff. It can also attach to an existing DevTools endpoint. The default `shared` profile keeps cookies and logins warm but is single-instance; use `profile:"session"` or a named profile for parallel sessions. `browser-pilot` never downloads a browser. See [extensions/browser-pilot/README.md](extensions/browser-pilot/README.md) for every key and action.
 
 ## Usage logging
 
@@ -40,7 +40,7 @@ All tools can append one JSON object per call to a per-tool JSONL file, so call 
 
 The agent directory is `~/.pi/agent` unless `PI_CODING_AGENT_DIR` overrides it. When enabled, `web_fetch` appends to `<logging.dir>/web_fetch.jsonl` and `web_search` to `<logging.dir>/web_search.jsonl`. Files are created with user-only permissions and are append-only; delete a file to reset the history.
 
-`browser-pilot` uses the same `logging` section in `browser-pilot.json`, with its own default directory (`<agentDir>/browser-pilot/logs`) and file (`browser-pilot.jsonl`). It adds `logging.outputs` (`none`, `summary`, `snippet`, or `full`; default `summary`), `logging.maxOutputChars` (default `2000`), and `logging.includeSensitiveArgs` (default `false`). Typed text, `eval` source, and page content are reduced to length and hash unless sensitive arguments are explicitly enabled; screenshots record the path and metadata, not the image.
+`browser-pilot` uses the same `logging` section in `browser-pilot.json`, with its own default directory (`<agentDir>/browser-pilot/logs`) and file (`browser-pilot.jsonl`). It adds `logging.outputs` (`none`, `summary`, `snippet`, or `full`; default `summary`), `logging.maxOutputChars` (default `2000`), and `logging.includeSensitiveArgs` (default `false`). Typed text, `eval` source, cookie and storage values, route bodies, and page content are reduced to length and hash unless sensitive arguments are explicitly enabled; screenshots and exports record the path and metadata, not the file contents.
 
 Every record shares an envelope: `schema`, `timestamp`, `tool`, `toolVersion`, `piVersion`, `sessionId`, `sessionFile`, `sessionName`, `toolCallId`, `cwd`, `mode`, `durationMs`, `outcome`, and `error`.
 
@@ -48,7 +48,7 @@ A `web_fetch` record adds `requestedUrl`, `finalUrl`, `host`, `contentType`, `st
 
 A `web_search` record adds `provider`, `enginesRequested`, `enginesUsed`, `aggregate`, `cacheHit`, `resultCount`, `relaxedConstraints`, and `perEngine`. Each `perEngine` entry has a `status` (`ok`, `empty`, `error`, `timeout`, `cooldown`, `skipped`, or `cached`), `returned` (the raw count before deduplication), `contributed` (the count of unique results after deduplication), and `durationMs`.
 
-A `browser-pilot` record adds `action`, `profile`, `pid`, `port`, `chromeVersion`, `headless`, `tabCount`, `tab`, `url`, `title`, `status`, `challenge`, `truncated`, `savedPath`, `params`, and `output`. Safe parameters are recorded; typed text and `eval` source are represented by length and SHA-256 hash unless `logging.includeSensitiveArgs` is enabled.
+A `browser-pilot` record adds `action`, `profile`, `pid`, `port`, `chromeVersion`, `headless`, `tabCount`, `tab`, `url`, `title`, `status`, `challenge`, `truncated`, `savedPath`, `params`, and `output`. Safe parameters are recorded; typed text, `eval` source, cookie and storage values, and route bodies are represented by length and SHA-256 hash unless `logging.includeSensitiveArgs` is enabled.
 
 Example queries with `jq`:
 
