@@ -26,14 +26,7 @@ export function renderPilotCall(args: BrowserPilotParams, theme: Theme): Compone
   let text = theme.fg("toolTitle", theme.bold("browser-pilot "));
   text += theme.fg("accent", action);
   const detail =
-    args.url ??
-    args.ref ??
-    args.selector ??
-    args.topic ??
-    args.op ??
-    args.key ??
-    args.path ??
-    args.expression;
+    args.url ?? args.ref ?? args.selector ?? args.topic ?? args.op ?? args.key ?? args.path;
   if (detail !== undefined) text += theme.fg("dim", ` · ${String(detail).slice(0, 120)}`);
   if (args.tab !== undefined) text += theme.fg("dim", ` · tab ${args.tab}`);
   return new Text(text, 0, 0);

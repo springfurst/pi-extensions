@@ -125,6 +125,9 @@ function collectSnapshot(options: SnapshotOptions): SnapshotResult {
       const labels = labelText(el);
       if (labels) return clean(labels);
       if (el.placeholder) return clean(el.placeholder);
+      if (el.type === "button" || el.type === "submit" || el.type === "reset") {
+        if (el.value) return clean(el.value);
+      }
     }
     if (el instanceof HTMLTextAreaElement) {
       const labels = labelText(el);

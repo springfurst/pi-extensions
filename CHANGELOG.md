@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the repository's tag-based release policy.
 
+## [Unreleased]
+
+### Added
+
+- `browser-pilot`: pilot a visible Chrome window over the DevTools protocol. The tool spawns Chrome with `--remote-debugging-port=0`, reads the actual port from `DevToolsActivePort`, keeps a per-session tab record, and reconnects or relaunches after a closed window or crash. Actions cover navigation, tabs, accessibility snapshots with stable refs, markdown/text/HTML reads, JavaScript evaluation, clicks, typing, key presses, selects, scrolling, hovering, waits, screenshots, console and network capture, and dialogs. A shared profile keeps cookies warm by default; `session` and named profiles support parallel work. CAPTCHAs are detected and handed to a human with `wait {for:"human"}`. Opt-in JSONL logging records safe parameters and output summaries without typed text or eval source.
+
+[Unreleased]: https://github.com/springfurst/pi-extensions/compare/v0.1.1...HEAD
+
 ## [0.1.1] - 2026-10-11
 
 ### Changed

@@ -89,7 +89,7 @@ export const ACTIONS: Record<ActionName, ActionSpec> = {
         name: "topic",
         type: "string",
         description:
-          "A group name (lifecycle, tabs, navigation, inspect, interact, wait, state) or an action name.",
+          "An action name, or a group name (lifecycle, navigation, inspect, interact, state).",
       },
     ],
     examples: ['{action:"help"}', '{action:"help", topic:"click"}'],
@@ -717,13 +717,13 @@ export function validateAction(action: ActionName, params: Record<string, unknow
 /** Render help for the catalog, a group, or one action. */
 export function renderHelp(topic?: string): string {
   if (!topic || topic === "all") return renderCatalog();
-  const group = topic.toLowerCase() as ActionGroup;
-  if (group in GROUP_LABELS) {
-    return renderGroup(group);
-  }
   const action = topic.toLowerCase() as ActionName;
   if (action in ACTIONS) {
     return formatUsage(action);
+  }
+  const group = topic.toLowerCase() as ActionGroup;
+  if (group in GROUP_LABELS) {
+    return renderGroup(group);
   }
   throw new BrowserPilotError(
     `Unknown help topic "${topic}".`,
@@ -754,8 +754,8 @@ function renderCatalog(): string {
     '  Handle a challenge: wait {for:"human"}',
     '  Clean up:           tabs {op:"list"} → tabs {op:"close", tab:N}',
     "",
-    'Call {action:"help", topic:"<group>"} for a group,',
-    'or {action:"help", topic:"<action>"} for one action.',
+    'Call {action:"help", topic:"<action>"} for one action, or',
+    'topic:"<group>" for lifecycle, navigation, inspect, interact, or state.',
     "",
     "Hints and suggested next steps in results are optional suggestions.",
   ];

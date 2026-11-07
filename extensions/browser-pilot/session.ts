@@ -66,6 +66,7 @@ export class BrowserPilotSession {
   private pendingDialogHandle?: Dialog;
   private requestEntries = new WeakMap<HTTPRequest, NetworkEntry>();
   private networkSequence = 0;
+  private idleTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
 
   constructor(options: {
@@ -200,7 +201,12 @@ export class BrowserPilotSession {
   }
 
   /** Attach listeners and configuration to a Puppeteer page. */
-  async attachPage(page: Page, owned: boolean, handle?: number): Promise<ManagedTab> {
+  async attachPage(
+    page: Page,
+    owned: boolean,
+    handle?: number,
+    configure = true,
+  ): Promise<ManagedTab> {
     const targetId = targetIdOf(page);
     for (const existing of this.tabs.values()) {
       if (existing.targetId === targetId) {
@@ -221,7 +227,7 @@ export class BrowserPilotSession {
     };
     this.tabs.set(assigned, tab);
     this.installListeners(tab);
-    await this.configurePage(page).catch(() => undefined);
+    if (configure) await this.configurePage(page).catch(() => undefined);
     return tab;
   }
 
@@ -409,6 +415,7 @@ export class BrowserPilotSession {
         await this.newTab(undefined, signal);
       }
     }
+    await this.closeStartupPages();
     this.refs.clear();
     this.snapshotCount++;
     this.persist();
@@ -462,14 +469,41 @@ export class BrowserPilotSession {
     }
   }
 
+  /** Close Chrome's initial new-tab page after the agent's first tab exists. */
+  private async closeStartupPages(): Promise<void> {
+    if (!this.browser?.connected) return;
+    const pages = await this.browser.pages();
+    for (const page of pages) {
+      const url = page.url();
+      if (url.startsWith("chrome://new-tab-page") || url.startsWith("chrome://newtab")) {
+        await page.close().catch(() => undefined);
+      }
+    }
+  }
+
+  /** Pick up tabs the user opened manually, without reconfiguring them. */
+  private async syncTabs(): Promise<void> {
+    if (!this.browser?.connected) return;
+    const pages = await this.browser.pages();
+    for (const page of pages) {
+      const url = page.url();
+      if (url.startsWith("chrome://") || url.startsWith("devtools://")) continue;
+      const targetId = targetIdOf(page);
+      if ([...this.tabs.values()].some((tab) => tab.targetId === targetId)) continue;
+      await this.attachPage(page, false, undefined, false);
+    }
+  }
+
   /** List tabs with their current titles and ownership. */
   async listTabs(): Promise<TabInfo[]> {
+    await this.syncTabs();
     const infos = await Promise.all(
       [...this.tabs.values()].map(async (tab) => ({
         handle: tab.handle,
         targetId: tab.targetId,
         url: tab.page.isClosed() ? "" : tab.page.url(),
-        title: tab.page.isClosed() ? "" : await tab.page.title().catch(() => ""),
+        title:
+          tab.page.isClosed() || this.pendingDialog ? "" : await tab.page.title().catch(() => ""),
         current: tab.handle === this.current,
         owned: tab.owned,
         lastUsed: tab.lastUsed,
@@ -595,12 +629,25 @@ export class BrowserPilotSession {
     };
   }
 
+  /** Reset the idle-close timer after a successful or failed action. */
+  touch(): void {
+    if (this.disposed || this.config.idleCloseSeconds <= 0) return;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => {
+      void this.dispose();
+    }, this.config.idleCloseSeconds * 1000);
+    this.idleTimer.unref?.();
+  }
+
   /** Close the browser and forget this session's state. */
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
     const instance = this.instance;
     const profile = this.profile;
+    const browser = this.browser;
     this.browser = undefined;
     this.instance = undefined;
     this.tabs.clear();
@@ -612,6 +659,7 @@ export class BrowserPilotSession {
     }
     if (instance) {
       await closeChrome({
+        browser,
         pid: instance.pid,
         recordPath: instanceRecordPath(this.agentDir, profile?.key ?? "shared"),
         userDataDir: instance.userDataDir,

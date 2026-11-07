@@ -130,6 +130,7 @@ export async function executeBrowserPilot(
       isError: true,
     };
   } finally {
+    session?.touch();
     if (logger) {
       try {
         logger.log(
