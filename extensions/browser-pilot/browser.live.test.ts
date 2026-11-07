@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startServer, type TestServer } from "../web_fetch/__fixtures__/test-server";
-import { disposeAllSessions } from "./session";
+import { disposeAllSessions, disposeAllSessionsSync } from "./session";
 import { executeBrowserPilot, type BrowserPilotToolResult } from "./tool";
 import type { BrowserPilotContext, BrowserPilotParams } from "./types";
 
@@ -280,6 +280,21 @@ describe("browser-pilot profiles and tabs live", () => {
     const retry = await executeBrowserPilot({ action: "open" }, ctx("profile-b"));
     expect(retry.isError).toBeUndefined();
     await executeBrowserPilot({ action: "close", target: "browser" }, ctx("profile-b"));
+  });
+
+  it("recovers from a stale instance record after a crash", async () => {
+    const id = "stale";
+    const first = await executeBrowserPilot({ action: "open", url: `${server.origin}/` }, ctx(id));
+    expect(first.isError).toBeUndefined();
+    const status = await executeBrowserPilot({ action: "status" }, ctx(id));
+    expect(status.details.pid).toBeTypeOf("number");
+
+    // Kill the process without removing the instance record, as a crash would.
+    disposeAllSessionsSync(true);
+
+    const second = await executeBrowserPilot({ action: "open" }, ctx(id));
+    expect(second.isError).toBeUndefined();
+    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(id));
   });
 
   it("nudges when the tab limit is reached", async () => {
