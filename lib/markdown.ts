@@ -11,9 +11,9 @@ interface TurndownListParent {
 }
 
 /**
- * Build a Turndown instance configured for GFM with the fixes this port relies
- * on: `~~strikethrough~~`, unescaped heading periods, and single-space list
- * markers.
+ * Build a Turndown instance configured for GFM with the fixes this package
+ * relies on: `~~strikethrough~~`, unescaped heading periods, and single-space
+ * list markers.
  */
 export function createTurndown(): TurndownService {
   const turndown = new TurndownService({

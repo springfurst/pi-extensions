@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  isLowQualityOutput,
-  looksLikeHtml,
-  readabilityToMarkdown,
-  stripDataUriImages,
-} from "./extract";
+import { readabilityToMarkdown, stripDataUriImages } from "../../lib/readability";
+import { isLowQualityOutput, looksLikeHtml } from "./extract";
 
 const ARTICLE = `<!doctype html><html><head><title>Test Article</title></head><body>
 <nav><a href="/">Home</a><a href="/about">About</a></nav>

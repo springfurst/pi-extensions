@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
-import { Readability } from "@mozilla/readability";
 import { withHardTimeout } from "../../lib/http";
-import { parseDocument } from "../../lib/dom";
-import { htmlToBasicMarkdown } from "./markdown";
+import { readabilityToMarkdown, stripDataUriImages } from "../../lib/readability";
 import type { ExecFn, FetchContext } from "./types";
 
 /** Cap on a single remote reader call, so one stall cannot starve local backends. */
@@ -55,14 +53,6 @@ export async function renderHtmlToText(
 
   if (lowQuality) return { content: lowQuality.content, ok: true, method: lowQuality.method };
   return { content: "", ok: false, method: "none" };
-}
-
-/** In-process article extraction with Readability, then Turndown. */
-export function readabilityToMarkdown(html: string): string | null {
-  const document = parseDocument(html);
-  const article = new Readability(document as unknown as Document).parse();
-  if (!article?.content) return null;
-  return htmlToBasicMarkdown(article.content);
 }
 
 async function runTrafilatura(url: string, ctx: FetchContext): Promise<string | null> {
@@ -163,19 +153,4 @@ export function isLowQualityOutput(content: string): boolean {
   const lines = content.split("\n").filter((line) => line.trim());
   const shortLines = lines.filter((line) => line.trim().length < 40);
   return lines.length > 10 && shortLines.length / lines.length > 0.7;
-}
-
-/**
- * Markdown image whose destination is an inline `data:` URI. The label allows
- * backslash escapes; the scheme is matched case-insensitively, the destination
- * may be bare or `<…>`-wrapped, and an optional title is consumed.
- */
-const DATA_URI_IMAGE_RE =
-  /!\[((?:\\.|[^\\\]])*)\]\(\s*(?:<data:[^>]*>|data:[^)\s]*)(?:\s+(?:"(?:\\.|[^\\"])*"|'(?:\\.|[^\\'])*'|\((?:\\.|[^\\)])*\)))?\s*\)/gi;
-
-/** Drop inline `data:` image payloads, keeping any alt text. */
-export function stripDataUriImages(markdown: string): string {
-  return markdown.replace(DATA_URI_IMAGE_RE, (_match, alt: string) =>
-    alt.trim() ? `![${alt}]` : "",
-  );
 }
