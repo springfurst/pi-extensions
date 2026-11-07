@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { sanitizeFile } from "./session-helpers";
 import type { SessionRecord } from "./types";
 
@@ -24,20 +24,6 @@ export function readSessionRecord(path: string): SessionRecord | undefined {
     return parsed as SessionRecord;
   } catch {
     return undefined;
-  }
-}
-
-export function writeSessionRecord(path: string, record: SessionRecord): void {
-  try {
-    mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    writeFileSync(
-      path,
-      `${JSON.stringify(record, null, 2)}
-`,
-      { mode: 0o600 },
-    );
-  } catch {
-    // Session state is an optimization; never fail a tool call over it.
   }
 }
 

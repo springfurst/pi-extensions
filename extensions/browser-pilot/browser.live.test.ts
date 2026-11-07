@@ -75,6 +75,15 @@ const ROUTE = `<!doctype html><html><head><title>Route Test</title></head><body>
 </script>
 </body></html>`;
 
+const HIDDEN = `<!doctype html><html><head><title>Hidden Test</title></head><body>
+<div id="hidden" style="display:none">Hidden text</div>
+<button id="show" onclick="document.getElementById('hidden').style.display='block'">Show</button>
+</body></html>`;
+
+const POPUP = `<!doctype html><html><head><title>Popup Test</title></head><body>
+<button id="popup" onclick="window.open('/result','_blank','noopener')">Open</button>
+</body></html>`;
+
 describe("browser-pilot live", () => {
   let server: TestServer;
   let agentDir: string;
@@ -97,6 +106,8 @@ describe("browser-pilot live", () => {
       else if (path === "/download-page") res.end(DOWNLOAD);
       else if (path === "/emulate") res.end(EMULATE);
       else if (path === "/route-page") res.end(ROUTE);
+      else if (path === "/hidden") res.end(HIDDEN);
+      else if (path === "/popup-page") res.end(POPUP);
       else if (path === "/download") {
         res.setHeader("content-type", "text/plain; charset=utf-8");
         res.setHeader("content-disposition", 'attachment; filename="sample.txt"');
@@ -115,6 +126,7 @@ describe("browser-pilot live", () => {
         closeOnExit: true,
         allowPrivateHosts: true,
         maxTabs: 3,
+        tabOverflow: "reuse-blank",
         screenshotsDir: join(agentDir, "browser-pilot", "screenshots"),
       }),
     );
@@ -262,6 +274,46 @@ describe("browser-pilot live", () => {
     const read = await run({ action: "read", format: "text" });
     expect(text(read)).not.toContain("Checking your browser");
     await run({ action: "close", target: "browser" });
+  });
+
+  it("handles hidden assertions, blank-tab reuse, and noopener popups", async () => {
+    await run({ action: "open", url: `${server.origin}/hidden` });
+    const hidden = await run({
+      action: "expect",
+      check: "hidden",
+      selector: "#hidden",
+      timeout_ms: 2_000,
+    });
+    expect(hidden.isError, text(hidden)).toBeUndefined();
+    const absent = await run({
+      action: "expect",
+      check: "hidden",
+      selector: "#missing",
+      timeout_ms: 2_000,
+    });
+    expect(absent.isError, text(absent)).toBeUndefined();
+    const visible = await run({
+      action: "expect",
+      check: "visible",
+      selector: "#show",
+      timeout_ms: 2_000,
+    });
+    expect(visible.isError, text(visible)).toBeUndefined();
+
+    await run({ action: "tabs", op: "new" });
+    await run({ action: "tabs", op: "new", url: `${server.origin}/result` });
+    const reused = await run({ action: "tabs", op: "new", url: `${server.origin}/article` });
+    expect(reused.isError, text(reused)).toBeUndefined();
+    expect(text(reused)).toContain("Article");
+    await run({ action: "tabs", op: "close", tab: 3 });
+
+    await run({ action: "navigate", url: `${server.origin}/popup-page` });
+    const snapshot = text(await run({ action: "snapshot" }));
+    const popupRef = refFor(snapshot, /\[(e\d+)\] button "Open"/);
+    await run({ action: "click", ref: popupRef });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const tabs = text(await run({ action: "tabs", op: "list" }));
+    expect(tabs).toContain("/result");
   });
 
   it("supports shadow and iframe refs, upload, download, cookies, storage, emulation, routing, expectations, batches, and exports", async () => {

@@ -90,6 +90,8 @@ export interface NetworkEntry {
   durationMs?: number;
   failed?: string;
   startedAt: number;
+  /** Tab handle that captured the request. */
+  tab?: number;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
   postData?: string;
@@ -122,20 +124,6 @@ export interface RouteRule {
   contentType?: string;
   headers?: Record<string, string>;
   delayMs?: number;
-}
-
-/** A cookie exposed to the agent. */
-export interface CookieInfo {
-  name: string;
-  value: string;
-  domain: string;
-  path: string;
-  expires: number;
-  size: number;
-  httpOnly: boolean;
-  secure: boolean;
-  session: boolean;
-  sameSite?: string;
 }
 
 /** A viewport and media emulation override. */
@@ -222,7 +210,6 @@ export interface ManagedTab {
   page: Page;
   owned: boolean;
   lastUsed: number;
-  opener?: number;
   console: ConsoleEntry[];
   network: NetworkEntry[];
 }

@@ -56,6 +56,33 @@ describe("loadBrowserPilotConfig", () => {
     expect(config.maxTabs).toBe(DEFAULT_BROWSER_PILOT_CONFIG.maxTabs);
   });
 
+  it("merges a partial project viewport with the global viewport", () => {
+    const agentDir = tempDir();
+    const cwd = tempDir();
+    writeFileSync(
+      join(agentDir, "browser-pilot.json"),
+      JSON.stringify({ viewport: { width: 1200, height: 800 } }),
+    );
+    mkdirSync(join(cwd, ".pi"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".pi", "browser-pilot.json"),
+      JSON.stringify({ viewport: { width: 900 } }),
+    );
+    const config = loadBrowserPilotConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.viewport).toEqual({ width: 900, height: 800 });
+  });
+
+  it("keeps valid args and ignores invalid entries", () => {
+    const agentDir = tempDir();
+    const cwd = tempDir();
+    writeFileSync(
+      join(agentDir, "browser-pilot.json"),
+      JSON.stringify({ args: ["--disable-gpu", "", 42, "--lang=en"] }),
+    );
+    const config = loadBrowserPilotConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.args).toEqual(["--disable-gpu", "--lang=en"]);
+  });
+
   it("ignores malformed values without rejecting the file", () => {
     const agentDir = tempDir();
     const cwd = tempDir();

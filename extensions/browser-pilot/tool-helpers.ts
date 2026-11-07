@@ -57,6 +57,12 @@ export function targetFor(
       'Run {action:"snapshot"} to get fresh refs.',
     );
   }
+  if (entry.tab !== tab.handle) {
+    throw new BrowserPilotError(
+      `Ref ${params.ref} belongs to tab ${entry.tab}, not tab ${tab.handle}.`,
+      `Run {action:"snapshot", tab:${tab.handle}} to get refs for this tab.`,
+    );
+  }
   if (entry.frame?.isDetached()) {
     throw new BrowserPilotError(
       `The frame for ref ${params.ref} is detached.`,

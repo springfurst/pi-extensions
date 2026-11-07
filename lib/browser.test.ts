@@ -145,6 +145,16 @@ describe("resolveBrowserExecutable", () => {
     ).toBeUndefined();
   });
 
+  it("prefers the configured path when asked", async () => {
+    expect(
+      await resolveBrowserExecutable({
+        env: { PUPPETEER_EXECUTABLE_PATH: "/env/chrome" },
+        executablePath: "/config/chrome",
+        preferConfigured: true,
+      }),
+    ).toBe("/config/chrome");
+  });
+
   it("memoizes detection for the same detect function", async () => {
     const detect = vi.fn(async () => "/detected/chrome");
     expect(await resolveBrowserExecutable({ env: {}, detect })).toBe("/detected/chrome");

@@ -1,7 +1,6 @@
-import { accessSync, constants as fsConstants, mkdirSync } from "node:fs";
+import { accessSync, constants as fsConstants, existsSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { resolveBrowserExecutable } from "../../lib/browser";
-import { expandTilde } from "../../lib/logging";
 import {
   instanceRecordPath,
   pidAlive,
@@ -14,6 +13,14 @@ import { previewProfile, type BrowserPilotSession } from "./session";
 import { resolvePath } from "./tool-helpers";
 import type { BrowserPilotConfig, BrowserPilotToolResult } from "./types";
 
+function isFile(path: string): boolean {
+  try {
+    return existsSync(path) && statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 interface DoctorCheck {
   label: string;
   status: "ok" | "warn" | "fail";
@@ -25,18 +32,23 @@ export async function doctorResult(
   config: BrowserPilotConfig,
 ): Promise<BrowserPilotToolResult> {
   const checks: DoctorCheck[] = [];
-  const executable = config.executablePath ? expandTilde(config.executablePath) : undefined;
-  const binary = await resolveBrowserExecutable({ executablePath: executable }).catch(
-    () => undefined,
-  );
+  const executable = config.executablePath
+    ? resolvePath(session.cwd, config.executablePath)
+    : undefined;
+  const binary = await resolveBrowserExecutable({
+    executablePath: executable,
+    preferConfigured: true,
+  }).catch(() => undefined);
+  const binaryExists = binary ? isFile(binary) : false;
   checks.push(
-    binary
+    binary && binaryExists
       ? { label: "browser binary", status: "ok", detail: binary }
       : {
           label: "browser binary",
           status: "fail",
-          detail:
-            "no Chrome, Chromium, or Edge found; set executablePath or BROWSER_PILOT_EXECUTABLE_PATH",
+          detail: binary
+            ? `${binary} does not exist or is not a file`
+            : "no Chrome, Chromium, or Edge found; set executablePath or BROWSER_PILOT_EXECUTABLE_PATH",
         },
   );
 
@@ -112,6 +124,14 @@ export async function doctorResult(
     ],
     ["downloads", session.downloadsDir()],
     ["exports", session.exportsDir()],
+    [
+      "logs",
+      resolvePath(
+        session.cwd,
+        config.logging.dir ?? join(session.agentDir, "browser-pilot", "logs"),
+      ),
+    ],
+    ...(profile.userDataDir ? [["profile", profile.userDataDir] as [string, string]] : []),
   ];
   for (const [label, dir] of dirs) {
     try {

@@ -115,6 +115,8 @@ async function networkGetResult(
     `${entry.id} · ${entry.status ?? "..."}${entry.statusText ? ` ${entry.statusText}` : ""} ${entry.method} ${entry.url}`,
     `Type: ${[entry.resourceType, entry.mimeType, entry.size !== undefined ? formatBytes(entry.size) : undefined, entry.durationMs !== undefined ? `${entry.durationMs}ms` : undefined].filter(Boolean).join(" · ") || "unknown"}`,
   ];
+  const timing = formatNetworkTiming(entry.timing);
+  if (timing) lines.push(timing);
   if (entry.failed) lines.push(`Failed: ${entry.failed}`);
   const requestHeaders = requestHeadersText(request);
   if (requestHeaders) lines.push("", "Request headers:", indentText(requestHeaders));
@@ -122,7 +124,7 @@ async function networkGetResult(
   if (postData) {
     lines.push("", "Request body:", indentText(postData.slice(0, NETWORK_BODY_PREVIEW_CHARS)));
     if (postData.length > NETWORK_BODY_PREVIEW_CHARS) {
-      lines.push("", truncationHint(postData.length, NETWORK_BODY_PREVIEW_CHARS));
+      lines.push("", truncationHint(postData.length, NETWORK_BODY_PREVIEW_CHARS, undefined, false));
     }
   }
   const responseHeaders = responseHeadersText(response);
@@ -146,6 +148,8 @@ async function networkGetResult(
           truncationHint(
             body.chars ?? body.text.length,
             params.max_chars ?? NETWORK_BODY_PREVIEW_CHARS,
+            undefined,
+            false,
           ),
         );
       }
@@ -166,6 +170,30 @@ async function networkGetResult(
     body: bodyText,
     truncated: bodyTruncated,
   });
+}
+
+export function formatNetworkTiming(timing: unknown): string | undefined {
+  if (!timing || typeof timing !== "object") return undefined;
+  const value = timing as Record<string, unknown>;
+  const number = (key: string): number | undefined => {
+    const candidate = value[key];
+    return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : undefined;
+  };
+  const sendStart = number("sendStart");
+  const sendEnd = number("sendEnd");
+  const receiveStart = number("receiveHeadersStart");
+  const receiveEnd = number("receiveHeadersEnd");
+  const parts: string[] = [];
+  if (sendStart !== undefined && sendEnd !== undefined) {
+    parts.push(`send ${Math.max(0, Math.round(sendEnd - sendStart))}ms`);
+  }
+  if (sendEnd !== undefined && receiveStart !== undefined) {
+    parts.push(`wait ${Math.max(0, Math.round(receiveStart - sendEnd))}ms`);
+  }
+  if (receiveStart !== undefined && receiveEnd !== undefined) {
+    parts.push(`receive ${Math.max(0, Math.round(receiveEnd - receiveStart))}ms`);
+  }
+  return parts.length > 0 ? `Timing: ${parts.join(" · ")}` : undefined;
 }
 
 function requestHeadersText(request: HTTPRequest | undefined): string | undefined {

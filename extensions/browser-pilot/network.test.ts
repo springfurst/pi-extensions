@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { formatBytes, stripPageHeader } from "./tool-helpers";
 import type { NetworkEntry } from "./types";
-import { compactNetworkUrl, matchesNetworkPattern, networkLine, networkSummary } from "./network";
+import {
+  compactNetworkUrl,
+  formatNetworkTiming,
+  matchesNetworkPattern,
+  networkLine,
+  networkSummary,
+} from "./network";
 
 function entry(overrides: Partial<NetworkEntry> = {}): NetworkEntry {
   return {
@@ -55,6 +61,19 @@ describe("network output", () => {
     expect(summary).toContain("1 ok");
     expect(summary).toContain("1 failed");
     expect(summary).toContain("1 pending");
+  });
+
+  it("summarizes resource timing phases", () => {
+    expect(
+      formatNetworkTiming({
+        sendStart: 10,
+        sendEnd: 20,
+        receiveHeadersStart: 30,
+        receiveHeadersEnd: 50,
+      }),
+    ).toBe("Timing: send 10ms · wait 10ms · receive 20ms");
+    expect(formatNetworkTiming(undefined)).toBeUndefined();
+    expect(formatNetworkTiming({})).toBeUndefined();
   });
 
   it("matches response patterns as globs or substrings", () => {

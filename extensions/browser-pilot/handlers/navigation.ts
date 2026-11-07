@@ -30,13 +30,14 @@ export async function navigateResult(
 
 export function navigateText(
   nav: Awaited<ReturnType<BrowserPilotSession["navigate"]>>,
+  action = "navigate",
 ): BrowserPilotToolResult {
   const lines = [pageHeader(nav.tab.handle, nav.url, nav.title), `Status: ${nav.status}`];
   if (nav.note) lines.push(nav.note);
   appendChallenge(lines, nav.challenge);
   lines.push("", suggestedNext('{action:"snapshot"} or {action:"read"}.'));
   return finalize(lines.join("\n"), {
-    action: "navigate",
+    action,
     tab: nav.tab.handle,
     url: nav.url,
     title: nav.title,

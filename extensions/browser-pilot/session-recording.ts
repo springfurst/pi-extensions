@@ -17,6 +17,12 @@ export class RecordingController {
 
   /** Start recording a HAR. Existing network buffers are cleared. */
   startHar(): void {
+    if (this.harRecording) {
+      throw new BrowserPilotError(
+        "A HAR recording is already active.",
+        'Stop it with {action:"har", op:"stop"}.',
+      );
+    }
     this.harRecording = true;
     for (const tab of this.session.tabs.values()) tab.network.length = 0;
     this.session.clearNetworkDetails();
@@ -40,6 +46,12 @@ export class RecordingController {
 
   /** Stop recording and return a HAR document built from captured entries. */
   async stopHar(): Promise<{ har: Record<string, unknown>; entries: number }> {
+    if (!this.harRecording) {
+      throw new BrowserPilotError(
+        "No HAR recording is active.",
+        'Start one with {action:"har", op:"start"}.',
+      );
+    }
     this.harRecording = false;
     const entries = [...this.session.tabs.values()].flatMap((tab) => tab.network);
     const har = buildHar(entries, { tabs: await this.session.listTabs() });
@@ -62,17 +74,25 @@ export class RecordingController {
     client.on("Tracing.dataCollected", (event: { value?: string[] }) => {
       if (Array.isArray(event.value)) this.traceChunks.push(...event.value);
     });
-    await client.send("Tracing.start", {
-      categories:
-        "devtools.timeline,disabled-by-default-devtools.timeline,loading,blink.user_timing,v8",
-      transferMode: "ReportEvents",
-    });
+    try {
+      await client.send("Tracing.start", {
+        categories:
+          "devtools.timeline,disabled-by-default-devtools.timeline,loading,blink.user_timing,v8",
+        transferMode: "ReportEvents",
+      });
+    } catch (error) {
+      this.traceClient = undefined;
+      this.traceTab = undefined;
+      this.traceChunks = [];
+      await client.detach().catch(() => undefined);
+      throw error;
+    }
     const infos = await this.session.listTabs();
     return infos.find((info) => info.handle === tab.handle)!;
   }
 
   /** Stop the active trace and return its JSON document. */
-  async stopTrace(): Promise<{ trace: unknown; events: number; tab?: number }> {
+  async stopTrace(): Promise<{ trace: unknown; events: number; tab?: number; timedOut: boolean }> {
     const client = this.traceClient;
     if (!client) {
       throw new BrowserPilotError(
@@ -81,11 +101,17 @@ export class RecordingController {
       );
     }
     this.traceClient = undefined;
+    let timedOut = false;
     const completed = new Promise<void>((resolvePromise) => {
       client.once("Tracing.tracingComplete", () => resolvePromise());
     });
     await client.send("Tracing.end");
-    await Promise.race([completed, sleep(10_000)]);
+    await Promise.race([
+      completed,
+      sleep(10_000).then(() => {
+        timedOut = true;
+      }),
+    ]);
     await client.detach().catch(() => undefined);
     const events = this.traceChunks.map((chunk) => {
       try {
@@ -97,6 +123,6 @@ export class RecordingController {
     this.traceChunks = [];
     const tab = this.traceTab;
     this.traceTab = undefined;
-    return { trace: { traceEvents: events }, events: events.length, tab };
+    return { trace: { traceEvents: events }, events: events.length, tab, timedOut };
   }
 }

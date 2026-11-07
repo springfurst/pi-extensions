@@ -34,6 +34,12 @@ export async function downloadResult(
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
+  if (session.instance?.external) {
+    throw new BrowserPilotError(
+      "Download capture is not available for attached browsers.",
+      "Use a browser launched by browser-pilot, or manage downloads in the external browser.",
+    );
+  }
   if (params.op === "clear") {
     const count = session.clearDownloads();
     return finalize(`Cleared ${count} download record(s).`, {

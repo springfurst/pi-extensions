@@ -134,7 +134,7 @@ export async function openResult(
       ctx.signal,
       params.tab,
     );
-    return navigateText(nav);
+    return navigateText(nav, "open");
   }
   const tab = await session.ensureTab(params.tab);
   tab.lastUsed = Date.now();

@@ -58,6 +58,8 @@ export function loadBrowserPilotConfig(
     ? readConfigFile(join(cwd, ".pi", CONFIG_FILE_NAME))
     : undefined;
   const raw = { ...global, ...project };
+  const viewport = mergeViewport(global?.viewport, project?.viewport);
+  if (viewport) raw.viewport = viewport;
 
   const config: BrowserPilotConfig = {
     ...DEFAULT_BROWSER_PILOT_CONFIG,
@@ -93,6 +95,16 @@ function readConfigFile(path: string): RawConfig | undefined {
   } catch {
     return undefined;
   }
+}
+
+function mergeViewport(
+  globalValue: unknown,
+  projectValue: unknown,
+): Record<string, unknown> | undefined {
+  const globalViewport = asRecord(globalValue);
+  const projectViewport = asRecord(projectValue);
+  if (!globalViewport && !projectViewport) return undefined;
+  return { ...(globalViewport ?? {}), ...(projectViewport ?? {}) };
 }
 
 function pickConfig(raw: RawConfig): Partial<BrowserPilotConfig> {
@@ -207,10 +219,10 @@ function asNonEmptyString(value: unknown): string | undefined {
 
 function asStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const items = value.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0,
-  );
-  return items.length === value.length ? items.map((item) => item.trim()) : undefined;
+  const items = value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+  return items.length > 0 ? items : undefined;
 }
 
 function asHeadless(value: unknown): boolean | "auto" | undefined {

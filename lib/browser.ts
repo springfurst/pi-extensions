@@ -249,6 +249,8 @@ export async function detectSystemBrowser(
 export interface ResolveBrowserOptions {
   executablePath?: string;
   env?: NodeJS.ProcessEnv;
+  /** Check the configured path before `PUPPETEER_EXECUTABLE_PATH`. */
+  preferConfigured?: boolean;
   detection?: BrowserDetectionOptions;
   detect?: (options?: BrowserDetectionOptions) => Promise<string | undefined>;
 }
@@ -261,16 +263,18 @@ let defaultDetection: Promise<string | undefined> | undefined;
 
 /**
  * Resolve the browser binary in precedence order: `PUPPETEER_EXECUTABLE_PATH`,
- * then `browser.executablePath`, then a detected system browser. Returns
+ * then `browser.executablePath`, then a detected system browser. With
+ * `preferConfigured`, the configured path wins over the environment. Returns
  * undefined when none resolves, leaving the feature absent.
  */
 export async function resolveBrowserExecutable(
   options: ResolveBrowserOptions = {},
 ): Promise<string | undefined> {
   const env = options.env ?? process.env;
+  const configured = options.executablePath?.trim();
+  if (options.preferConfigured && configured) return configured;
   const fromEnv = env.PUPPETEER_EXECUTABLE_PATH?.trim();
   if (fromEnv) return fromEnv;
-  const configured = options.executablePath?.trim();
   if (configured) return configured;
   if (options.detection) {
     return (options.detect ?? detectSystemBrowser)(options.detection);

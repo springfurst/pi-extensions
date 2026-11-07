@@ -48,7 +48,9 @@ export async function snapshotResult(
   session.refs.clear();
   for (const { ref, frame } of result.refs) {
     const selector = refSelector(ref);
-    if (selector) session.refs.set(ref, { selector, snapshot: session.snapshotCount, frame });
+    if (selector) {
+      session.refs.set(ref, { selector, snapshot: session.snapshotCount, frame, tab: tab.handle });
+    }
   }
   session.persist();
   const body =
@@ -499,12 +501,24 @@ export async function traceResult(
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(result.trace, null, 2)}\n`, "utf-8");
   const bytes = statSync(path).size;
-  return finalize([`Trace: ${path}`, `Events: ${result.events} · bytes: ${bytes}`].join("\n"), {
-    action: "trace",
-    op: "stop",
-    tab: result.tab,
-    events: result.events,
-    savedPath: path,
-    bytes,
-  });
+  return finalize(
+    [
+      `Trace: ${path}`,
+      `Events: ${result.events} · bytes: ${bytes}`,
+      result.timedOut
+        ? "[Trace may be incomplete: Chrome did not signal tracingComplete within 10s.]"
+        : undefined,
+    ]
+      .filter((line): line is string => !!line)
+      .join("\n"),
+    {
+      action: "trace",
+      op: "stop",
+      tab: result.tab,
+      events: result.events,
+      savedPath: path,
+      bytes,
+      timedOut: result.timedOut,
+    },
+  );
 }

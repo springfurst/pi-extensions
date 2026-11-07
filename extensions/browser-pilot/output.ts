@@ -69,9 +69,16 @@ export function formatTabs(tabs: TabInfo[], maxTabs: number): string {
 }
 
 /** A truncation footer that names the limit and the escape hatch. */
-export function truncationHint(chars: number, maxChars: number, savedPath?: string): string {
+export function truncationHint(
+  chars: number,
+  maxChars: number,
+  savedPath?: string,
+  allowSavePath = true,
+): string {
   const save = savedPath
     ? `; full output saved to ${savedPath}`
-    : "; pass save_path to write the full output to a file";
+    : allowSavePath
+      ? "; pass save_path to write the full output to a file"
+      : "; raise max_chars or use har for a full capture";
   return `[Output truncated at ${maxChars} of ${chars} characters${save}.]`;
 }

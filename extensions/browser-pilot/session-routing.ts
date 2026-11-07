@@ -16,7 +16,7 @@ export class RouteController {
 
   /** Add a request interception rule and enable interception on every tab. */
   async add(rule: Omit<RouteRule, "id">): Promise<RouteRule> {
-    const created: RouteRule = { ...rule, id: `r${++this.sequence}` };
+    const created: RouteRule = { ...rule, id: `rt${++this.sequence}` };
     this.rules.push(created);
     await this.setInterception(true);
     return created;

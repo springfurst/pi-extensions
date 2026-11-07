@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { Browser, Dialog, Frame, HTTPRequest, Page } from "puppeteer-core";
+import type { Browser, Dialog, Frame, HTTPRequest, Page, Target } from "puppeteer-core";
 import {
   closeChrome,
   connectChrome,
@@ -78,7 +78,7 @@ export class BrowserPilotSession {
   tabs = new Map<number, ManagedTab>();
   current?: number;
   nextHandle = 1;
-  refs = new Map<string, { selector: string; snapshot: number; frame?: Frame }>();
+  refs = new Map<string, { selector: string; snapshot: number; frame?: Frame; tab: number }>();
   snapshotCount = 0;
   readonly frames = new FrameSelection();
   dialogPolicy: "dismiss" | "accept" | "manual" = "dismiss";
@@ -154,8 +154,8 @@ export class BrowserPilotSession {
         this.browser = undefined;
         this.downloads.reset();
       });
+      this.watchTargets();
       await this.restoreExternal();
-      await this.configureDownloads();
       return;
     }
 
@@ -182,6 +182,7 @@ export class BrowserPilotSession {
       this.browser = undefined;
       this.downloads.reset();
     });
+    this.watchTargets();
     await this.restoreOrCreate(signal);
     await this.configureDownloads();
   }
@@ -231,8 +232,8 @@ export class BrowserPilotSession {
     this.browser.on("disconnected", () => {
       this.browser = undefined;
     });
+    this.watchTargets();
     await this.restoreExternal();
-    await this.configureDownloads();
     this.persist();
     return instance;
   }
@@ -245,7 +246,7 @@ export class BrowserPilotSession {
       if (page.url().startsWith("devtools://")) continue;
       const targetId = targetIdOf(page);
       if ([...this.tabs.values()].some((tab) => tab.targetId === targetId)) continue;
-      await this.attachPage(page, false, undefined, true);
+      await this.attachPage(page, false, undefined, false);
     }
     if (this.current === undefined) {
       this.current = [...this.tabs.values()].find((tab) => !tab.page.isClosed())?.handle;
@@ -326,7 +327,7 @@ export class BrowserPilotSession {
   }
 
   /** Stop the active trace and return its JSON document. */
-  stopTrace(): Promise<{ trace: unknown; events: number; tab?: number }> {
+  stopTrace(): Promise<{ trace: unknown; events: number; tab?: number; timedOut: boolean }> {
     return this.recording.stopTrace();
   }
 
@@ -427,15 +428,20 @@ export class BrowserPilotSession {
           'Run tabs {op:"list"} to see open tabs.',
         );
       }
+      found.lastUsed = Date.now();
       return found;
     }
     if (this.current !== undefined) {
       const current = this.tabs.get(this.current);
-      if (current && !current.page.isClosed()) return current;
+      if (current && !current.page.isClosed()) {
+        current.lastUsed = Date.now();
+        return current;
+      }
     }
     const first = [...this.tabs.values()].find((candidate) => !candidate.page.isClosed());
     if (first) {
       this.current = first.handle;
+      first.lastUsed = Date.now();
       return first;
     }
     return this.newTab();
@@ -460,6 +466,9 @@ export class BrowserPilotSession {
           this.current = blank.handle;
           blank.lastUsed = Date.now();
           await blank.page.bringToFront().catch(() => undefined);
+          if (url) {
+            await this.navigate(url, undefined, undefined, undefined, signal);
+          }
           this.persist();
           return blank;
         }
@@ -471,6 +480,7 @@ export class BrowserPilotSession {
 
     const page = await this.browser!.newPage();
     const tab = await this.attachPage(page, true);
+    tab.owned = true;
     this.current = tab.handle;
     tab.lastUsed = Date.now();
     await page.bringToFront().catch(() => undefined);
@@ -502,6 +512,7 @@ export class BrowserPilotSession {
     for (const existing of this.tabs.values()) {
       if (existing.targetId === targetId) {
         existing.page = page;
+        if (owned) existing.owned = true;
         return existing;
       }
     }
@@ -551,9 +562,10 @@ export class BrowserPilotSession {
         url: request.url(),
         resourceType: safeResourceType(request),
         startedAt: Date.now(),
+        tab: tab.handle,
       };
+      entry.requestHeaders = request.headers();
       if (this.recording.isRecordingHar) {
-        entry.requestHeaders = request.headers();
         entry.postData = request.postData() ?? undefined;
       }
       this.requestEntries.set(request, entry);
@@ -569,11 +581,12 @@ export class BrowserPilotSession {
       entry.statusText = response.statusText();
       entry.mimeType = headerValue(response, "content-type");
       entry.durationMs = Date.now() - entry.startedAt;
+      entry.responseHeaders = response.headers();
+      entry.timing = response.timing();
+      const length = Number.parseInt(headerValue(response, "content-length") ?? "", 10);
+      if (Number.isFinite(length) && length >= 0) entry.size = length;
       this.networkDetails.touch(entry.id, { response });
       if (this.recording.isRecordingHar) {
-        entry.responseHeaders = response.headers();
-        entry.timing = response.timing();
-        const length = Number.parseInt(headerValue(response, "content-length") ?? "", 10);
         if (!Number.isFinite(length) || length <= MAX_HAR_BODY_BYTES) {
           void response
             .text()
@@ -597,6 +610,7 @@ export class BrowserPilotSession {
     });
     page.on("close", () => {
       this.tabs.delete(tab.handle);
+      this.clearRefsForTab(tab.handle);
       if (this.current === tab.handle) {
         this.current = [...this.tabs.values()].find(
           (candidate) => !candidate.page.isClosed(),
@@ -605,15 +619,66 @@ export class BrowserPilotSession {
       this.persist();
     });
     page.on("popup", (popup) => {
-      if (!popup) return;
-      void this.attachPage(popup, true)
+      if (!popup || popup.isClosed()) return;
+      const targetId = targetIdOf(popup);
+      const existing = [...this.tabs.values()].find((candidate) => candidate.targetId === targetId);
+      if (existing) {
+        existing.owned = true;
+        this.current = existing.handle;
+        void popup.bringToFront().catch(() => undefined);
+        this.persist();
+        return;
+      }
+      const openTabs = [...this.tabs.values()].filter((candidate) => !candidate.page.isClosed());
+      if (openTabs.length >= this.config.maxTabs) {
+        void popup.close().catch(() => undefined);
+        return;
+      }
+      void this.attachPage(popup, true, undefined, !this.instance?.external)
         .then(async (opened) => {
+          opened.owned = true;
           this.current = opened.handle;
           await popup.bringToFront().catch(() => undefined);
           this.persist();
         })
         .catch(() => undefined);
     });
+  }
+
+  /** Watch for pages that do not emit a page-level popup event, such as noopener windows. */
+  private watchTargets(): void {
+    const browser = this.browser;
+    if (!browser) return;
+    browser.on("targetcreated", (target) => {
+      void this.handleTargetCreated(target);
+    });
+  }
+
+  private async handleTargetCreated(target: Target): Promise<void> {
+    if (this.disposed || target.type() !== "page") return;
+    const page = await target.page().catch(() => null);
+    if (!page || page.isClosed()) return;
+    const url = page.url();
+    if (url.startsWith("chrome://") || url.startsWith("devtools://")) return;
+    const targetId = targetIdOf(page);
+    if ([...this.tabs.values()].some((tab) => tab.targetId === targetId)) return;
+    const openTabs = [...this.tabs.values()].filter((tab) => !tab.page.isClosed());
+    if (openTabs.length >= this.config.maxTabs) {
+      await page.close().catch(() => undefined);
+      return;
+    }
+    const owned = target.opener() !== undefined;
+    const tab = await this.attachPage(page, owned, undefined, !this.instance?.external).catch(
+      () => undefined,
+    );
+    if (!tab) return;
+    if (owned) {
+      this.current = tab.handle;
+      await page.bringToFront().catch(() => undefined);
+    } else if (this.current === undefined) {
+      this.current = tab.handle;
+    }
+    this.persist();
   }
 
   private async handleDialog(tab: ManagedTab, dialog: Dialog): Promise<void> {
@@ -813,12 +878,19 @@ export class BrowserPilotSession {
     }
     if (!tab.page.isClosed()) await tab.page.close().catch(() => undefined);
     this.tabs.delete(handle);
+    this.clearRefsForTab(handle);
     if (this.current === handle) {
       this.current = [...this.tabs.values()].find(
         (candidate) => !candidate.page.isClosed(),
       )?.handle;
     }
     this.persist();
+  }
+
+  private clearRefsForTab(handle: number): void {
+    for (const [ref, entry] of this.refs) {
+      if (entry.tab === handle) this.refs.delete(ref);
+    }
   }
 
   /** Close agent-owned tabs other than the current one. */

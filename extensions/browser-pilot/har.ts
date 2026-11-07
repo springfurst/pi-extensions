@@ -37,6 +37,7 @@ interface HarEntry {
     headersSize: number;
     bodySize: number;
   };
+  pageref?: string;
   cache: Record<string, never>;
   timings: {
     send: number;
@@ -59,6 +60,7 @@ export function buildHar(
     title: tab.title || tab.url,
     pageTimings: {},
   }));
+  const pageIds = new Set(pages.map((page) => page.id));
   return {
     log: {
       version: "1.2",
@@ -67,12 +69,12 @@ export function buildHar(
         version: TOOL_VERSION,
       },
       pages,
-      entries: entries.map(toHarEntry),
+      entries: entries.map((entry) => toHarEntry(entry, pageIds)),
     },
   };
 }
 
-function toHarEntry(entry: NetworkEntry): HarEntry {
+function toHarEntry(entry: NetworkEntry, pageIds: Set<string>): HarEntry {
   const url = safeUrl(entry.url);
   const requestHeaders = headerPairs(entry.requestHeaders);
   const responseHeaders = headerPairs(entry.responseHeaders);
@@ -91,7 +93,13 @@ function toHarEntry(entry: NetworkEntry): HarEntry {
       headersSize: -1,
       bodySize: entry.postData?.length ?? 0,
       ...(entry.postData
-        ? { postData: { mimeType: "application/x-www-form-urlencoded", text: entry.postData } }
+        ? {
+            postData: {
+              mimeType:
+                entry.requestHeaders?.["content-type"] ?? "application/x-www-form-urlencoded",
+              text: entry.postData,
+            },
+          }
         : {}),
     },
     response: {
@@ -114,6 +122,9 @@ function toHarEntry(entry: NetworkEntry): HarEntry {
       headersSize: -1,
       bodySize: entry.size ?? body?.length ?? 0,
     },
+    ...(entry.tab !== undefined && pageIds.has(`tab-${entry.tab}`)
+      ? { pageref: `tab-${entry.tab}` }
+      : {}),
     cache: {},
     timings: {
       send: 0,

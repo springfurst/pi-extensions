@@ -71,5 +71,7 @@ describe("output helpers", () => {
   it("explains truncation and the escape hatch", () => {
     expect(truncationHint(100, 10, "/tmp/out.txt")).toContain("full output saved to /tmp/out.txt");
     expect(truncationHint(100, 10)).toContain("save_path");
+    expect(truncationHint(100, 10, undefined, false)).toContain("use har");
+    expect(truncationHint(100, 10, undefined, false)).not.toContain("save_path");
   });
 });
