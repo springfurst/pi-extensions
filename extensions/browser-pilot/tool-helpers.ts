@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-import type { Frame, Page } from "puppeteer-core";
+import type { ElementHandle, Frame, KeyInput, Page } from "puppeteer-core";
 import { expandTilde } from "../../lib/logging";
 import { formatChallenge, hint } from "./output";
 import type { BrowserPilotSession } from "./session";
@@ -140,6 +140,107 @@ export function readInputFile(cwd: string, path: string): string {
       "Check that the file exists and is readable.",
     );
   }
+}
+
+/** Modifier spellings accepted in a key combination, mapped to Puppeteer key names. */
+const KEY_MODIFIERS: Record<string, KeyInput> = {
+  alt: "Alt",
+  option: "Alt",
+  control: "Control",
+  ctrl: "Control",
+  meta: "Meta",
+  cmd: "Meta",
+  command: "Meta",
+  shift: "Shift",
+};
+
+export interface KeyCombo {
+  modifiers: KeyInput[];
+  key: KeyInput;
+}
+
+/** Split a combination such as `Control+Shift+A` into modifiers and a base key. */
+export function parseKeyCombo(combo: string): KeyCombo {
+  const parts = combo
+    .split("+")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  const key = parts.pop();
+  if (!key) {
+    throw new BrowserPilotError(
+      "press requires a key.",
+      'Example: {action:"press", key:"Enter"} or {action:"press", key:"Control+A"}',
+    );
+  }
+  const modifiers: KeyInput[] = [];
+  for (const part of parts) {
+    const modifier = KEY_MODIFIERS[part.toLowerCase()];
+    if (!modifier) {
+      throw new BrowserPilotError(
+        `Unknown modifier "${part}" in "${combo}".`,
+        'Use Control, Shift, Alt, or Meta, such as "Control+A".',
+      );
+    }
+    if (!modifiers.includes(modifier)) modifiers.push(modifier);
+  }
+  return { modifiers, key: key as KeyInput };
+}
+
+/** Press a key or key combination such as `Control+A`. */
+export async function pressKeyCombo(page: Page, combo: string): Promise<void> {
+  const { modifiers, key } = parseKeyCombo(combo);
+  for (const modifier of modifiers) await page.keyboard.down(modifier);
+  try {
+    await page.keyboard.press(key);
+  } catch {
+    throw new BrowserPilotError(
+      `Unknown key "${key}" in "${combo}".`,
+      'Use a key name such as "Enter", "Escape", "Tab", "ArrowDown", or a single character.',
+    );
+  } finally {
+    for (const modifier of [...modifiers].reverse()) await page.keyboard.up(modifier);
+  }
+}
+
+/** One option of a select element, as read from the page. */
+export interface SelectOptionInfo {
+  value: string;
+  label: string;
+  text: string;
+}
+
+/** Map requested option values or labels onto option values, reporting unmatched requests. */
+export function resolveSelectValues(
+  options: SelectOptionInfo[],
+  requested: string[],
+): { values: string[]; missing: string[] } {
+  const values: string[] = [];
+  const missing: string[] = [];
+  for (const request of requested) {
+    const match =
+      options.find((option) => option.value === request) ??
+      options.find((option) => option.label === request) ??
+      options.find((option) => option.text.trim() === request.trim());
+    if (!match) {
+      missing.push(request);
+      continue;
+    }
+    if (!values.includes(match.value)) values.push(match.value);
+  }
+  return { values, missing };
+}
+
+/** Read the options of a select element. */
+export async function selectOptionInfo(
+  handle: ElementHandle<HTMLSelectElement>,
+): Promise<SelectOptionInfo[]> {
+  return handle.evaluate((element) =>
+    Array.from((element as HTMLSelectElement).options).map((option) => ({
+      value: option.value,
+      label: option.label,
+      text: option.textContent ?? "",
+    })),
+  );
 }
 
 export function appendChallenge(lines: string[], challenge: ChallengeInfo | undefined): void {

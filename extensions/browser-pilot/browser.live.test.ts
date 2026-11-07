@@ -196,6 +196,20 @@ describe("browser-pilot live", () => {
     });
     expect(text(nameValue)).toContain("Ada");
 
+    const selectAll = process.platform === "darwin" ? "Meta+A" : "Control+A";
+    const pressed = await run({ action: "press", ref: nameRef, key: selectAll });
+    expect(pressed.isError).toBeUndefined();
+    const selection = await run({
+      action: "eval",
+      expression:
+        "(() => { const el = document.getElementById('name'); return `${el.selectionStart}:${el.selectionEnd}`; })()",
+    });
+    expect(text(selection)).toContain("0:3");
+
+    const unknownKey = await run({ action: "press", key: "Hyper+A" });
+    expect(unknownKey.isError).toBe(true);
+    expect(text(unknownKey)).toContain("Unknown modifier");
+
     const selected = await run({ action: "select", ref: choiceRef, values: ["b"] });
     expect(selected.isError).toBeUndefined();
     const choiceValue = await run({
@@ -203,6 +217,19 @@ describe("browser-pilot live", () => {
       expression: "document.getElementById('choice').value",
     });
     expect(text(choiceValue)).toContain("b");
+
+    const selectedByLabel = await run({ action: "select", ref: choiceRef, values: ["Alpha"] });
+    expect(selectedByLabel.isError).toBeUndefined();
+    expect(text(selectedByLabel)).toContain("Selected: a");
+    const labelValue = await run({
+      action: "eval",
+      expression: "document.getElementById('choice').value",
+    });
+    expect(text(labelValue)).toContain("a");
+
+    const unknownOption = await run({ action: "select", ref: choiceRef, values: ["Delta"] });
+    expect(unknownOption.isError).toBe(true);
+    expect(text(unknownOption)).toContain("Available:");
 
     const article = await run({ action: "navigate", url: `${server.origin}/article` });
     expect(article.isError).toBeUndefined();

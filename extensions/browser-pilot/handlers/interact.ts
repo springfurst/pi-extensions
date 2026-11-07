@@ -6,8 +6,11 @@ import type { BrowserPilotSession } from "../session";
 import {
   appendChallenge,
   locatorFor,
+  pressKeyCombo,
   resolvePath,
+  resolveSelectValues,
   resolveTypedText,
+  selectOptionInfo,
   sleep,
   targetLabel,
 } from "../tool-helpers";
@@ -152,7 +155,7 @@ export async function pressResult(
       .setWaitForEnabled(true);
     await locator.click();
   }
-  await tab.page.keyboard.press(params.key! as KeyInput);
+  await pressKeyCombo(tab.page, params.key!);
   tab.lastUsed = Date.now();
   session.persist();
   return finalize(
@@ -174,23 +177,38 @@ export async function selectResult(
   const locator = locatorFor(session, tab, params, timeout)
     .setVisibility("visible")
     .setWaitForEnabled(true);
-  const handle = await locator.waitHandle();
-  const selected = await handle.select(...(params.values ?? []));
+  const handle = (await locator.waitHandle()) as ElementHandle<HTMLSelectElement>;
+  const options = await selectOptionInfo(handle);
+  const requested = params.values ?? [];
+  const { values, missing } = resolveSelectValues(options, requested);
+  if (values.length === 0) {
+    const available = options
+      .slice(0, 10)
+      .map((option) => `${option.label || option.value}=${JSON.stringify(option.value)}`)
+      .join(", ");
+    throw new BrowserPilotError(
+      `No option matched ${requested.map((value) => JSON.stringify(value)).join(", ")}.`,
+      `Pass an option value or label. Available: ${available || "(none)"}`,
+    );
+  }
+  const selected = await handle.select(...values);
   tab.lastUsed = Date.now();
   session.persist();
-  return finalize(
-    [
-      pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
-      `Selected: ${selected.join(", ") || "(none)"}`,
-    ].join("\n"),
-    {
-      action: "select",
-      tab: tab.handle,
-      url: tab.page.url(),
-      target: targetLabel(params),
-      selected,
-    },
-  );
+  const lines = [
+    pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+    `Selected: ${selected.join(", ") || "(none)"}`,
+  ];
+  if (missing.length > 0) {
+    lines.push(`Not found: ${missing.map((value) => JSON.stringify(value)).join(", ")}`);
+  }
+  return finalize(lines.join("\n"), {
+    action: "select",
+    tab: tab.handle,
+    url: tab.page.url(),
+    target: targetLabel(params),
+    selected,
+    missing,
+  });
 }
 
 export async function scrollResult(
