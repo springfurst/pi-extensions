@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { KeyInput } from "puppeteer-core";
+import type { ElementHandle, Frame, KeyInput, Page, PaperFormat } from "puppeteer-core";
 import {
   USAGE_SCHEMA_VERSION,
   createFileUsageLogger,
@@ -9,7 +9,7 @@ import {
   type UsageRecord,
 } from "../../lib/logging";
 import { PI_VERSION, TOOL_VERSION } from "../../lib/version";
-import { renderHelp, validateAction, type ActionName } from "./actions";
+import { ACTION_NAMES, renderHelp, validateAction, type ActionName } from "./actions";
 import { detectChallenge, waitForHuman } from "./challenge";
 import { loadBrowserPilotConfig } from "./config";
 import { readPageContent } from "./content";
@@ -58,6 +58,18 @@ const TINY_ACTIONS = new Set<ActionName>([
   "wait",
   "screenshot",
   "dialog",
+  "connect",
+  "upload",
+  "download",
+  "cookies",
+  "storage",
+  "emulate",
+  "pdf",
+  "har",
+  "trace",
+  "route",
+  "expect",
+  "steps",
 ]);
 
 const MAX_INPUT_FILE_BYTES = 1024 * 1024;
@@ -222,6 +234,30 @@ async function dispatch(
       return networkResult(params, session);
     case "dialog":
       return dialogResult(params, session);
+    case "connect":
+      return connectResult(params, session);
+    case "upload":
+      return uploadResult(params, session, config, ctx);
+    case "download":
+      return downloadResult(params, session, ctx);
+    case "cookies":
+      return cookiesResult(params, session);
+    case "storage":
+      return storageResult(params, session);
+    case "emulate":
+      return emulateResult(params, session);
+    case "pdf":
+      return pdfResult(params, session, config, ctx);
+    case "har":
+      return harResult(params, session, config, ctx);
+    case "trace":
+      return traceResult(params, session, config, ctx);
+    case "route":
+      return routeResult(params, session, config);
+    case "expect":
+      return expectResult(params, session, config, ctx);
+    case "steps":
+      return stepsResult(params, session, config, ctx);
     case "help":
     case "status":
       throw new BrowserPilotError(`Action ${params.action} is handled before dispatch.`);
@@ -282,6 +318,7 @@ async function statusResult(
     `Profile: ${profile.label} (${profile.userDataDir}) ${profile.persistent ? "[persistent]" : "[isolated]"}`,
     `Process: pid ${session.instance.pid}, port ${session.instance.port}`,
     `Mode: ${mode}`,
+    `External: ${session.instance.external ? "yes" : "no"}`,
     formatTabs(tabs, config.maxTabs),
   ];
   if (challenge) lines.push(`Challenge: ${formatChallenge(challenge)}`);
@@ -306,6 +343,7 @@ async function statusResult(
       port: session.instance.port,
       chromeVersion: session.instance.chromeVersion,
       headless: shouldRunHeadless(config),
+      external: session.instance.external ?? false,
       tabs,
       challenge,
       tab: current?.handle,
@@ -542,6 +580,10 @@ async function snapshotResult(
   });
   session.snapshotCount++;
   session.refs.clear();
+  for (const { ref, frame } of result.refs) {
+    const selector = refSelector(ref);
+    if (selector) session.refs.set(ref, { selector, snapshot: session.snapshotCount, frame });
+  }
   session.persist();
   const body = result.lines.length > 0 ? result.lines.join("\n") : "No matching elements found.";
   const lines = [
@@ -679,12 +721,9 @@ async function clickResult(
   config: BrowserPilotConfig,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const selector = resolveTargetSelector(params);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
   const humanize = params.humanize ?? config.humanize;
-  const locator = tab.page
-    .locator(selector)
-    .setTimeout(timeout)
+  const locator = locatorFor(session, tab, params, timeout)
     .setVisibility("visible")
     .setWaitForEnabled(true)
     .setEnsureElementIsInTheViewport(true)
@@ -743,13 +782,10 @@ async function typeResult(
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const selector = resolveTargetSelector(params);
   const text = resolveTypedText(params, ctx.cwd);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
   const humanize = params.humanize ?? config.humanize;
-  const locator = tab.page
-    .locator(selector)
-    .setTimeout(timeout)
+  const locator = locatorFor(session, tab, params, timeout)
     .setVisibility("visible")
     .setWaitForEnabled(true)
     .setEnsureElementIsInTheViewport(true);
@@ -807,10 +843,7 @@ async function pressResult(
   const tab = await session.ensureTab(params.tab);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
   if (params.ref || params.selector) {
-    const selector = resolveTargetSelector(params);
-    const locator = tab.page
-      .locator(selector)
-      .setTimeout(timeout)
+    const locator = locatorFor(session, tab, params, timeout)
       .setVisibility("visible")
       .setWaitForEnabled(true);
     await locator.click();
@@ -833,11 +866,8 @@ async function selectResult(
   config: BrowserPilotConfig,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const selector = resolveTargetSelector(params);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
-  const locator = tab.page
-    .locator(selector)
-    .setTimeout(timeout)
+  const locator = locatorFor(session, tab, params, timeout)
     .setVisibility("visible")
     .setWaitForEnabled(true);
   const handle = await locator.waitHandle();
@@ -865,8 +895,12 @@ async function scrollResult(
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
   if (params.ref || params.selector) {
-    const selector = resolveTargetSelector(params);
-    const handle = await tab.page.locator(selector).waitHandle();
+    const handle = await locatorFor(
+      session,
+      tab,
+      params,
+      session.config.actionTimeoutSeconds * 1000,
+    ).waitHandle();
     await handle.evaluate((element) => {
       element.scrollIntoView({ block: "center", inline: "center" });
     });
@@ -912,11 +946,8 @@ async function hoverResult(
   config: BrowserPilotConfig,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const selector = resolveTargetSelector(params);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
-  await tab.page
-    .locator(selector)
-    .setTimeout(timeout)
+  await locatorFor(session, tab, params, timeout)
     .setVisibility("visible")
     .setEnsureElementIsInTheViewport(true)
     .hover();
@@ -1226,6 +1257,797 @@ async function dialogResult(
   });
 }
 
+async function connectResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+): Promise<BrowserPilotToolResult> {
+  const instance = await session.connectExternal(params.endpoint!);
+  const infos = await session.listTabs();
+  const current = infos.find((info) => info.current);
+  const lines = [
+    `Attached to ${instance.wsEndpoint}`,
+    formatTabs(infos, session.config.maxTabs),
+    "",
+    hint("this browser is external; close disconnects without closing Chrome."),
+  ];
+  return finalize(lines.join("\n"), {
+    action: "connect",
+    tab: current?.handle,
+    url: current?.url,
+    title: current?.title,
+    tabs: infos,
+    endpoint: instance.wsEndpoint,
+    external: true,
+  });
+}
+
+async function uploadResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  config: BrowserPilotConfig,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
+  const files = (params.files ?? []).map((file) => resolvePath(ctx.cwd, file));
+  for (const file of files) {
+    if (!existsSync(file)) {
+      throw new BrowserPilotError(
+        `Upload file not found: ${file}`,
+        "Pass an absolute path or a path relative to the working directory.",
+      );
+    }
+  }
+  const locator = locatorFor(session, tab, params, timeout)
+    .setVisibility("visible")
+    .setWaitForEnabled(true);
+  const handle = (await locator.waitHandle()) as ElementHandle<HTMLInputElement>;
+  await handle.uploadFile(...files);
+  tab.lastUsed = Date.now();
+  session.persist();
+  return finalize(
+    [
+      pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+      `Uploaded ${files.length} file(s) to ${targetLabel(params)}:`,
+      ...files.map((file) => `  ${file}`),
+    ].join("\n"),
+    {
+      action: "upload",
+      tab: tab.handle,
+      url: tab.page.url(),
+      title: await tab.page.title().catch(() => ""),
+      target: targetLabel(params),
+      files,
+    },
+  );
+}
+
+async function downloadResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  if (params.op === "clear") {
+    const count = session.clearDownloads();
+    return finalize(`Cleared ${count} download record(s).`, {
+      action: "download",
+      op: "clear",
+      tab: tab.handle,
+      count,
+    });
+  }
+  if (params.op === "wait") {
+    const timeout = params.timeout_ms ?? session.config.actionTimeoutSeconds * 1000;
+    const download = await session.waitForDownload(timeout, params.filter, ctx.signal);
+    return finalize(
+      [
+        pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+        `Download ${download.state}: ${download.path}`,
+        `${download.suggestedFilename} · ${download.receivedBytes}/${download.totalBytes} bytes`,
+      ].join("\n"),
+      {
+        action: "download",
+        op: "wait",
+        tab: tab.handle,
+        url: tab.page.url(),
+        download,
+        savedPath: download.path,
+      },
+    );
+  }
+  const limit = params.limit ?? 100;
+  const downloads = session.listDownloads(params.filter).slice(-limit);
+  const body =
+    downloads.length > 0
+      ? downloads
+          .map(
+            (download) =>
+              `[${download.state}] ${download.suggestedFilename} · ${download.receivedBytes}/${download.totalBytes} bytes · ${download.path}`,
+          )
+          .join("\n")
+      : "No downloads recorded.";
+  return finalize(
+    [pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")), "", body].join(
+      "\n",
+    ),
+    {
+      action: "download",
+      op: "list",
+      tab: tab.handle,
+      url: tab.page.url(),
+      count: downloads.length,
+      downloads,
+    },
+  );
+}
+
+async function cookiesResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  const browser = session.browser!;
+  const op = String(params.op);
+  if (op === "list") {
+    const cookies = params.url ? await tab.page.cookies(params.url) : await browser.cookies();
+    const body =
+      cookies.length > 0
+        ? cookies
+            .map(
+              (cookie) =>
+                `${cookie.name}=${cookie.value} · domain=${cookie.domain} path=${cookie.path}` +
+                ` · expires=${cookie.expires} secure=${cookie.secure} httpOnly=${cookie.httpOnly}` +
+                (cookie.sameSite ? ` sameSite=${cookie.sameSite}` : ""),
+            )
+            .join("\n")
+        : "No cookies.";
+    return finalize(
+      [
+        pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+        "",
+        body,
+      ].join("\n"),
+      {
+        action: "cookies",
+        op,
+        tab: tab.handle,
+        url: tab.page.url(),
+        count: cookies.length,
+        cookies,
+      },
+    );
+  }
+  if (op === "set") {
+    const cookie = {
+      name: params.name!,
+      value: params.value!,
+      domain: params.domain,
+      path: params.cookie_path ?? "/",
+      expires: params.expires,
+      httpOnly: params.http_only,
+      secure: params.secure,
+      sameSite: params.same_site,
+      url: params.url,
+    };
+    if (params.url) await tab.page.setCookie(cookie);
+    else await browser.setCookie({ ...cookie, domain: params.domain! });
+    return finalize(`Set cookie ${params.name}.`, {
+      action: "cookies",
+      op,
+      tab: tab.handle,
+      url: tab.page.url(),
+      name: params.name,
+    });
+  }
+  if (op === "delete") {
+    const request = {
+      name: params.name!,
+      url: params.url,
+      domain: params.domain,
+      path: params.cookie_path,
+    };
+    await browser.deleteMatchingCookies(request);
+    return finalize(`Deleted cookie ${params.name}.`, {
+      action: "cookies",
+      op,
+      tab: tab.handle,
+      url: tab.page.url(),
+      name: params.name,
+    });
+  }
+  const cookies = await browser.cookies();
+  for (const cookie of cookies) {
+    await browser.deleteCookie(cookie);
+  }
+  return finalize(`Cleared ${cookies.length} cookie(s).`, {
+    action: "cookies",
+    op: "clear",
+    tab: tab.handle,
+    url: tab.page.url(),
+    count: cookies.length,
+  });
+}
+
+async function storageResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  const area = params.area === "session" ? "sessionStorage" : "localStorage";
+  const result = await tab.page.evaluate(
+    ({ areaName, op, key, value }) => {
+      const storage = window[areaName as "localStorage" | "sessionStorage"];
+      if (op === "keys") return Object.keys(storage);
+      if (op === "get") return key === undefined ? null : storage.getItem(key);
+      if (op === "set") {
+        storage.setItem(key ?? "", value ?? "");
+        return true;
+      }
+      if (op === "remove") {
+        storage.removeItem(key ?? "");
+        return true;
+      }
+      storage.clear();
+      return true;
+    },
+    { areaName: area, op: params.op, key: params.key, value: params.value },
+  );
+  const text =
+    params.op === "get"
+      ? result === null
+        ? `${params.key} is not set in ${area}.`
+        : String(result)
+      : params.op === "keys"
+        ? Array.isArray(result) && result.length > 0
+          ? result.join("\n")
+          : `No keys in ${area}.`
+        : `${params.op} ${area}${params.key ? ` key ${params.key}` : ""}.`;
+  return finalize(
+    [pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")), text].join(
+      "\n",
+    ),
+    {
+      action: "storage",
+      op: params.op,
+      tab: tab.handle,
+      url: tab.page.url(),
+      area,
+      key: params.key,
+      value: result,
+    },
+  );
+}
+
+async function emulateResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+): Promise<BrowserPilotToolResult> {
+  const state = params.reset ? {} : { ...session.emulation };
+  if (params.reset) {
+    state.network = null;
+    state.geolocation = null;
+    state.cpuThrottle = 1;
+    state.colorScheme = "no-preference";
+    state.reducedMotion = "no-preference";
+  }
+  if (params.width !== undefined || params.height !== undefined) {
+    const current = state.viewport ?? {
+      width: session.config.viewport.width,
+      height: session.config.viewport.height,
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+    };
+    state.viewport = {
+      ...current,
+      width: params.width ?? current.width,
+      height: params.height ?? current.height,
+      deviceScaleFactor: params.device_scale_factor ?? current.deviceScaleFactor,
+      isMobile: params.is_mobile ?? current.isMobile,
+      hasTouch: params.has_touch ?? current.hasTouch,
+    };
+  } else if (
+    params.device_scale_factor !== undefined ||
+    params.is_mobile !== undefined ||
+    params.has_touch !== undefined
+  ) {
+    const current = state.viewport ?? {
+      width: session.config.viewport.width,
+      height: session.config.viewport.height,
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+    };
+    state.viewport = {
+      ...current,
+      deviceScaleFactor: params.device_scale_factor ?? current.deviceScaleFactor,
+      isMobile: params.is_mobile ?? current.isMobile,
+      hasTouch: params.has_touch ?? current.hasTouch,
+    };
+  }
+  if (params.user_agent !== undefined) state.userAgent = params.user_agent;
+  if (params.locale !== undefined) state.locale = params.locale;
+  if (params.timezone !== undefined) state.timezone = params.timezone;
+  if (params.color_scheme !== undefined) state.colorScheme = params.color_scheme;
+  if (params.reduced_motion !== undefined) state.reducedMotion = params.reduced_motion;
+  if (params.cpu_throttle !== undefined) state.cpuThrottle = params.cpu_throttle;
+  if (params.network_profile) {
+    const profile = session.networkProfile(params.network_profile);
+    state.network = {
+      offline: params.network_profile === "offline",
+      latency: params.latency ?? profile.latency,
+      download: params.download_throughput ?? profile.download,
+      upload: params.upload_throughput ?? profile.upload,
+    };
+  } else if (
+    params.latency !== undefined ||
+    params.download_throughput !== undefined ||
+    params.upload_throughput !== undefined
+  ) {
+    const current = state.network ?? { offline: false, latency: 0, download: 0, upload: 0 };
+    state.network = {
+      offline: current.offline ?? false,
+      latency: params.latency ?? current.latency,
+      download: params.download_throughput ?? current.download,
+      upload: params.upload_throughput ?? current.upload,
+    };
+  }
+  if (params.latitude !== undefined || params.longitude !== undefined) {
+    state.geolocation = {
+      latitude: params.latitude ?? 0,
+      longitude: params.longitude ?? 0,
+      accuracy: params.accuracy,
+    };
+  }
+  const info = await session.setEmulation(params.tab, state);
+  return finalize(
+    [pageHeader(info.handle, info.url, info.title), `Emulation: ${describeEmulation(state)}`].join(
+      "\n",
+    ),
+    {
+      action: "emulate",
+      tab: info.handle,
+      url: info.url,
+      title: info.title,
+      emulation: state,
+    },
+  );
+}
+
+function describeEmulation(state: BrowserPilotSession["emulation"]): string {
+  const parts: string[] = [];
+  if (state.viewport) {
+    parts.push(
+      `viewport ${state.viewport.width}×${state.viewport.height}` +
+        (state.viewport.isMobile ? " mobile" : "") +
+        (state.viewport.hasTouch ? " touch" : ""),
+    );
+  }
+  if (state.userAgent) parts.push("user-agent");
+  if (state.locale) parts.push(`locale ${state.locale}`);
+  if (state.timezone) parts.push(`timezone ${state.timezone}`);
+  if (state.colorScheme) parts.push(`color-scheme ${state.colorScheme}`);
+  if (state.reducedMotion) parts.push(`reduced-motion ${state.reducedMotion}`);
+  if (state.network) {
+    parts.push(
+      state.network.offline
+        ? "offline"
+        : `network ${state.network.download}/${state.network.upload} B/s, ${state.network.latency}ms`,
+    );
+  }
+  if (state.cpuThrottle && state.cpuThrottle !== 1) parts.push(`cpu ×${state.cpuThrottle}`);
+  if (state.geolocation) parts.push("geolocation");
+  return parts.length > 0 ? parts.join(" · ") : "defaults";
+}
+
+async function pdfResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  _config: BrowserPilotConfig,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  const path =
+    params.path !== undefined
+      ? resolvePath(ctx.cwd, params.path)
+      : join(session.exportsDir(), `${timestamp()}-tab${tab.handle}.pdf`);
+  mkdirSync(dirname(path), { recursive: true });
+  const margin = params.margin;
+  const buffer = await tab.page.pdf({
+    path,
+    format: params.paper_format as PaperFormat | undefined,
+    landscape: params.landscape,
+    printBackground: params.print_background,
+    scale: params.scale,
+    pageRanges: params.page_ranges,
+    margin: margin ? { top: margin, right: margin, bottom: margin, left: margin } : undefined,
+  });
+  const bytes = statSync(path).size;
+  return finalize(
+    [
+      pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+      `PDF: ${path}`,
+      `Bytes: ${bytes} · generated: ${buffer.length}`,
+    ].join("\n"),
+    {
+      action: "pdf",
+      tab: tab.handle,
+      url: tab.page.url(),
+      title: await tab.page.title().catch(() => ""),
+      savedPath: path,
+      bytes,
+    },
+  );
+}
+
+async function harResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  _config: BrowserPilotConfig,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  if (params.op === "start") {
+    session.startHar();
+    return finalize(
+      [
+        pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+        "HAR recording started.",
+      ].join("\n"),
+      { action: "har", op: "start", tab: tab.handle, url: tab.page.url() },
+    );
+  }
+  if (params.op === "clear") {
+    const count = session.clearHar();
+    return finalize(`Cleared ${count} HAR network entries.`, {
+      action: "har",
+      op: "clear",
+      tab: tab.handle,
+      count,
+    });
+  }
+  const { har, entries } = await session.stopHar();
+  const path =
+    params.path !== undefined
+      ? resolvePath(ctx.cwd, params.path)
+      : join(session.exportsDir(), `${timestamp()}-tab${tab.handle}.har`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(har, null, 2)}\n`, "utf-8");
+  const bytes = statSync(path).size;
+  return finalize(
+    [
+      pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+      `HAR: ${path}`,
+      `Entries: ${entries} · bytes: ${bytes}`,
+    ].join("\n"),
+    {
+      action: "har",
+      op: "stop",
+      tab: tab.handle,
+      url: tab.page.url(),
+      entries,
+      savedPath: path,
+      bytes,
+    },
+  );
+}
+
+async function traceResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  _config: BrowserPilotConfig,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  if (params.op === "start") {
+    const info = await session.startTrace(params.tab);
+    return finalize(`Trace started on tab ${info.handle}.`, {
+      action: "trace",
+      op: "start",
+      tab: info.handle,
+      url: info.url,
+    });
+  }
+  const result = await session.stopTrace();
+  const path =
+    params.path !== undefined
+      ? resolvePath(ctx.cwd, params.path)
+      : join(session.exportsDir(), `${timestamp()}-trace.json`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(result.trace, null, 2)}\n`, "utf-8");
+  const bytes = statSync(path).size;
+  return finalize([`Trace: ${path}`, `Events: ${result.events} · bytes: ${bytes}`].join("\n"), {
+    action: "trace",
+    op: "stop",
+    tab: result.tab,
+    events: result.events,
+    savedPath: path,
+    bytes,
+  });
+}
+
+async function routeResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  _config: BrowserPilotConfig,
+): Promise<BrowserPilotToolResult> {
+  if (params.op === "list") {
+    const body =
+      session.routeRules.length > 0
+        ? session.routeRules
+            .map(
+              (rule) =>
+                `${rule.id} ${rule.action} ${rule.urlPattern}` +
+                (rule.resourceType ? ` (${rule.resourceType})` : "") +
+                (rule.status ? ` status=${rule.status}` : "") +
+                (rule.delayMs ? ` delay=${rule.delayMs}ms` : ""),
+            )
+            .join("\n")
+        : "No route rules.";
+    return finalize(body, {
+      action: "route",
+      op: "list",
+      count: session.routeRules.length,
+      rules: session.routeRules,
+    });
+  }
+  if (params.op === "clear") {
+    const count = await session.clearRouteRules();
+    return finalize(`Cleared ${count} route rule(s).`, {
+      action: "route",
+      op: "clear",
+      count,
+    });
+  }
+  if (params.op === "remove") {
+    const removed = await session.removeRouteRule(params.id!);
+    if (!removed) {
+      throw new BrowserPilotError(
+        `No route rule with id ${params.id}.`,
+        'Run {action:"route", op:"list"} to see rule ids.',
+      );
+    }
+    return finalize(`Removed route rule ${params.id}.`, {
+      action: "route",
+      op: "remove",
+      id: params.id,
+    });
+  }
+  await session.ensure();
+  const rule = await session.addRouteRule({
+    urlPattern: params.url_pattern ?? "*",
+    resourceType: params.resource_type,
+    action: params.route_action!,
+    status: params.status,
+    body: params.body,
+    contentType: params.content_type,
+    headers: params.headers,
+    delayMs: params.delay_ms,
+  });
+  return finalize(`Added route rule ${rule.id}: ${rule.action} ${rule.urlPattern}`, {
+    action: "route",
+    op: "add",
+    rule,
+  });
+}
+
+async function expectResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  config: BrowserPilotConfig,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  const tab = await session.ensureTab(params.tab);
+  const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
+  const operator =
+    params.operator ??
+    (params.check === "text" || params.check === "title" ? "contains" : "equals");
+  const expected =
+    params.expected ??
+    (params.check === "selector" || params.check === "visible" || params.check === "hidden"
+      ? "true"
+      : "");
+  const started = Date.now();
+  let actual = "";
+  let passed = false;
+  while (true) {
+    actual = await readExpectationValue(params, session, tab);
+    passed = compareExpectation(actual, expected, operator);
+    if (passed || Date.now() - started >= timeout) break;
+    await sleep(100);
+    ctx.signal?.throwIfAborted();
+  }
+  if (!passed) {
+    throw new BrowserPilotError(
+      `expect ${params.check} failed: expected ${operator} ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}.`,
+      "Inspect the page with snapshot or read, then retry with a longer timeout_ms if the page is still loading.",
+    );
+  }
+  return finalize(
+    [
+      pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
+      `expect ${params.check}: ${operator} ${JSON.stringify(expected)} passed.`,
+      `Actual: ${JSON.stringify(actual)}`,
+    ].join("\n"),
+    {
+      action: "expect",
+      tab: tab.handle,
+      url: tab.page.url(),
+      title: await tab.page.title().catch(() => ""),
+      check: params.check,
+      operator,
+      expected,
+      actual,
+      elapsedMs: Date.now() - started,
+    },
+  );
+}
+
+async function readExpectationValue(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  tab: Awaited<ReturnType<BrowserPilotSession["ensureTab"]>>,
+): Promise<string> {
+  if (params.check === "text") {
+    return tab.page.evaluate(() => document.body?.innerText ?? "");
+  }
+  if (params.check === "url") return tab.page.url();
+  if (params.check === "title") return tab.page.title();
+  const target = targetFor(session, tab, params);
+  const selector = resolveTargetSelector(params);
+  if (params.check === "selector") {
+    const found = await target.evaluate(
+      (value) => document.querySelector(value) !== null,
+      selector,
+    );
+    return String(found);
+  }
+  if (params.check === "count") {
+    const count = await target.evaluate(
+      (value) => document.querySelectorAll(value).length,
+      selector,
+    );
+    return String(count);
+  }
+  if (params.check === "visible" || params.check === "hidden") {
+    const handle = await target.locator(selector).waitHandle();
+    const visible = await handle.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.opacity !== "0" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    });
+    return String(params.check === "visible" ? visible : !visible);
+  }
+  const handle = await target.locator(selector).waitHandle();
+  if (params.check === "attribute") {
+    return (
+      (await handle.evaluate(
+        (element, name) => element.getAttribute(name),
+        params.attribute ?? "",
+      )) ?? ""
+    );
+  }
+  return handle.evaluate((element) => {
+    if (
+      element instanceof HTMLInputElement ||
+      element instanceof HTMLTextAreaElement ||
+      element instanceof HTMLSelectElement
+    ) {
+      return element.value;
+    }
+    return (element as HTMLElement).innerText ?? element.textContent ?? "";
+  });
+}
+
+function compareExpectation(actual: string, expected: string, operator: string): boolean {
+  if (operator === "contains") return actual.includes(expected);
+  if (operator === "not_contains") return !actual.includes(expected);
+  if (operator === "matches") {
+    try {
+      return new RegExp(expected).test(actual);
+    } catch {
+      return false;
+    }
+  }
+  if (operator === "gt" || operator === "lt" || operator === "gte" || operator === "lte") {
+    const left = Number(actual);
+    const right = Number(expected);
+    if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+    if (operator === "gt") return left > right;
+    if (operator === "lt") return left < right;
+    if (operator === "gte") return left >= right;
+    return left <= right;
+  }
+  if (operator === "not_equals") return actual !== expected;
+  return actual === expected;
+}
+
+async function stepsResult(
+  params: BrowserPilotParams,
+  session: BrowserPilotSession,
+  config: BrowserPilotConfig,
+  ctx: BrowserPilotContext,
+): Promise<BrowserPilotToolResult> {
+  const steps = params.steps ?? [];
+  const results: Array<Record<string, unknown>> = [];
+  const lines: string[] = [];
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index] as unknown as BrowserPilotParams;
+    const action = step.action;
+    const label = `Step ${index + 1}: ${String(action)}`;
+    if (!action || !ACTION_NAMES.includes(action)) {
+      const error = `Unknown step action "${String(action)}".`;
+      results.push({ action, ok: false, error });
+      lines.push(`${label}\n${error}`);
+      if (params.stop_on_error !== false) break;
+      continue;
+    }
+    try {
+      validateAction(action, step as unknown as Record<string, unknown>);
+      let result: BrowserPilotToolResult;
+      if (action === "help") {
+        result = finalize(renderHelp(step.topic), { action: "help" });
+      } else if (action === "status") {
+        const status = await statusResult(session, config);
+        result = finalize(status.text, status.details);
+      } else {
+        result = await dispatch(step, session, config, ctx);
+      }
+      const stepText = result.content
+        .filter((block): block is { type: "text"; text: string } => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+      results.push({ action, ok: !result.isError, text: stepText, details: result.details });
+      lines.push(`${label}\n${stepText}`);
+      if (result.isError && params.stop_on_error !== false) break;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results.push({ action, ok: false, error: message });
+      lines.push(`${label}\n${message}`);
+      if (params.stop_on_error !== false) break;
+    }
+  }
+  return finalize(lines.join("\n\n"), { action: "steps", steps: results });
+}
+
+function targetFor(
+  session: BrowserPilotSession,
+  tab: Awaited<ReturnType<BrowserPilotSession["ensureTab"]>>,
+  params: BrowserPilotParams,
+): Page | Frame {
+  if (!params.ref) return tab.page;
+  const entry = session.refs.get(params.ref);
+  if (!entry) {
+    throw new BrowserPilotError(
+      `Ref ${params.ref} is not known in this snapshot.`,
+      'Run {action:"snapshot"} to get fresh refs.',
+    );
+  }
+  if (entry.frame?.isDetached()) {
+    throw new BrowserPilotError(
+      `The frame for ref ${params.ref} is detached.`,
+      'Run {action:"snapshot"} again to get refs in the current page.',
+    );
+  }
+  return entry.frame ?? tab.page;
+}
+
+function locatorFor(
+  session: BrowserPilotSession,
+  tab: Awaited<ReturnType<BrowserPilotSession["ensureTab"]>>,
+  params: BrowserPilotParams,
+  timeout: number,
+) {
+  const selector = resolveTargetSelector(params);
+  return targetFor(session, tab, params).locator(selector).setTimeout(timeout);
+}
+
 function appendChallenge(lines: string[], challenge: ChallengeInfo | undefined): void {
   if (!challenge) return;
   lines.push("", formatChallenge(challenge)!);
@@ -1425,6 +2247,50 @@ export function safeParams(
     "limit",
     "policy",
     "timeout_ms",
+    "area",
+    "domain",
+    "cookie_path",
+    "expires",
+    "http_only",
+    "secure",
+    "same_site",
+    "width",
+    "height",
+    "device_scale_factor",
+    "is_mobile",
+    "has_touch",
+    "user_agent",
+    "locale",
+    "timezone",
+    "color_scheme",
+    "reduced_motion",
+    "network_profile",
+    "latency",
+    "download_throughput",
+    "upload_throughput",
+    "cpu_throttle",
+    "latitude",
+    "longitude",
+    "accuracy",
+    "reset",
+    "paper_format",
+    "landscape",
+    "print_background",
+    "scale",
+    "page_ranges",
+    "margin",
+    "url_pattern",
+    "resource_type",
+    "route_action",
+    "status",
+    "content_type",
+    "id",
+    "name",
+    "check",
+    "operator",
+    "expected",
+    "attribute",
+    "stop_on_error",
   ];
   for (const key of safeKeys) {
     const value = params[key as keyof BrowserPilotParams];
@@ -1440,6 +2306,9 @@ export function safeParams(
       "save_path",
       "text_file",
       "script_path",
+      "endpoint",
+      "files",
+      "headers",
     ]) {
       const value = params[key as keyof BrowserPilotParams];
       if (value !== undefined) out[key] = value;
@@ -1457,6 +2326,20 @@ export function safeParams(
     } else {
       out.expression = { length: params.expression.length, sha256: sha256(params.expression) };
     }
+  }
+  for (const key of ["value", "body"] as const) {
+    const value = params[key];
+    if (value === undefined) continue;
+    if (config.logging.includeSensitiveArgs) {
+      out[key] = value.slice(0, config.logging.maxOutputChars);
+    } else {
+      out[key] = { length: value.length, sha256: sha256(value) };
+    }
+  }
+  if (params.steps !== undefined) {
+    out.steps = params.steps.map((step) =>
+      safeParams(step as unknown as BrowserPilotParams, config),
+    );
   }
   return out;
 }

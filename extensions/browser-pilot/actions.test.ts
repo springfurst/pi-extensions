@@ -81,6 +81,53 @@ describe("validateAction", () => {
     expect(() => validateAction("dialog", { op: "policy", policy: "manual" })).not.toThrow();
   });
 
+  it("validates connect and upload", () => {
+    expect(() => validateAction("connect", {})).toThrow(/requires endpoint/);
+    expect(() => validateAction("connect", { endpoint: "http://127.0.0.1:9222" })).not.toThrow();
+    expect(() => validateAction("upload", { files: ["a.txt"] })).toThrow(/ref or selector/);
+    expect(() => validateAction("upload", { ref: "e1", files: [] })).toThrow(/files array/);
+    expect(() => validateAction("upload", { ref: "e1", files: ["a.txt"] })).not.toThrow();
+  });
+
+  it("validates cookie and storage operations", () => {
+    expect(() => validateAction("cookies", { op: "set", name: "a" })).toThrow(/name and value/);
+    expect(() => validateAction("cookies", { op: "set", name: "a", value: "b" })).toThrow(
+      /url or domain/,
+    );
+    expect(() =>
+      validateAction("cookies", {
+        op: "set",
+        name: "a",
+        value: "b",
+        url: "https://example.com",
+      }),
+    ).not.toThrow();
+    expect(() => validateAction("storage", { op: "get" })).toThrow(/requires key/);
+    expect(() => validateAction("storage", { op: "set", key: "a" })).toThrow(/key and value/);
+    expect(() => validateAction("storage", { op: "clear" })).not.toThrow();
+  });
+
+  it("validates route and expect operations", () => {
+    expect(() => validateAction("route", { op: "add" })).toThrow(/route_action/);
+    expect(() => validateAction("route", { op: "remove" })).toThrow(/requires id/);
+    expect(() =>
+      validateAction("route", { op: "add", route_action: "abort", url_pattern: "*" }),
+    ).not.toThrow();
+    expect(() => validateAction("expect", {})).toThrow(/requires check/);
+    expect(() => validateAction("expect", { check: "text", expected: "hi" })).not.toThrow();
+  });
+
+  it("validates steps", () => {
+    expect(() => validateAction("steps", {})).toThrow(/steps/);
+    expect(() => validateAction("steps", { steps: [] })).toThrow(/steps/);
+    expect(() =>
+      validateAction("steps", { steps: [{ action: "navigate", url: "https://example.com" }] }),
+    ).not.toThrow();
+    expect(() => validateAction("steps", { steps: [{ action: "steps", steps: [] }] })).toThrow(
+      /Nested steps/,
+    );
+  });
+
   it("formats a usage block", () => {
     const usage = formatUsage("click");
     expect(usage).toContain("click —");

@@ -49,8 +49,20 @@ const BrowserPilotParamsSchema = Type.Object({
         "accept",
         "dismiss",
         "policy",
+        "get",
+        "set",
+        "delete",
+        "remove",
+        "keys",
+        "wait",
+        "start",
+        "stop",
+        "add",
       ],
-      { description: "Operation for tabs, console, network, or dialog." },
+      {
+        description:
+          "Operation for tabs, console, network, dialog, cookies, storage, download, har, trace, or route.",
+      },
     ),
   ),
   target: Type.Optional(
@@ -87,7 +99,7 @@ const BrowserPilotParamsSchema = Type.Object({
   ref: Type.Optional(
     Type.String({
       description:
-        "Element ref from snapshot, such as e12 (click, type, press, select, scroll, hover).",
+        "Element ref from snapshot, such as e12 (click, type, press, select, upload, scroll, hover, expect).",
     }),
   ),
   selector: Type.Optional(
@@ -135,7 +147,7 @@ const BrowserPilotParamsSchema = Type.Object({
       description: "wait: what to wait for.",
     }),
   ),
-  path: Type.Optional(Type.String({ description: "screenshot: output path." })),
+  path: Type.Optional(Type.String({ description: "screenshot/pdf/har/trace: output path." })),
   full_page: Type.Optional(
     Type.Boolean({ description: "screenshot: capture the full scrollable page." }),
   ),
@@ -159,6 +171,126 @@ const BrowserPilotParamsSchema = Type.Object({
       description: "dialog: automatic policy.",
     }),
   ),
+  endpoint: Type.Optional(
+    Type.String({
+      description: "connect: websocket or HTTP DevTools endpoint of an existing Chrome.",
+    }),
+  ),
+  files: Type.Optional(
+    Type.Array(Type.String(), { description: "upload: file paths for a file input." }),
+  ),
+  area: Type.Optional(
+    StringEnum(["local", "session"], { description: "storage: localStorage or sessionStorage." }),
+  ),
+  name: Type.Optional(Type.String({ description: "cookies: cookie name." })),
+  value: Type.Optional(
+    Type.String({ description: "cookies/storage: value to set. Treated as sensitive in logs." }),
+  ),
+  domain: Type.Optional(Type.String({ description: "cookies: cookie domain." })),
+  cookie_path: Type.Optional(Type.String({ description: "cookies: cookie path." })),
+  expires: Type.Optional(
+    Type.Number({ description: "cookies: expiry as Unix seconds; omit for a session cookie." }),
+  ),
+  http_only: Type.Optional(Type.Boolean({ description: "cookies: mark HttpOnly." })),
+  secure: Type.Optional(Type.Boolean({ description: "cookies: mark Secure." })),
+  same_site: Type.Optional(
+    StringEnum(["Strict", "Lax", "None"], { description: "cookies: SameSite policy." }),
+  ),
+  width: Type.Optional(Type.Number({ description: "emulate: viewport width." })),
+  height: Type.Optional(Type.Number({ description: "emulate: viewport height." })),
+  device_scale_factor: Type.Optional(Type.Number({ description: "emulate: device pixel ratio." })),
+  is_mobile: Type.Optional(Type.Boolean({ description: "emulate: mobile viewport flag." })),
+  has_touch: Type.Optional(Type.Boolean({ description: "emulate: touch support flag." })),
+  user_agent: Type.Optional(Type.String({ description: "emulate: user agent override." })),
+  locale: Type.Optional(Type.String({ description: "emulate: locale override." })),
+  timezone: Type.Optional(Type.String({ description: "emulate: timezone override." })),
+  color_scheme: Type.Optional(
+    StringEnum(["light", "dark", "no-preference"], {
+      description: "emulate: prefers-color-scheme override.",
+    }),
+  ),
+  reduced_motion: Type.Optional(
+    StringEnum(["reduce", "no-preference"], {
+      description: "emulate: prefers-reduced-motion override.",
+    }),
+  ),
+  network_profile: Type.Optional(
+    StringEnum(["offline", "slow3g", "fast3g", "slow4g", "fast4g"], {
+      description: "emulate: predefined network condition.",
+    }),
+  ),
+  latency: Type.Optional(Type.Number({ description: "emulate: network latency in milliseconds." })),
+  download_throughput: Type.Optional(
+    Type.Number({ description: "emulate: download bytes per second." }),
+  ),
+  upload_throughput: Type.Optional(
+    Type.Number({ description: "emulate: upload bytes per second." }),
+  ),
+  cpu_throttle: Type.Optional(
+    Type.Number({ description: "emulate: CPU slowdown factor; 1 disables." }),
+  ),
+  latitude: Type.Optional(Type.Number({ description: "emulate: geolocation latitude." })),
+  longitude: Type.Optional(Type.Number({ description: "emulate: geolocation longitude." })),
+  accuracy: Type.Optional(Type.Number({ description: "emulate: geolocation accuracy in metres." })),
+  reset: Type.Optional(
+    Type.Boolean({ description: "emulate: reset all overrides to configuration defaults." }),
+  ),
+  paper_format: Type.Optional(
+    Type.String({ description: "pdf: paper format such as A4 or Letter." }),
+  ),
+  landscape: Type.Optional(Type.Boolean({ description: "pdf: landscape orientation." })),
+  print_background: Type.Optional(Type.Boolean({ description: "pdf: print background graphics." })),
+  scale: Type.Optional(Type.Number({ description: "pdf: print scale from 0.1 to 2." })),
+  page_ranges: Type.Optional(Type.String({ description: "pdf: page ranges such as 1-5,8." })),
+  margin: Type.Optional(Type.String({ description: "pdf: uniform margin such as 10mm." })),
+  url_pattern: Type.Optional(
+    Type.String({ description: "route: URL glob such as *://example.com/api/*." }),
+  ),
+  resource_type: Type.Optional(
+    Type.String({ description: "route: only match this resource type." }),
+  ),
+  route_action: Type.Optional(
+    StringEnum(["abort", "continue", "fulfill", "delay"], {
+      description: "route: action for matching requests.",
+    }),
+  ),
+  status: Type.Optional(Type.Number({ description: "route: response status for fulfill." })),
+  body: Type.Optional(
+    Type.String({ description: "route: response body for fulfill. Treated as sensitive in logs." }),
+  ),
+  content_type: Type.Optional(
+    Type.String({ description: "route: response content type for fulfill." }),
+  ),
+  headers: Type.Optional(
+    Type.Record(Type.String(), Type.String(), {
+      description: "route: response headers for fulfill.",
+    }),
+  ),
+  id: Type.Optional(Type.String({ description: "route: rule id for op:remove." })),
+  check: Type.Optional(
+    StringEnum(
+      ["text", "selector", "url", "title", "value", "attribute", "visible", "hidden", "count"],
+      { description: "expect: what to assert." },
+    ),
+  ),
+  operator: Type.Optional(
+    StringEnum(
+      ["equals", "contains", "matches", "not_equals", "not_contains", "gt", "lt", "gte", "lte"],
+      { description: "expect: comparison operator." },
+    ),
+  ),
+  expected: Type.Optional(Type.String({ description: "expect: expected value or pattern." })),
+  attribute: Type.Optional(
+    Type.String({ description: "expect: attribute name for check:attribute." }),
+  ),
+  steps: Type.Optional(
+    Type.Array(Type.Record(Type.String(), Type.Unknown()), {
+      description: "steps: array of action parameter objects; nested steps are not allowed.",
+    }),
+  ),
+  stop_on_error: Type.Optional(
+    Type.Boolean({ description: "steps: stop at the first failing step (default true)." }),
+  ),
   timeout_ms: Type.Optional(Type.Number({ description: "Action deadline in milliseconds." })),
 });
 
@@ -167,7 +299,7 @@ export default function browserPilotExtension(pi: ExtensionAPI) {
     name: "browser-pilot",
     label: "Browser Pilot",
     description:
-      'Pilot a visible Chrome window over the DevTools protocol. Actions: help, status, open, close, navigate, tabs, snapshot, read, eval, click, type, press, select, scroll, hover, wait, screenshot, console, network, dialog. Call {action:"help"} for the full catalog and per-action parameters.',
+      'Pilot a visible Chrome window over the DevTools protocol. Actions: help, status, open, close, connect, navigate, tabs, snapshot, read, eval, click, type, press, select, upload, scroll, hover, wait, expect, screenshot, pdf, console, network, har, trace, cookies, storage, emulate, route, dialog, steps. Call {action:"help"} for the full catalog and per-action parameters.',
     promptSnippet:
       "Pilot a visible Chrome window: navigate, inspect, click, type, run JS, and manage tabs.",
     promptGuidelines: [

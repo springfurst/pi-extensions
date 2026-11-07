@@ -1,6 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import type { Browser, Dialog, HTTPRequest, HTTPResponse, Page } from "puppeteer-core";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import type {
+  Browser,
+  CDPSession,
+  Dialog,
+  Frame,
+  HTTPRequest,
+  HTTPResponse,
+  Page,
+} from "puppeteer-core";
+import { expandTilde } from "../../lib/logging";
+import { buildHar } from "./har";
+import { matchesRoute } from "./route";
 import {
   closeChrome,
   connectChrome,
@@ -17,9 +28,12 @@ import type {
   ChromeInstance,
   ConsoleEntry,
   DialogInfo,
+  DownloadInfo,
+  EmulationState,
   ManagedTab,
   NetworkEntry,
   ProfileInfo,
+  RouteRule,
   SessionRecord,
   TabInfo,
 } from "./types";
@@ -27,6 +41,20 @@ import { BrowserPilotError } from "./types";
 
 const SESSION_SCHEMA = 1;
 const TAB_IDLE_CLEANUP_MS = 5 * 60_000;
+const MAX_HAR_BODY_BYTES = 1024 * 1024;
+
+type NetworkProfileName = "offline" | "slow3g" | "fast3g" | "slow4g" | "fast4g";
+
+const NETWORK_PROFILES: Record<
+  NetworkProfileName,
+  { latency: number; download: number; upload: number }
+> = {
+  offline: { latency: 0, download: 0, upload: 0 },
+  slow3g: { latency: 2000, download: 50_000, upload: 20_000 },
+  fast3g: { latency: 150, download: 180_000, upload: 80_000 },
+  slow4g: { latency: 100, download: 500_000, upload: 250_000 },
+  fast4g: { latency: 20, download: 4_000_000, upload: 1_000_000 },
+};
 
 const STEALTH_SCRIPT = `
 Object.defineProperty(navigator, "webdriver", { get: () => false });
@@ -57,17 +85,26 @@ export class BrowserPilotSession {
   tabs = new Map<number, ManagedTab>();
   current?: number;
   nextHandle = 1;
-  refs = new Map<string, { selector: string; snapshot: number }>();
+  refs = new Map<string, { selector: string; snapshot: number; frame?: Frame }>();
   snapshotCount = 0;
   dialogPolicy: "dismiss" | "accept" | "manual" = "dismiss";
   pendingDialog?: DialogInfo;
   challenge?: ChallengeInfo;
+  downloads: DownloadInfo[] = [];
+  routeRules: RouteRule[] = [];
+  emulation: EmulationState = {};
 
   private pendingDialogHandle?: Dialog;
   private requestEntries = new WeakMap<HTTPRequest, NetworkEntry>();
   private networkSequence = 0;
+  private routeSequence = 0;
   private idleTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
+  private downloadClient?: CDPSession;
+  private harRecording = false;
+  private traceClient?: CDPSession;
+  private traceChunks: string[] = [];
+  private traceTab?: number;
 
   constructor(options: {
     sessionId: string;
@@ -93,11 +130,31 @@ export class BrowserPilotSession {
 
     if (this.browser) {
       try {
-        await this.browser.close();
+        if (!this.instance?.external) await this.browser.close();
       } catch {
         // The browser may already be gone.
       }
       this.browser = undefined;
+    }
+
+    if (this.instance?.external) {
+      try {
+        this.browser = await connectChrome(this.instance);
+      } catch (error) {
+        throw new BrowserPilotError(
+          `Could not reconnect to ${this.instance.wsEndpoint}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          "Reconnect with connect, or close the browser and launch a new one.",
+        );
+      }
+      this.browser.on("disconnected", () => {
+        this.browser = undefined;
+        this.downloadClient = undefined;
+      });
+      await this.restoreExternal();
+      await this.configureDownloads();
+      return;
     }
 
     const { instance, profile } = await ensureChrome({
@@ -121,8 +178,420 @@ export class BrowserPilotSession {
     }
     this.browser.on("disconnected", () => {
       this.browser = undefined;
+      this.downloadClient = undefined;
     });
     await this.restoreOrCreate(signal);
+    await this.configureDownloads();
+  }
+
+  /** Attach to an existing Chrome DevTools endpoint instead of launching Chrome. */
+  async connectExternal(endpoint: string): Promise<ChromeInstance> {
+    if (this.disposed) throw new BrowserPilotError("This browser-pilot session is closed.");
+    if (this.browser?.connected || this.instance) {
+      throw new BrowserPilotError(
+        "This session is already connected to a browser.",
+        'Run {action:"close", target:"browser"} first, then connect to another endpoint.',
+      );
+    }
+    const wsEndpoint = await resolveDevToolsEndpoint(endpoint);
+    let port = 0;
+    try {
+      const parsed = new URL(wsEndpoint);
+      port = parsed.port ? Number.parseInt(parsed.port, 10) : parsed.protocol === "wss:" ? 443 : 80;
+    } catch {
+      throw new BrowserPilotError(`Invalid DevTools endpoint: ${endpoint}`);
+    }
+    const instance: ChromeInstance = {
+      pid: 0,
+      port,
+      wsEndpoint,
+      userDataDir: "",
+      executablePath: "",
+      startedAt: new Date().toISOString(),
+      ownerSessionId: this.sessionId,
+      external: true,
+    };
+    try {
+      this.browser = await connectChrome(instance);
+    } catch (error) {
+      throw new BrowserPilotError(
+        `Could not attach to ${wsEndpoint}: ${error instanceof Error ? error.message : String(error)}`,
+        "Check that Chrome is running with --remote-debugging-port and that the endpoint is reachable.",
+      );
+    }
+    this.instance = instance;
+    this.profile = {
+      key: `external-${port}`,
+      userDataDir: "",
+      label: endpoint,
+      persistent: true,
+    };
+    this.browser.on("disconnected", () => {
+      this.browser = undefined;
+    });
+    await this.restoreExternal();
+    await this.configureDownloads();
+    this.persist();
+    return instance;
+  }
+
+  /** Attach pages already open in an external browser. */
+  private async restoreExternal(): Promise<void> {
+    if (!this.browser?.connected) return;
+    const pages = await this.browser.pages();
+    for (const page of pages) {
+      if (page.url().startsWith("devtools://")) continue;
+      const targetId = targetIdOf(page);
+      if ([...this.tabs.values()].some((tab) => tab.targetId === targetId)) continue;
+      await this.attachPage(page, false, undefined, true);
+    }
+    if (this.current === undefined) {
+      this.current = [...this.tabs.values()].find((tab) => !tab.page.isClosed())?.handle;
+    }
+    if (this.tabs.size === 0) {
+      const page = await this.browser.newPage();
+      const tab = await this.attachPage(page, true);
+      this.current = tab.handle;
+    }
+    this.refs.clear();
+    this.snapshotCount++;
+    this.persist();
+  }
+
+  /** Configure browser-level download capture into the downloads directory. */
+  private async configureDownloads(): Promise<void> {
+    if (!this.browser?.connected || this.downloadClient) return;
+    try {
+      const directory = this.downloadsDir();
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      const client = await this.browser.target().createCDPSession();
+      await client.send("Browser.setDownloadBehavior", {
+        behavior: "allow",
+        downloadPath: directory,
+        eventsEnabled: true,
+      });
+      client.on(
+        "Browser.downloadWillBegin",
+        (event: { guid?: string; url?: string; suggestedFilename?: string }) => {
+          if (!event.guid) return;
+          const filename = safeFilename(event.suggestedFilename ?? event.guid);
+          this.downloads.push({
+            id: event.guid,
+            url: event.url ?? "",
+            suggestedFilename: filename,
+            state: "inProgress",
+            receivedBytes: 0,
+            totalBytes: 0,
+            path: join(directory, filename),
+            startedAt: new Date().toISOString(),
+          });
+        },
+      );
+      client.on(
+        "Browser.downloadProgress",
+        (event: {
+          guid?: string;
+          state?: "inProgress" | "completed" | "canceled";
+          receivedBytes?: number;
+          totalBytes?: number;
+        }) => {
+          const download = this.downloads.find((item) => item.id === event.guid);
+          if (!download) return;
+          if (event.state) download.state = event.state;
+          if (event.receivedBytes !== undefined) download.receivedBytes = event.receivedBytes;
+          if (event.totalBytes !== undefined) download.totalBytes = event.totalBytes;
+          if (download.state !== "inProgress" && !download.completedAt) {
+            download.completedAt = new Date().toISOString();
+          }
+        },
+      );
+      this.downloadClient = client;
+    } catch {
+      // Download capture is optional; the browser may not support the command.
+    }
+  }
+
+  /** Directory where downloads are saved. */
+  downloadsDir(): string {
+    return this.resolveDir(
+      this.config.downloadsDir,
+      join(this.agentDir, "browser-pilot", "downloads"),
+    );
+  }
+
+  /** Directory for PDF, HAR, and trace exports. */
+  exportsDir(): string {
+    return this.resolveDir(this.config.exportsDir, join(this.agentDir, "browser-pilot", "exports"));
+  }
+
+  private resolveDir(value: string | undefined, fallback: string): string {
+    if (!value) return fallback;
+    const expanded = expandTilde(value);
+    return isAbsolute(expanded) ? expanded : resolve(this.cwd, expanded);
+  }
+
+  /** Downloads matching a filename or URL substring, newest last. */
+  listDownloads(filter?: string): DownloadInfo[] {
+    return this.downloads.filter(
+      (download) =>
+        !filter || download.suggestedFilename.includes(filter) || download.url.includes(filter),
+    );
+  }
+
+  /** Wait for the newest matching download to finish. */
+  async waitForDownload(
+    timeoutMs: number,
+    filter?: string,
+    signal?: AbortSignal,
+  ): Promise<DownloadInfo> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      signal?.throwIfAborted();
+      const download = this.listDownloads(filter).at(-1);
+      if (download && download.state !== "inProgress") return download;
+      await sleep(100);
+    }
+    throw new BrowserPilotError(
+      `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for a download.`,
+      'Check download {op:"list"}; the browser may have blocked or canceled the file.',
+    );
+  }
+
+  /** Clear the download history, not the files on disk. */
+  clearDownloads(): number {
+    const count = this.downloads.length;
+    this.downloads.length = 0;
+    return count;
+  }
+
+  /** Start recording a HAR. Existing network buffers are cleared. */
+  startHar(): void {
+    this.harRecording = true;
+    for (const tab of this.tabs.values()) tab.network.length = 0;
+  }
+
+  /** True while HAR capture is active. */
+  get isRecordingHar(): boolean {
+    return this.harRecording;
+  }
+
+  /** Clear captured network entries used by HAR export. */
+  clearHar(): number {
+    let count = 0;
+    for (const tab of this.tabs.values()) {
+      count += tab.network.length;
+      tab.network.length = 0;
+    }
+    return count;
+  }
+
+  /** Stop recording and return a HAR document built from captured entries. */
+  async stopHar(): Promise<{ har: Record<string, unknown>; entries: number }> {
+    this.harRecording = false;
+    const entries = [...this.tabs.values()].flatMap((tab) => tab.network);
+    const har = buildHar(entries, { tabs: await this.listTabs() });
+    return { har, entries: entries.length };
+  }
+
+  /** Add a request interception rule and enable interception on every tab. */
+  async addRouteRule(rule: Omit<RouteRule, "id">): Promise<RouteRule> {
+    const created: RouteRule = { ...rule, id: `r${++this.routeSequence}` };
+    this.routeRules.push(created);
+    await this.setInterception(true);
+    return created;
+  }
+
+  /** Remove one rule by id, disabling interception when no rules remain. */
+  async removeRouteRule(id: string): Promise<boolean> {
+    const index = this.routeRules.findIndex((rule) => rule.id === id);
+    if (index === -1) return false;
+    this.routeRules.splice(index, 1);
+    if (this.routeRules.length === 0) await this.setInterception(false);
+    return true;
+  }
+
+  /** Remove all rules and disable interception. */
+  async clearRouteRules(): Promise<number> {
+    const count = this.routeRules.length;
+    this.routeRules.length = 0;
+    await this.setInterception(false);
+    return count;
+  }
+
+  private async setInterception(enabled: boolean): Promise<void> {
+    for (const tab of this.tabs.values()) {
+      if (tab.page.isClosed()) continue;
+      await tab.page.setRequestInterception(enabled).catch(() => undefined);
+    }
+  }
+
+  private async applyRouteRule(tab: ManagedTab, request: HTTPRequest): Promise<void> {
+    if (request.isInterceptResolutionHandled()) return;
+    let resourceType: string | undefined;
+    try {
+      resourceType = request.resourceType();
+    } catch {
+      resourceType = undefined;
+    }
+    const rule = this.routeRules.find((candidate) =>
+      matchesRoute(candidate, request.url(), resourceType),
+    );
+    try {
+      if (!rule) {
+        await request.continue();
+        return;
+      }
+      if (rule.action === "abort") {
+        await request.abort("blockedbyclient");
+      } else if (rule.action === "delay") {
+        await sleep(rule.delayMs ?? 0);
+        await request.continue();
+      } else if (rule.action === "fulfill") {
+        await request.respond({
+          status: rule.status ?? 200,
+          headers: rule.headers,
+          contentType: rule.contentType ?? "text/plain",
+          body: rule.body ?? "",
+        });
+      } else {
+        await request.continue();
+      }
+    } catch {
+      // A navigation or browser shutdown can close the request first.
+    }
+    tab.lastUsed = Date.now();
+  }
+
+  /** Start a Chrome trace for one tab. */
+  async startTrace(tabHandle?: number): Promise<TabInfo> {
+    if (this.traceClient) {
+      throw new BrowserPilotError(
+        "A trace is already recording.",
+        'Stop it with {action:"trace", op:"stop"}.',
+      );
+    }
+    const tab = await this.ensureTab(tabHandle);
+    const client = await tab.page.createCDPSession();
+    this.traceChunks = [];
+    this.traceTab = tab.handle;
+    this.traceClient = client;
+    client.on("Tracing.dataCollected", (event: { value?: string[] }) => {
+      if (Array.isArray(event.value)) this.traceChunks.push(...event.value);
+    });
+    await client.send("Tracing.start", {
+      categories:
+        "devtools.timeline,disabled-by-default-devtools.timeline,loading,blink.user_timing,v8",
+      transferMode: "ReportEvents",
+    });
+    const infos = await this.listTabs();
+    return infos.find((info) => info.handle === tab.handle)!;
+  }
+
+  /** Stop the active trace and return its JSON document. */
+  async stopTrace(): Promise<{ trace: unknown; events: number; tab?: number }> {
+    const client = this.traceClient;
+    if (!client) {
+      throw new BrowserPilotError(
+        "No trace is recording.",
+        'Start one with {action:"trace", op:"start"}.',
+      );
+    }
+    this.traceClient = undefined;
+    const completed = new Promise<void>((resolvePromise) => {
+      client.once("Tracing.tracingComplete", () => resolvePromise());
+    });
+    await client.send("Tracing.end");
+    await Promise.race([completed, sleep(10_000)]);
+    await client.detach().catch(() => undefined);
+    const events = this.traceChunks.map((chunk) => {
+      try {
+        return JSON.parse(chunk) as unknown;
+      } catch {
+        return { name: "unparsed", args: { raw: chunk } };
+      }
+    });
+    this.traceChunks = [];
+    const tab = this.traceTab;
+    this.traceTab = undefined;
+    return { trace: { traceEvents: events }, events: events.length, tab };
+  }
+
+  /** Apply the session's emulation overrides to one page. */
+  async applyEmulation(page: Page): Promise<void> {
+    const state = this.emulation;
+    const viewport = state.viewport ?? {
+      width: this.config.viewport.width,
+      height: this.config.viewport.height,
+      deviceScaleFactor: 1,
+      isMobile: false,
+      hasTouch: false,
+    };
+    await page.setViewport({
+      width: viewport.width,
+      height: viewport.height,
+      deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
+      isMobile: viewport.isMobile ?? false,
+      hasTouch: viewport.hasTouch ?? false,
+    });
+    await page.setUserAgent(state.userAgent ?? this.userAgent());
+    const client = await page.createCDPSession();
+    try {
+      await client.send("Emulation.setEmulatedMedia", {
+        features: [
+          ...(state.colorScheme
+            ? [{ name: "prefers-color-scheme", value: state.colorScheme }]
+            : []),
+          ...(state.reducedMotion
+            ? [{ name: "prefers-reduced-motion", value: state.reducedMotion }]
+            : []),
+        ],
+      });
+      await client.send("Emulation.setCPUThrottlingRate", {
+        rate: state.cpuThrottle ?? 1,
+      });
+      const locale = state.locale ?? this.config.locale;
+      const timezone = state.timezone ?? this.config.timezone;
+      if (locale) {
+        await client.send("Emulation.setLocaleOverride", { locale });
+      } else {
+        await client.send("Emulation.setLocaleOverride", { locale: "" }).catch(() => undefined);
+      }
+      if (timezone) {
+        await client.send("Emulation.setTimezoneOverride", { timezoneId: timezone });
+      } else {
+        await client
+          .send("Emulation.setTimezoneOverride", { timezoneId: "" })
+          .catch(() => undefined);
+      }
+    } finally {
+      await client.detach().catch(() => undefined);
+    }
+    if (state.network !== undefined) {
+      await page.emulateNetworkConditions(state.network).catch(() => undefined);
+    }
+    if (state.geolocation) {
+      await page.setGeolocation(state.geolocation).catch(() => undefined);
+    } else {
+      const geoClient = await page.createCDPSession();
+      await geoClient
+        .send("Emulation.clearGeolocationOverride")
+        .catch(() => undefined)
+        .finally(() => geoClient.detach().catch(() => undefined));
+    }
+  }
+
+  /** Replace the emulation state and apply it to the current tab. */
+  async setEmulation(tabHandle: number | undefined, state: EmulationState): Promise<TabInfo> {
+    const tab = await this.ensureTab(tabHandle);
+    this.emulation = state;
+    await this.applyEmulation(tab.page);
+    const infos = await this.listTabs();
+    return infos.find((info) => info.handle === tab.handle)!;
+  }
+
+  /** Build the network emulation condition for a named profile. */
+  networkProfile(name: NetworkProfileName) {
+    return NETWORK_PROFILES[name];
   }
 
   /** Return a usable tab, creating a blank one when necessary. */
@@ -261,9 +730,14 @@ export class BrowserPilotSession {
         resourceType: safeResourceType(request),
         startedAt: Date.now(),
       };
+      if (this.harRecording) {
+        entry.requestHeaders = request.headers();
+        entry.postData = request.postData() ?? undefined;
+      }
       this.requestEntries.set(request, entry);
       tab.network.push(entry);
       trim(tab.network, this.config.networkBuffer);
+      if (this.routeRules.length > 0) void this.applyRouteRule(tab, request);
     });
     page.on("response", (response) => {
       const entry = this.requestEntries.get(response.request());
@@ -272,6 +746,21 @@ export class BrowserPilotSession {
       entry.statusText = response.statusText();
       entry.mimeType = headerValue(response, "content-type");
       entry.durationMs = Date.now() - entry.startedAt;
+      if (this.harRecording) {
+        entry.responseHeaders = response.headers();
+        entry.timing = response.timing();
+        const length = Number.parseInt(headerValue(response, "content-length") ?? "", 10);
+        if (!Number.isFinite(length) || length <= MAX_HAR_BODY_BYTES) {
+          void response
+            .text()
+            .then((body) => {
+              entry.responseBody = body.slice(0, MAX_HAR_BODY_BYTES);
+              entry.responseBodyTruncated = body.length > MAX_HAR_BODY_BYTES;
+              entry.size = body.length;
+            })
+            .catch(() => undefined);
+        }
+      }
     });
     page.on("requestfailed", (request) => {
       const entry = this.requestEntries.get(request);
@@ -355,30 +844,12 @@ export class BrowserPilotSession {
   }
 
   private async configurePage(page: Page): Promise<void> {
-    await page.setViewport({
-      width: this.config.viewport.width,
-      height: this.config.viewport.height,
-      deviceScaleFactor: 1,
-    });
-    const userAgent = this.userAgent();
-    await page.setUserAgent(userAgent);
     if (this.config.stealth !== "off") {
       await page.evaluateOnNewDocument(STEALTH_SCRIPT);
     }
-    if (this.config.locale || this.config.timezone) {
-      const client = await page.createCDPSession();
-      try {
-        if (this.config.locale) {
-          await client.send("Emulation.setLocaleOverride", { locale: this.config.locale });
-        }
-        if (this.config.timezone) {
-          await client.send("Emulation.setTimezoneOverride", {
-            timezoneId: this.config.timezone,
-          });
-        }
-      } finally {
-        await client.detach().catch(() => undefined);
-      }
+    await this.applyEmulation(page);
+    if (this.routeRules.length > 0) {
+      await page.setRequestInterception(true).catch(() => undefined);
     }
   }
 
@@ -657,7 +1128,9 @@ export class BrowserPilotSession {
     } catch {
       // Best effort.
     }
-    if (instance) {
+    if (instance?.external) {
+      browser?.disconnect();
+    } else if (instance) {
       await closeChrome({
         browser,
         pid: instance.pid,
@@ -755,6 +1228,51 @@ function headerValue(response: HTTPResponse, name: string): string | undefined {
 
 function trim<T>(items: T[], limit: number): void {
   while (items.length > limit) items.shift();
+}
+
+async function resolveDevToolsEndpoint(endpoint: string): Promise<string> {
+  const trimmed = endpoint.trim();
+  const withScheme = /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  if (/^wss?:\/\//i.test(withScheme)) return withScheme;
+  if (!/^https?:\/\//i.test(withScheme)) {
+    throw new BrowserPilotError(
+      `Unsupported endpoint scheme: ${endpoint}`,
+      "Use a ws:// DevTools endpoint or an http:// endpoint exposing /json/version.",
+    );
+  }
+  const base = withScheme.replace(/\/+$/, "");
+  let response: Response;
+  try {
+    response = await fetch(`${base}/json/version`);
+  } catch (error) {
+    throw new BrowserPilotError(
+      `Could not reach ${base}: ${error instanceof Error ? error.message : String(error)}`,
+      "Check that Chrome is running with --remote-debugging-port and the port is reachable.",
+    );
+  }
+  if (!response.ok) {
+    throw new BrowserPilotError(
+      `DevTools endpoint ${base}/json/version returned ${response.status}.`,
+    );
+  }
+  const data = (await response.json()) as { webSocketDebuggerUrl?: unknown };
+  if (typeof data.webSocketDebuggerUrl !== "string") {
+    throw new BrowserPilotError(`DevTools endpoint ${base} did not return a websocket URL.`);
+  }
+  return data.webSocketDebuggerUrl;
+}
+
+function safeFilename(value: string): string {
+  const cleaned = Array.from(basename(value))
+    .filter((character) => character.charCodeAt(0) >= 32)
+    .join("")
+    .replace(/[<>:"/\\|?*]/g, "_")
+    .trim();
+  return cleaned || `download-${Date.now()}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
 
 function sanitizeFile(value: string): string {

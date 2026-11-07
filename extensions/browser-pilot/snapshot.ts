@@ -1,4 +1,4 @@
-import type { Page } from "puppeteer-core";
+import type { Frame, Page } from "puppeteer-core";
 
 export interface SnapshotOptions {
   interactive: boolean;
@@ -9,11 +9,46 @@ export interface SnapshotResult {
   lines: string[];
   count: number;
   truncated: boolean;
+  refs: Array<{ ref: string; frame?: Frame }>;
 }
 
-/** Take a compact, ref-annotated snapshot of the page. */
+/** Take a compact, ref-annotated snapshot of the page, its frames, and shadow roots. */
 export async function snapshotPage(page: Page, options: SnapshotOptions): Promise<SnapshotResult> {
-  return page.evaluate(collectSnapshot, options);
+  const lines: string[] = [];
+  const refs: Array<{ ref: string; frame?: Frame }> = [];
+  let count = 0;
+  let truncated = false;
+  const mainFrame = page.mainFrame();
+
+  for (const frame of page.frames()) {
+    if (frame.isDetached()) continue;
+    let result: { lines: string[]; count: number; truncated: boolean };
+    try {
+      result = await frame.evaluate(collectSnapshot, {
+        interactive: options.interactive,
+        maxNodes: options.maxNodes - count,
+        startIndex: count,
+      });
+    } catch {
+      continue;
+    }
+    if (frame !== mainFrame && result.lines.length > 0) {
+      lines.push(`Frame: ${frame.url()}`);
+    }
+    lines.push(...result.lines);
+    for (let index = 0; index < result.count; index++) {
+      const ref = `e${count + index + 1}`;
+      refs.push({ ref, frame: frame === mainFrame ? undefined : frame });
+    }
+    count += result.count;
+    truncated ||= result.truncated;
+    if (count >= options.maxNodes) {
+      truncated = true;
+      break;
+    }
+  }
+
+  return { lines, count, truncated, refs };
 }
 
 /**
@@ -21,10 +56,15 @@ export async function snapshotPage(page: Page, options: SnapshotOptions): Promis
  * per visible, meaningful element. Kept self-contained because Puppeteer
  * serializes the function into the page.
  */
-function collectSnapshot(options: SnapshotOptions): SnapshotResult {
+function collectSnapshot(options: SnapshotOptions & { startIndex?: number }): {
+  lines: string[];
+  count: number;
+  truncated: boolean;
+} {
   const lines: string[] = [];
   let count = 0;
   let truncated = false;
+  const startIndex = options.startIndex ?? 0;
 
   const roleOf = (el: Element): string | undefined => {
     const explicit = el.getAttribute("role");
@@ -87,7 +127,13 @@ function collectSnapshot(options: SnapshotOptions): SnapshotResult {
     if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
       return false;
     }
-    if (el.closest("[aria-hidden='true']")) return false;
+    let ancestor: Node | null = el;
+    while (ancestor) {
+      if (ancestor instanceof Element && ancestor.getAttribute("aria-hidden") === "true") {
+        return false;
+      }
+      ancestor = ancestor.parentNode ?? (ancestor instanceof ShadowRoot ? ancestor.host : null);
+    }
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
   };
@@ -196,49 +242,61 @@ function collectSnapshot(options: SnapshotOptions): SnapshotResult {
     return out;
   };
 
-  for (const previous of Array.from(document.querySelectorAll("[data-pi-ref]"))) {
-    previous.removeAttribute("data-pi-ref");
+  const candidateSelector = [
+    "a[href]",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "summary",
+    "[role]",
+    "[contenteditable='true']",
+    "[tabindex]",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "main",
+    "nav",
+    "header",
+    "footer",
+    "aside",
+    "form",
+    "img[alt]",
+  ].join(",");
+
+  const deepElements = (root: ParentNode): Element[] => {
+    const out: Element[] = [];
+    const walk = (parent: ParentNode) => {
+      for (const child of Array.from(parent.children ?? [])) {
+        out.push(child);
+        if (child.shadowRoot) walk(child.shadowRoot);
+        walk(child);
+      }
+    };
+    walk(root);
+    return out;
+  };
+
+  for (const previous of deepElements(document)) {
+    if (previous.hasAttribute("data-pi-ref")) previous.removeAttribute("data-pi-ref");
   }
 
-  const candidates = document.querySelectorAll(
-    [
-      "a[href]",
-      "button",
-      "input",
-      "select",
-      "textarea",
-      "summary",
-      "[role]",
-      "[contenteditable='true']",
-      "[tabindex]",
-      "h1",
-      "h2",
-      "h3",
-      "h4",
-      "h5",
-      "h6",
-      "main",
-      "nav",
-      "header",
-      "footer",
-      "aside",
-      "form",
-      "img[alt]",
-    ].join(","),
-  );
-
-  for (const el of Array.from(candidates)) {
+  for (const el of deepElements(document)) {
     if (count >= options.maxNodes) {
       truncated = true;
       break;
     }
+    if (!el.matches(candidateSelector)) continue;
     if (!visible(el)) continue;
     const role = roleOf(el);
     if (!role) continue;
     if (options.interactive && !interactiveRoles.has(role)) continue;
     if (!options.interactive && interactiveRoles.has(role) && !nameOf(el)) continue;
 
-    const ref = `e${count + 1}`;
+    const ref = `e${startIndex + count + 1}`;
     el.setAttribute("data-pi-ref", ref);
     count++;
 
@@ -264,5 +322,5 @@ function collectSnapshot(options: SnapshotOptions): SnapshotResult {
 
 /** Escape a ref for use in a CSS attribute selector. Refs are generated, not user text. */
 export function refSelector(ref: string): string | undefined {
-  return /^e\d+$/.test(ref) ? `[data-pi-ref="${ref}"]` : undefined;
+  return /^e\d+$/.test(ref) ? `pierce/[data-pi-ref="${ref}"]` : undefined;
 }

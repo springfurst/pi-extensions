@@ -36,6 +36,8 @@ export interface ChromeInstance {
   startedAt: string;
   ownerSessionId: string;
   chromeVersion?: string;
+  /** True when the browser was attached to rather than launched. */
+  external?: boolean;
 }
 
 /** Persisted per-profile instance record. */
@@ -88,6 +90,71 @@ export interface NetworkEntry {
   durationMs?: number;
   failed?: string;
   startedAt: number;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
+  postData?: string;
+  timing?: unknown;
+  responseBody?: string;
+  responseBodyTruncated?: boolean;
+}
+
+/** One download observed by the browser. */
+export interface DownloadInfo {
+  id: string;
+  url: string;
+  suggestedFilename: string;
+  state: "inProgress" | "completed" | "canceled";
+  receivedBytes: number;
+  totalBytes: number;
+  path: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+/** One intercepted request rule. */
+export interface RouteRule {
+  id: string;
+  urlPattern: string;
+  resourceType?: string;
+  action: "abort" | "continue" | "fulfill" | "delay";
+  status?: number;
+  body?: string;
+  contentType?: string;
+  headers?: Record<string, string>;
+  delayMs?: number;
+}
+
+/** A cookie exposed to the agent. */
+export interface CookieInfo {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  expires: number;
+  size: number;
+  httpOnly: boolean;
+  secure: boolean;
+  session: boolean;
+  sameSite?: string;
+}
+
+/** A viewport and media emulation override. */
+export interface EmulationState {
+  viewport?: {
+    width: number;
+    height: number;
+    deviceScaleFactor?: number;
+    isMobile?: boolean;
+    hasTouch?: boolean;
+  };
+  userAgent?: string;
+  locale?: string;
+  timezone?: string;
+  colorScheme?: "light" | "dark" | "no-preference";
+  reducedMotion?: "reduce" | "no-preference";
+  network?: { offline?: boolean; latency: number; download: number; upload: number } | null;
+  cpuThrottle?: number;
+  geolocation?: { latitude: number; longitude: number; accuracy?: number } | null;
 }
 
 /** A dialog waiting for a decision. */
@@ -176,6 +243,7 @@ export interface BrowserPilotParams {
   format?: "markdown" | "text" | "html" | "png" | "jpeg" | "webp";
   max_chars?: number;
   save_path?: string;
+  endpoint?: string;
   expression?: string;
   script_path?: string;
   await_promise?: boolean;
@@ -204,6 +272,55 @@ export interface BrowserPilotParams {
   filter?: string;
   policy?: "dismiss" | "accept" | "manual";
   timeout_ms?: number;
+  files?: string[];
+  area?: "local" | "session";
+  name?: string;
+  value?: string;
+  domain?: string;
+  cookie_path?: string;
+  expires?: number;
+  http_only?: boolean;
+  secure?: boolean;
+  same_site?: "Strict" | "Lax" | "None";
+  width?: number;
+  height?: number;
+  device_scale_factor?: number;
+  is_mobile?: boolean;
+  has_touch?: boolean;
+  user_agent?: string;
+  locale?: string;
+  timezone?: string;
+  color_scheme?: "light" | "dark" | "no-preference";
+  reduced_motion?: "reduce" | "no-preference";
+  network_profile?: "offline" | "slow3g" | "fast3g" | "slow4g" | "fast4g";
+  latency?: number;
+  download_throughput?: number;
+  upload_throughput?: number;
+  cpu_throttle?: number;
+  latitude?: number;
+  longitude?: number;
+  accuracy?: number;
+  reset?: boolean;
+  paper_format?: string;
+  landscape?: boolean;
+  print_background?: boolean;
+  scale?: number;
+  page_ranges?: string;
+  margin?: string;
+  url_pattern?: string;
+  resource_type?: string;
+  route_action?: "abort" | "continue" | "fulfill" | "delay";
+  status?: number;
+  body?: string;
+  content_type?: string;
+  headers?: Record<string, string>;
+  id?: string;
+  check?: string;
+  expected?: string;
+  operator?: string;
+  attribute?: string;
+  steps?: Array<Record<string, unknown>>;
+  stop_on_error?: boolean;
 }
 
 /** Configuration for one browser-pilot call. */
@@ -227,6 +344,8 @@ export interface BrowserPilotConfig {
   humanize: boolean;
   allowPrivateHosts: boolean;
   screenshotsDir?: string;
+  downloadsDir?: string;
+  exportsDir?: string;
   maxReadChars: number;
   maxEvalChars: number;
   maxSnapshotNodes: number;

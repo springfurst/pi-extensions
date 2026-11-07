@@ -137,6 +137,30 @@ describe("safeParams", () => {
     );
     expect(enabled.text).toBe("hunter2");
   });
+
+  it("redacts cookie, storage, and route payloads by default", () => {
+    const cookie = safeParams(
+      { action: "cookies", op: "set", name: "token", value: "secret" },
+      config,
+    );
+    expect(cookie.value).toMatchObject({ length: 6, sha256: expect.any(String) });
+    expect(cookie.value).not.toBe("secret");
+
+    const route = safeParams(
+      { action: "route", op: "add", route_action: "fulfill", body: "secret" },
+      config,
+    );
+    expect(route.body).toMatchObject({ length: 6, sha256: expect.any(String) });
+
+    const steps = safeParams(
+      {
+        action: "steps",
+        steps: [{ action: "type", ref: "e1", text: "secret" }],
+      },
+      config,
+    );
+    expect(JSON.stringify(steps.steps)).not.toContain("secret");
+  });
 });
 
 describe("summarizeOutput", () => {

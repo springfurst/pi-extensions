@@ -21,11 +21,23 @@ export const ACTION_NAMES = [
   "console",
   "network",
   "dialog",
+  "connect",
+  "upload",
+  "download",
+  "cookies",
+  "storage",
+  "emulate",
+  "pdf",
+  "har",
+  "trace",
+  "route",
+  "expect",
+  "steps",
 ] as const;
 
 export type ActionName = (typeof ACTION_NAMES)[number];
 export type ActionGroup =
-  "lifecycle" | "tabs" | "navigation" | "inspect" | "interact" | "wait" | "state";
+  "lifecycle" | "tabs" | "navigation" | "inspect" | "interact" | "wait" | "state" | "batch";
 
 export interface ParamSpec {
   name: string;
@@ -53,6 +65,7 @@ export const GROUP_LABELS: Record<ActionGroup, string> = {
   interact: "Interact",
   wait: "Wait",
   state: "State",
+  batch: "Batch",
 };
 
 const tab: ParamSpec = {
@@ -611,6 +624,365 @@ export const ACTIONS: Record<ActionName, ActionSpec> = {
     examples: ['{action:"dialog", op:"accept"}', '{action:"dialog", op:"policy", policy:"manual"}'],
     related: ["status"],
   },
+
+  connect: {
+    name: "connect",
+    group: "lifecycle",
+    summary: "Attach to an existing Chrome DevTools endpoint instead of launching Chrome.",
+    params: [
+      {
+        name: "endpoint",
+        type: "string",
+        required: true,
+        description: "WebSocket endpoint (ws://...) or DevTools HTTP endpoint (http://...).",
+      },
+    ],
+    examples: ['{action:"connect", endpoint:"http://127.0.0.1:9222"}'],
+    related: ["status", "close"],
+  },
+  upload: {
+    name: "upload",
+    group: "interact",
+    summary: "Set the files of a file input element.",
+    params: [
+      ref,
+      selector,
+      {
+        name: "files",
+        type: "string[]",
+        required: true,
+        description: "Absolute or working-directory-relative file paths.",
+      },
+      tab,
+      timeout,
+    ],
+    examples: ['{action:"upload", ref:"e4", files:["./resume.pdf"]}'],
+    related: ["snapshot", "click"],
+  },
+  download: {
+    name: "download",
+    group: "state",
+    summary: "List, wait for, or clear files downloaded by the browser.",
+    params: [
+      {
+        name: "op",
+        type: "string",
+        required: true,
+        values: ["list", "wait", "clear"],
+        description: "Download operation.",
+      },
+      {
+        name: "filter",
+        type: "string",
+        description: "Only match downloads whose filename or URL contains this text.",
+      },
+      timeout,
+    ],
+    examples: [
+      '{action:"download", op:"list"}',
+      '{action:"download", op:"wait", timeout_ms:30000}',
+    ],
+    related: ["click", "status"],
+  },
+  cookies: {
+    name: "cookies",
+    group: "state",
+    summary: "List, set, delete, or clear browser cookies.",
+    params: [
+      {
+        name: "op",
+        type: "string",
+        required: true,
+        values: ["list", "set", "delete", "clear"],
+        description: "Cookie operation.",
+      },
+      { name: "name", type: "string", description: "Cookie name." },
+      { name: "value", type: "string", description: "Cookie value for op:set." },
+      {
+        name: "url",
+        type: "string",
+        description: "Cookie URL; use for list or as an alternative to domain.",
+      },
+      { name: "domain", type: "string", description: "Cookie domain." },
+      { name: "cookie_path", type: "string", description: "Cookie path; defaults to /." },
+      {
+        name: "expires",
+        type: "number",
+        description: "Expiry as Unix seconds; omit for a session cookie.",
+      },
+      { name: "http_only", type: "boolean", description: "Mark the cookie HttpOnly." },
+      { name: "secure", type: "boolean", description: "Mark the cookie Secure." },
+      {
+        name: "same_site",
+        type: "string",
+        values: ["Strict", "Lax", "None"],
+        description: "Cookie SameSite policy.",
+      },
+      tab,
+    ],
+    examples: [
+      '{action:"cookies", op:"list"}',
+      '{action:"cookies", op:"set", name:"theme", value:"dark", url:"https://example.com"}',
+    ],
+    related: ["storage", "status"],
+  },
+  storage: {
+    name: "storage",
+    group: "state",
+    summary: "Read or mutate localStorage and sessionStorage.",
+    params: [
+      {
+        name: "op",
+        type: "string",
+        required: true,
+        values: ["get", "set", "remove", "clear", "keys"],
+        description: "Storage operation.",
+      },
+      {
+        name: "area",
+        type: "string",
+        values: ["local", "session"],
+        default: "local",
+        description: "Storage area.",
+      },
+      { name: "key", type: "string", description: "Storage key." },
+      { name: "value", type: "string", description: "Storage value for op:set." },
+      tab,
+    ],
+    examples: [
+      '{action:"storage", op:"get", key:"token"}',
+      '{action:"storage", op:"set", key:"theme", value:"dark"}',
+    ],
+    related: ["cookies", "eval"],
+  },
+  emulate: {
+    name: "emulate",
+    group: "state",
+    summary: "Apply or reset viewport, media, network, CPU, locale, and geolocation emulation.",
+    params: [
+      { name: "width", type: "number", description: "Viewport width." },
+      { name: "height", type: "number", description: "Viewport height." },
+      { name: "device_scale_factor", type: "number", description: "Device pixel ratio." },
+      { name: "is_mobile", type: "boolean", description: "Mobile viewport flag." },
+      { name: "has_touch", type: "boolean", description: "Touch support flag." },
+      { name: "user_agent", type: "string", description: "User agent override." },
+      { name: "locale", type: "string", description: "Locale override." },
+      { name: "timezone", type: "string", description: "Timezone override." },
+      {
+        name: "color_scheme",
+        type: "string",
+        values: ["light", "dark", "no-preference"],
+        description: "prefers-color-scheme override.",
+      },
+      {
+        name: "reduced_motion",
+        type: "string",
+        values: ["reduce", "no-preference"],
+        description: "prefers-reduced-motion override.",
+      },
+      {
+        name: "network_profile",
+        type: "string",
+        values: ["offline", "slow3g", "fast3g", "slow4g", "fast4g"],
+        description: "Predefined network condition.",
+      },
+      { name: "latency", type: "number", description: "Network latency in milliseconds." },
+      { name: "download_throughput", type: "number", description: "Download bytes per second." },
+      { name: "upload_throughput", type: "number", description: "Upload bytes per second." },
+      { name: "cpu_throttle", type: "number", description: "CPU slowdown factor; 1 disables." },
+      { name: "latitude", type: "number", description: "Geolocation latitude." },
+      { name: "longitude", type: "number", description: "Geolocation longitude." },
+      { name: "accuracy", type: "number", description: "Geolocation accuracy in metres." },
+      {
+        name: "reset",
+        type: "boolean",
+        description: "Reset all overrides to configuration defaults.",
+      },
+      tab,
+    ],
+    examples: [
+      '{action:"emulate", width:390, height:844, is_mobile:true, has_touch:true}',
+      '{action:"emulate", reset:true}',
+    ],
+    related: ["status", "screenshot"],
+  },
+  pdf: {
+    name: "pdf",
+    group: "inspect",
+    summary: "Print the current page to a PDF file.",
+    params: [
+      {
+        name: "path",
+        type: "string",
+        description: "Output path; defaults to the exports directory.",
+      },
+      { name: "paper_format", type: "string", description: "Paper format such as A4 or Letter." },
+      { name: "landscape", type: "boolean", description: "Print in landscape orientation." },
+      { name: "print_background", type: "boolean", description: "Print background graphics." },
+      { name: "scale", type: "number", description: "Print scale from 0.1 to 2." },
+      { name: "page_ranges", type: "string", description: "Page ranges such as 1-5,8." },
+      { name: "margin", type: "string", description: "Uniform margin such as 10mm." },
+      tab,
+    ],
+    examples: [
+      '{action:"pdf"}',
+      '{action:"pdf", path:"./page.pdf", paper_format:"A4", print_background:true}',
+    ],
+    related: ["screenshot", "read"],
+  },
+  har: {
+    name: "har",
+    group: "inspect",
+    summary: "Record network activity and export a HAR 1.2 file.",
+    params: [
+      {
+        name: "op",
+        type: "string",
+        required: true,
+        values: ["start", "stop", "clear"],
+        description: "HAR operation.",
+      },
+      { name: "path", type: "string", description: "Output path for op:stop." },
+      tab,
+    ],
+    examples: ['{action:"har", op:"start"}', '{action:"har", op:"stop", path:"./network.har"}'],
+    related: ["network", "trace"],
+  },
+  trace: {
+    name: "trace",
+    group: "inspect",
+    summary: "Record a Chrome trace and write it as JSON.",
+    params: [
+      {
+        name: "op",
+        type: "string",
+        required: true,
+        values: ["start", "stop"],
+        description: "Trace operation.",
+      },
+      { name: "path", type: "string", description: "Output path for op:stop." },
+      tab,
+    ],
+    examples: ['{action:"trace", op:"start"}', '{action:"trace", op:"stop", path:"./trace.json"}'],
+    related: ["har", "network"],
+  },
+  route: {
+    name: "route",
+    group: "state",
+    summary: "Add, remove, list, or clear request interception rules.",
+    params: [
+      {
+        name: "op",
+        type: "string",
+        required: true,
+        values: ["add", "remove", "clear", "list"],
+        description: "Route operation.",
+      },
+      { name: "id", type: "string", description: "Rule id for op:remove." },
+      {
+        name: "url_pattern",
+        type: "string",
+        default: "*",
+        description: "URL glob such as *://example.com/api/*.",
+      },
+      { name: "resource_type", type: "string", description: "Only match this resource type." },
+      {
+        name: "route_action",
+        type: "string",
+        values: ["abort", "continue", "fulfill", "delay"],
+        description: "Action for matching requests.",
+      },
+      { name: "status", type: "number", description: "Response status for fulfill." },
+      { name: "body", type: "string", description: "Response body for fulfill." },
+      {
+        name: "content_type",
+        type: "string",
+        description: "Response content type for fulfill.",
+      },
+      { name: "headers", type: "object", description: "Response headers for fulfill." },
+      { name: "delay_ms", type: "number", description: "Delay before continuing." },
+      tab,
+    ],
+    examples: [
+      '{action:"route", op:"add", url_pattern:"*://*/*.png", route_action:"abort"}',
+      '{action:"route", op:"list"}',
+    ],
+    related: ["network", "wait"],
+  },
+  expect: {
+    name: "expect",
+    group: "wait",
+    summary: "Assert page text, URL, title, values, attributes, visibility, or element counts.",
+    params: [
+      {
+        name: "check",
+        type: "string",
+        required: true,
+        values: [
+          "text",
+          "selector",
+          "url",
+          "title",
+          "value",
+          "attribute",
+          "visible",
+          "hidden",
+          "count",
+        ],
+        description: "What to assert.",
+      },
+      {
+        name: "operator",
+        type: "string",
+        values: [
+          "equals",
+          "contains",
+          "matches",
+          "not_equals",
+          "not_contains",
+          "gt",
+          "lt",
+          "gte",
+          "lte",
+        ],
+        description: "Comparison operator; defaults to contains for text and equals for others.",
+      },
+      { name: "expected", type: "string", description: "Expected value or pattern." },
+      ref,
+      selector,
+      { name: "attribute", type: "string", description: "Attribute name for check:attribute." },
+      timeout,
+      tab,
+    ],
+    examples: [
+      '{action:"expect", check:"text", expected:"Welcome"}',
+      '{action:"expect", check:"count", selector:".row", expected:"3"}',
+    ],
+    related: ["wait", "snapshot"],
+  },
+  steps: {
+    name: "steps",
+    group: "batch",
+    summary: "Run several actions in order and return each step's result.",
+    params: [
+      {
+        name: "steps",
+        type: "array",
+        required: true,
+        description: "Array of action parameter objects. Nested steps are not allowed.",
+      },
+      {
+        name: "stop_on_error",
+        type: "boolean",
+        default: "true",
+        description: "Stop at the first failing step.",
+      },
+    ],
+    examples: [
+      '{action:"steps", steps:[{action:"navigate", url:"https://example.com"},{action:"snapshot"}]}',
+    ],
+    related: ["help", "open"],
+  },
 };
 
 /** Validate required parameters and action-specific alternatives. */
@@ -712,6 +1084,105 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       'Example: {action:"dialog", op:"policy", policy:"manual"}',
     );
   }
+  if (action === "connect" && isMissing(params.endpoint)) {
+    throw new BrowserPilotError(
+      "connect requires endpoint.",
+      'Example: {action:"connect", endpoint:"http://127.0.0.1:9222"}',
+    );
+  }
+  if (action === "upload") {
+    if (isMissing(params.ref) && isMissing(params.selector)) {
+      throw new BrowserPilotError(
+        "upload requires ref or selector.",
+        `Example: ${spec.examples[0]}\nTip: run {action:"snapshot"} to get refs.`,
+      );
+    }
+    if (!Array.isArray(params.files) || params.files.length === 0) {
+      throw new BrowserPilotError(
+        "upload requires a non-empty files array.",
+        'Example: {action:"upload", ref:"e4", files:["./resume.pdf"]}',
+      );
+    }
+  }
+  if (action === "cookies") {
+    const op = String(params.op);
+    if (op === "set" && (isMissing(params.name) || isMissing(params.value))) {
+      throw new BrowserPilotError(
+        "cookies op:set requires name and value.",
+        'Example: {action:"cookies", op:"set", name:"theme", value:"dark", url:"https://example.com"}',
+      );
+    }
+    if ((op === "set" || op === "delete") && isMissing(params.url) && isMissing(params.domain)) {
+      throw new BrowserPilotError(
+        `cookies op:${op} requires url or domain.`,
+        'Example: {action:"cookies", op:"delete", name:"theme", domain:"example.com"}',
+      );
+    }
+    if (op === "delete" && isMissing(params.name)) {
+      throw new BrowserPilotError(
+        "cookies op:delete requires name.",
+        'Example: {action:"cookies", op:"delete", name:"theme", domain:"example.com"}',
+      );
+    }
+  }
+  if (action === "storage") {
+    const op = String(params.op);
+    if ((op === "get" || op === "remove") && isMissing(params.key)) {
+      throw new BrowserPilotError(
+        `storage op:${op} requires key.`,
+        'Example: {action:"storage", op:"get", key:"token"}',
+      );
+    }
+    if (op === "set" && (isMissing(params.key) || isMissing(params.value))) {
+      throw new BrowserPilotError(
+        "storage op:set requires key and value.",
+        'Example: {action:"storage", op:"set", key:"theme", value:"dark"}',
+      );
+    }
+  }
+  if (action === "route") {
+    const op = String(params.op);
+    if (op === "remove" && isMissing(params.id)) {
+      throw new BrowserPilotError(
+        "route op:remove requires id.",
+        'Example: {action:"route", op:"remove", id:"r1"}',
+      );
+    }
+    if (op === "add" && isMissing(params.route_action)) {
+      throw new BrowserPilotError(
+        "route op:add requires route_action.",
+        'Example: {action:"route", op:"add", url_pattern:"*://*/*.png", route_action:"abort"}',
+      );
+    }
+  }
+  if (action === "expect") {
+    if (isMissing(params.check)) {
+      throw new BrowserPilotError(
+        "expect requires check.",
+        'Example: {action:"expect", check:"text", expected:"Welcome"}',
+      );
+    }
+    if (
+      !["selector", "visible", "hidden"].includes(String(params.check)) &&
+      isMissing(params.expected)
+    ) {
+      throw new BrowserPilotError(
+        `expect check:${String(params.check)} requires expected.`,
+        'Example: {action:"expect", check:"count", selector:".row", expected:"3"}',
+      );
+    }
+  }
+  if (action === "steps") {
+    if (!Array.isArray(params.steps) || params.steps.length === 0) {
+      throw new BrowserPilotError(
+        "steps requires a non-empty steps array.",
+        'Example: {action:"steps", steps:[{action:"navigate", url:"https://example.com"},{action:"snapshot"}]}',
+      );
+    }
+    if (params.steps.some((step) => step.action === "steps")) {
+      throw new BrowserPilotError("Nested steps are not allowed.");
+    }
+  }
 
   const closedSets: Array<[string, unknown, string[]]> = [
     ["read format", action === "read" ? params.format : undefined, ["markdown", "text", "html"]],
@@ -731,6 +1202,51 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       ["read", "clear"],
     ],
     ["dialog op", action === "dialog" ? params.op : undefined, ["accept", "dismiss", "policy"]],
+    ["download op", action === "download" ? params.op : undefined, ["list", "wait", "clear"]],
+    [
+      "cookies op",
+      action === "cookies" ? params.op : undefined,
+      ["list", "set", "delete", "clear"],
+    ],
+    [
+      "storage op",
+      action === "storage" ? params.op : undefined,
+      ["get", "set", "remove", "clear", "keys"],
+    ],
+    ["har op", action === "har" ? params.op : undefined, ["start", "stop", "clear"]],
+    ["trace op", action === "trace" ? params.op : undefined, ["start", "stop"]],
+    ["route op", action === "route" ? params.op : undefined, ["add", "remove", "clear", "list"]],
+    [
+      "route action",
+      action === "route" ? params.route_action : undefined,
+      ["abort", "continue", "fulfill", "delay"],
+    ],
+    [
+      "expect check",
+      action === "expect" ? params.check : undefined,
+      ["text", "selector", "url", "title", "value", "attribute", "visible", "hidden", "count"],
+    ],
+    [
+      "expect operator",
+      action === "expect" ? params.operator : undefined,
+      ["equals", "contains", "matches", "not_equals", "not_contains", "gt", "lt", "gte", "lte"],
+    ],
+    [
+      "emulate network_profile",
+      action === "emulate" ? params.network_profile : undefined,
+      ["offline", "slow3g", "fast3g", "slow4g", "fast4g"],
+    ],
+    [
+      "emulate color_scheme",
+      action === "emulate" ? params.color_scheme : undefined,
+      ["light", "dark", "no-preference"],
+    ],
+    [
+      "emulate reduced_motion",
+      action === "emulate" ? params.reduced_motion : undefined,
+      ["reduce", "no-preference"],
+    ],
+    ["storage area", action === "storage" ? params.area : undefined, ["local", "session"]],
   ];
   for (const [label, value, allowed] of closedSets) {
     if (value !== undefined && !allowed.includes(String(value))) {
@@ -738,18 +1254,40 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     }
   }
 
-  const positive = ["tab", "max_nodes", "max_chars", "click_count", "limit", "timeout_ms"];
+  const positive = [
+    "tab",
+    "max_nodes",
+    "max_chars",
+    "click_count",
+    "limit",
+    "timeout_ms",
+    "width",
+    "height",
+    "device_scale_factor",
+    "cpu_throttle",
+    "status",
+  ];
   for (const key of positive) {
     const value = params[key];
     if (typeof value === "number" && value <= 0) {
       throw new BrowserPilotError(`${key} must be greater than zero.`);
     }
   }
-  for (const key of ["delay_ms", "amount"]) {
+  for (const key of [
+    "delay_ms",
+    "amount",
+    "latency",
+    "download_throughput",
+    "upload_throughput",
+    "expires",
+  ]) {
     const value = params[key];
     if (typeof value === "number" && value < 0) {
       throw new BrowserPilotError(`${key} must not be negative.`);
     }
+  }
+  if (typeof params.scale === "number" && (params.scale < 0.1 || params.scale > 2)) {
+    throw new BrowserPilotError("scale must be between 0.1 and 2.");
   }
   if (typeof params.quality === "number" && (params.quality < 0 || params.quality > 100)) {
     throw new BrowserPilotError("quality must be between 0 and 100.");
@@ -794,10 +1332,12 @@ function renderCatalog(): string {
     "  Fill a form:        snapshot → type → click",
     "  Debug an SPA:       console → network",
     '  Handle a challenge: wait {for:"human"}',
+    '  Record traffic:     har {op:"start"} → browse → har {op:"stop"}',
+    "  Batch actions:      steps {steps:[...]}",
     '  Clean up:           tabs {op:"list"} → tabs {op:"close", tab:N}',
     "",
     'Call {action:"help", topic:"<action>"} for one action, or',
-    'topic:"<group>" for lifecycle, navigation, inspect, interact, or state.',
+    'topic:"<group>" for lifecycle, navigation, inspect, interact, wait, state, or batch.',
     "",
     "Hints and suggested next steps in results are optional suggestions.",
   ];
@@ -821,6 +1361,12 @@ function actionLabel(name: ActionName): string {
     return "wait (for: selector | text | url | network_idle | function | human)";
   }
   if (name === "navigate") return "navigate (url, or direction: back | forward | reload)";
+  if (name === "cookies") return "cookies (op: list | set | delete | clear)";
+  if (name === "storage") return "storage (op: get | set | remove | clear | keys)";
+  if (name === "download") return "download (op: list | wait | clear)";
+  if (name === "har") return "har (op: start | stop | clear)";
+  if (name === "trace") return "trace (op: start | stop)";
+  if (name === "route") return "route (op: add | remove | clear | list)";
   return name;
 }
 

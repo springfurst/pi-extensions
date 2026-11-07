@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -37,6 +37,44 @@ const CHALLENGE = `<!doctype html><html><head><title>Just a moment...</title></h
 </script>
 </body></html>`;
 
+const SHADOW = `<!doctype html><html><head><title>Shadow Test</title></head><body>
+<div id="host"></div>
+<iframe id="frame" src="/frame"></iframe>
+<script>
+  const root = document.getElementById("host").attachShadow({ mode: "open" });
+  root.innerHTML = '<button id="shadow-button">Shadow Button</button><div id="shadow-out"></div>';
+  root.querySelector('#shadow-button').addEventListener('click', () => { root.querySelector('#shadow-button').textContent = 'shadow clicked'; });
+</script>
+</body></html>`;
+
+const FRAME = `<!doctype html><html><head><title>Frame Test</title></head><body>
+<button id="frame-button" onclick="document.getElementById('frame-out').textContent='frame clicked'">Frame Button</button>
+<div id="frame-out"></div>
+</body></html>`;
+
+const UPLOAD = `<!doctype html><html><head><title>Upload Test</title></head><body>
+<label>File <input id="file" type="file"></label>
+</body></html>`;
+
+const DOWNLOAD = `<!doctype html><html><head><title>Download Test</title></head><body>
+<a id="download" href="/download" download="sample.txt">Download sample</a>
+</body></html>`;
+
+const EMULATE = `<!doctype html><html><head><title>Emulate Test</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
+<h1>Emulate Test</h1>
+<div id="out"></div>
+<script>
+  document.getElementById("out").textContent = String(window.innerWidth) + ":" + String(matchMedia("(prefers-color-scheme: dark)").matches);
+</script>
+</body></html>`;
+
+const ROUTE = `<!doctype html><html><head><title>Route Test</title></head><body>
+<h1>Route Test</h1><div id="out"></div>
+<script>
+  fetch("/mocked").then((r) => r.text()).then((text) => { document.getElementById("out").textContent = text; });
+</script>
+</body></html>`;
+
 describe("browser-pilot live", () => {
   let server: TestServer;
   let agentDir: string;
@@ -53,7 +91,17 @@ describe("browser-pilot live", () => {
       } else if (path === "/article") res.end(ARTICLE);
       else if (path === "/result") res.end(RESULT);
       else if (path === "/challenge") res.end(CHALLENGE);
-      else res.end(PAGE);
+      else if (path === "/shadow") res.end(SHADOW);
+      else if (path === "/frame") res.end(FRAME);
+      else if (path === "/upload") res.end(UPLOAD);
+      else if (path === "/download-page") res.end(DOWNLOAD);
+      else if (path === "/emulate") res.end(EMULATE);
+      else if (path === "/route-page") res.end(ROUTE);
+      else if (path === "/download") {
+        res.setHeader("content-type", "text/plain; charset=utf-8");
+        res.setHeader("content-disposition", 'attachment; filename="sample.txt"');
+        res.end("sample download");
+      } else res.end(PAGE);
     });
     agentDir = mkdtempSync(join(tmpdir(), "browser-pilot-agent-"));
     cwd = mkdtempSync(join(tmpdir(), "browser-pilot-cwd-"));
@@ -215,6 +263,154 @@ describe("browser-pilot live", () => {
     expect(text(read)).not.toContain("Checking your browser");
     await run({ action: "close", target: "browser" });
   });
+
+  it("supports shadow and iframe refs, upload, download, cookies, storage, emulation, routing, expectations, batches, and exports", async () => {
+    await run({ action: "open", url: `${server.origin}/shadow` });
+    const shadowSnapshot = text(await run({ action: "snapshot" }));
+    expect(shadowSnapshot).toContain("Shadow Button");
+    expect(shadowSnapshot).toContain("Frame Button");
+    const shadowRef = refFor(shadowSnapshot, /\[(e\d+)\] button "Shadow Button"/);
+    const frameRef = refFor(shadowSnapshot, /\[(e\d+)\] button "Frame Button"/);
+    await run({ action: "click", ref: shadowRef });
+    await run({ action: "click", ref: frameRef });
+    const shadowClicked = await run({
+      action: "eval",
+      expression:
+        "document.getElementById('host').shadowRoot.querySelector('#shadow-button').textContent",
+    });
+    expect(text(shadowClicked)).toContain("shadow clicked");
+    const frameClicked = await run({
+      action: "eval",
+      expression:
+        "document.querySelector('iframe').contentDocument.getElementById('frame-out').textContent",
+    });
+    expect(text(frameClicked)).toContain("frame clicked");
+
+    await run({ action: "navigate", url: `${server.origin}/upload` });
+    const uploadSnapshot = text(await run({ action: "snapshot" }));
+    const fileRef = refFor(uploadSnapshot, /\[(e\d+)\] file "File"/);
+    const uploadPath = join(cwd, "upload.txt");
+    writeFileSync(uploadPath, "uploaded");
+    const uploaded = await run({ action: "upload", ref: fileRef, files: [uploadPath] });
+    expect(uploaded.isError, text(uploaded)).toBeUndefined();
+    const uploadedName = await run({
+      action: "eval",
+      expression: "document.getElementById('file').files[0].name",
+    });
+    expect(text(uploadedName)).toContain("upload.txt");
+
+    await run({ action: "navigate", url: `${server.origin}/download-page` });
+    const downloadSnapshot = text(await run({ action: "snapshot" }));
+    const downloadRef = refFor(downloadSnapshot, /\[(e\d+)\] link "Download sample"/);
+    await run({ action: "click", ref: downloadRef });
+    const downloaded = await run({ action: "download", op: "wait", timeout_ms: 10_000 });
+    expect(downloaded.isError, text(downloaded)).toBeUndefined();
+    expect(text(downloaded)).toContain("sample.txt");
+
+    await run({ action: "navigate", url: `${server.origin}/` });
+    const setCookie = await run({
+      action: "cookies",
+      op: "set",
+      name: "pilot",
+      value: "yes",
+      url: server.origin,
+    });
+    expect(setCookie.isError, text(setCookie)).toBeUndefined();
+    const cookies = await run({ action: "cookies", op: "list" });
+    expect(text(cookies)).toContain("pilot=yes");
+    const storageSet = await run({ action: "storage", op: "set", key: "theme", value: "dark" });
+    expect(storageSet.isError).toBeUndefined();
+    const storageGet = await run({ action: "storage", op: "get", key: "theme" });
+    expect(text(storageGet)).toContain("dark");
+    await run({ action: "storage", op: "remove", key: "theme" });
+    await run({ action: "cookies", op: "clear" });
+
+    await run({ action: "navigate", url: `${server.origin}/emulate` });
+    const emulated = await run({
+      action: "emulate",
+      width: 390,
+      height: 844,
+      is_mobile: true,
+      has_touch: true,
+      color_scheme: "dark",
+      cpu_throttle: 2,
+    });
+    expect(emulated.isError, text(emulated)).toBeUndefined();
+    const emulatedValue = await run({
+      action: "eval",
+      expression: "document.getElementById('out').textContent",
+    });
+    expect(text(emulatedValue)).toContain("390:true");
+    const reset = await run({ action: "emulate", reset: true });
+    expect(reset.isError, text(reset)).toBeUndefined();
+
+    const route = await run({
+      action: "route",
+      op: "add",
+      url_pattern: `${server.origin}/mocked`,
+      route_action: "fulfill",
+      status: 200,
+      body: '{"mocked":true}',
+      content_type: "application/json",
+    });
+    expect(route.isError, text(route)).toBeUndefined();
+    await run({ action: "navigate", url: `${server.origin}/route-page` });
+    await run({ action: "expect", check: "text", expected: "mocked", timeout_ms: 5_000 });
+    const routeList = await run({ action: "route", op: "list" });
+    expect(text(routeList)).toContain("fulfill");
+    await run({ action: "route", op: "clear" });
+
+    const expectedTitle = await run({ action: "expect", check: "title", expected: "Route Test" });
+    expect(expectedTitle.isError).toBeUndefined();
+    const expectedCount = await run({
+      action: "expect",
+      check: "count",
+      selector: "h1",
+      expected: "1",
+    });
+    expect(expectedCount.isError).toBeUndefined();
+
+    const steps = await run({
+      action: "steps",
+      steps: [
+        { action: "navigate", url: `${server.origin}/result` },
+        { action: "expect", check: "title", expected: "Result" },
+      ],
+    });
+    expect(steps.isError, text(steps)).toBeUndefined();
+    expect(text(steps)).toContain("Step 2: expect");
+
+    const harPath = join(cwd, "network.har");
+    await run({ action: "har", op: "start" });
+    await run({ action: "navigate", url: `${server.origin}/` });
+    const har = await run({ action: "har", op: "stop", path: harPath });
+    expect(har.isError, text(har)).toBeUndefined();
+    expect(existsSync(harPath)).toBe(true);
+    const harJson = JSON.parse(readFileSync(harPath, "utf-8")) as {
+      log: { version: string; entries: unknown[] };
+    };
+    expect(harJson.log.version).toBe("1.2");
+    expect(harJson.log.entries.length).toBeGreaterThan(0);
+
+    const tracePath = join(cwd, "trace.json");
+    await run({ action: "trace", op: "start" });
+    await run({ action: "eval", expression: "1 + 1" });
+    const trace = await run({ action: "trace", op: "stop", path: tracePath });
+    expect(trace.isError, text(trace)).toBeUndefined();
+    expect(existsSync(tracePath)).toBe(true);
+    const traceJson = JSON.parse(readFileSync(tracePath, "utf-8")) as {
+      traceEvents: unknown[];
+    };
+    expect(traceJson.traceEvents.length).toBeGreaterThan(0);
+
+    const pdfPath = join(cwd, "page.pdf");
+    const pdf = await run({ action: "pdf", path: pdfPath });
+    expect(pdf.isError, text(pdf)).toBeUndefined();
+    expect(existsSync(pdfPath)).toBe(true);
+    expect(statSync(pdfPath).size).toBeGreaterThan(0);
+
+    await run({ action: "close", target: "browser" });
+  });
 });
 
 describe("browser-pilot profiles and tabs live", () => {
@@ -280,6 +476,37 @@ describe("browser-pilot profiles and tabs live", () => {
     const retry = await executeBrowserPilot({ action: "open" }, ctx("profile-b"));
     expect(retry.isError).toBeUndefined();
     await executeBrowserPilot({ action: "close", target: "browser" }, ctx("profile-b"));
+  });
+
+  it("attaches to an existing DevTools endpoint and disconnects without closing it", async () => {
+    const idA = "external-a";
+    const idB = "external-b";
+    const opened = await executeBrowserPilot(
+      { action: "open", url: `${server.origin}/` },
+      ctx(idA),
+    );
+    expect(opened.isError).toBeUndefined();
+    const statusA = await executeBrowserPilot({ action: "status" }, ctx(idA));
+    const port = statusA.details.port as number;
+    expect(port).toBeGreaterThan(0);
+
+    const attached = await executeBrowserPilot(
+      { action: "connect", endpoint: `http://127.0.0.1:${port}` },
+      ctx(idB),
+    );
+    expect(attached.isError).toBeUndefined();
+    const tabs = await executeBrowserPilot({ action: "tabs", op: "list" }, ctx(idB));
+    expect(tabs.isError).toBeUndefined();
+
+    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(idB));
+    const statusA2 = await executeBrowserPilot({ action: "status" }, ctx(idA));
+    expect(
+      statusA2.content
+        .filter((block): block is { type: "text"; text: string } => block.type === "text")
+        .map((block) => block.text)
+        .join("\n"),
+    ).toContain("Browser: running");
+    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(idA));
   });
 
   it("recovers from a stale instance record after a crash", async () => {

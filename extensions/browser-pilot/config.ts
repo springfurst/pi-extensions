@@ -136,6 +136,10 @@ function pickConfig(raw: RawConfig): Partial<BrowserPilotConfig> {
   if (allowPrivateHosts !== undefined) out.allowPrivateHosts = allowPrivateHosts;
   const screenshotsDir = asNonEmptyString(raw.screenshotsDir);
   if (screenshotsDir !== undefined) out.screenshotsDir = screenshotsDir;
+  const downloadsDir = asNonEmptyString(raw.downloadsDir);
+  if (downloadsDir !== undefined) out.downloadsDir = downloadsDir;
+  const exportsDir = asNonEmptyString(raw.exportsDir);
+  if (exportsDir !== undefined) out.exportsDir = exportsDir;
   const maxReadChars = asPositiveNumber(raw.maxReadChars);
   if (maxReadChars !== undefined) out.maxReadChars = Math.floor(maxReadChars);
   const maxEvalChars = asPositiveNumber(raw.maxEvalChars);
