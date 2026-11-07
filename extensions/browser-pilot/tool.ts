@@ -290,7 +290,7 @@ async function statusResult(
   }
   if (!session.browser?.connected) {
     lines.push("", hint("the next action will try to reconnect."));
-  } else if (challenge) {
+  } else if (challenge?.severity === "blocking") {
     lines.push(
       "",
       hint('solve the challenge in the Chrome window, then run {action:"wait", for:"human"}.'),
@@ -437,12 +437,7 @@ function navigateText(
 ): BrowserPilotToolResult {
   const lines = [pageHeader(nav.tab.handle, nav.url, nav.title), `Status: ${nav.status}`];
   if (nav.note) lines.push(nav.note);
-  if (nav.challenge) {
-    lines.push("", formatChallenge(nav.challenge)!);
-    lines.push(
-      hint('solve the challenge in the Chrome window, then run {action:"wait", for:"human"}.'),
-    );
-  }
+  appendChallenge(lines, nav.challenge);
   lines.push("", suggestedNext('{action:"snapshot"} or {action:"read"}.'));
   return finalize(lines.join("\n"), {
     action: "navigate",
@@ -563,10 +558,7 @@ async function snapshotResult(
   lines.push("", hint("use ref with click/type. Refs expire after navigation or a new snapshot."));
   const challenge = await detectChallenge(tab.page).catch(() => undefined);
   session.challenge = challenge;
-  if (challenge) {
-    lines.push("", formatChallenge(challenge)!);
-    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
-  }
+  appendChallenge(lines, challenge);
   return finalize(lines.join("\n"), {
     action: "snapshot",
     tab: tab.handle,
@@ -614,10 +606,7 @@ async function readResult(
   if (savedPath) lines.push("", `[Saved to ${savedPath}]`);
   const challenge = await detectChallenge(tab.page).catch(() => undefined);
   session.challenge = challenge;
-  if (challenge) {
-    lines.push("", formatChallenge(challenge)!);
-    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
-  }
+  appendChallenge(lines, challenge);
   return finalize(lines.join("\n"), {
     action: "read",
     tab: tab.handle,
@@ -736,10 +725,7 @@ async function clickResult(
   if (afterUrl !== beforeUrl) {
     lines.push("", hint("the page navigated; refs are now stale. Run snapshot again."));
   }
-  if (challenge) {
-    lines.push("", formatChallenge(challenge)!);
-    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
-  }
+  appendChallenge(lines, challenge);
   return finalize(lines.join("\n"), {
     action: "click",
     tab: tab.handle,
@@ -797,10 +783,7 @@ async function typeResult(
     `Typed ${text.length} characters into ${targetLabel(params)}.`,
   ];
   if (params.submit) lines.push("Pressed Enter.");
-  if (challenge) {
-    lines.push("", formatChallenge(challenge)!);
-    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
-  }
+  appendChallenge(lines, challenge);
   lines.push(
     "",
     hint('run {action:"snapshot"} if the page changed, or {action:"wait"} for a result.'),
@@ -965,9 +948,10 @@ async function waitResult(
     const result = await waitForHuman(tab.page, {
       timeoutMs: timeout,
       signal: ctx.signal,
-      onProgress: (elapsed) => {
+      onProgress: (elapsed, challenge) => {
         if (Date.now() - lastUpdate < 5_000) return;
         lastUpdate = Date.now();
+        if (challenge) session.challenge = challenge;
         void ctx.onUpdate?.({
           content: [
             {
@@ -979,7 +963,7 @@ async function waitResult(
             action: "wait",
             tab: tab.handle,
             url: tab.page.url(),
-            challenge: session.challenge,
+            challenge: challenge ?? session.challenge,
           },
         });
       },
@@ -1045,10 +1029,7 @@ async function waitResult(
     pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
     `Wait satisfied after ${elapsed}ms.`,
   ];
-  if (challenge) {
-    lines.push("", formatChallenge(challenge)!);
-    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
-  }
+  appendChallenge(lines, challenge);
   return finalize(lines.join("\n"), {
     action: "wait",
     tab: tab.handle,
@@ -1243,6 +1224,14 @@ async function dialogResult(
     policy: result.policy,
     dialog: result.dialog,
   });
+}
+
+function appendChallenge(lines: string[], challenge: ChallengeInfo | undefined): void {
+  if (!challenge) return;
+  lines.push("", formatChallenge(challenge)!);
+  if (challenge.severity === "blocking") {
+    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
+  }
 }
 
 function finalize(text: string, details: BrowserPilotDetails): BrowserPilotToolResult {

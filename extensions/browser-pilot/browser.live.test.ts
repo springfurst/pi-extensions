@@ -208,7 +208,7 @@ describe("browser-pilot live", () => {
     expect(text(status)).toContain("blocking");
 
     const waited = await run({ action: "wait", for: "human", timeout_ms: 10_000 });
-    expect(waited.isError).toBeUndefined();
+    expect(waited.isError, text(waited)).toBeUndefined();
     expect(text(waited)).toContain("Challenge cleared");
 
     const read = await run({ action: "read", format: "text" });

@@ -156,7 +156,6 @@ export async function waitForHuman(
   options: WaitForHumanOptions,
 ): Promise<WaitForHumanResult> {
   const started = Date.now();
-  const initialUrl = page.url();
   let challenge = await detectChallenge(page);
   const initialChallenge = challenge;
   if (!challenge || challenge.severity !== "blocking") {
@@ -169,13 +168,10 @@ export async function waitForHuman(
     await sleep(1_000);
     options.onProgress?.(Date.now() - started, challenge);
     if (page.isClosed()) {
-      return { cleared: false, elapsedMs: Date.now() - started, challenge };
+      return { cleared: false, elapsedMs: Date.now() - started, challenge, initialChallenge };
     }
     challenge = await detectChallenge(page);
     if (!challenge || challenge.severity !== "blocking") {
-      return { cleared: true, elapsedMs: Date.now() - started, challenge, initialChallenge };
-    }
-    if (page.url() !== initialUrl) {
       return { cleared: true, elapsedMs: Date.now() - started, challenge, initialChallenge };
     }
   }
