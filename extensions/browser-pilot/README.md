@@ -119,6 +119,8 @@ The tool result also carries structured details for the terminal renderer and sc
 
 Environment variables override the binary and profile defaults: `BROWSER_PILOT_EXECUTABLE_PATH`, `PUPPETEER_EXECUTABLE_PATH`, `CHROME_PATH`, and `BROWSER_PILOT_PROFILE`. Secrets stay in the environment; `type` can read a value with `text_env`.
 
+Path values accept a leading `~`, which expands to the home directory. Relative paths in `profile`, `executablePath`, `screenshotsDir`, `logging.dir`, `save_path`, `text_file`, and `script_path` resolve against the working directory.
+
 ### Profiles
 
 A profile is a Chrome user-data-dir. Chrome permits one process per profile.

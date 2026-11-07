@@ -408,7 +408,9 @@ export async function ensureChrome(options: {
   }
 
   const executablePath = await resolveBrowserExecutable({
-    executablePath: options.config.executablePath,
+    executablePath: options.config.executablePath
+      ? expandTilde(options.config.executablePath)
+      : undefined,
   });
   if (!executablePath) {
     throw new Error(

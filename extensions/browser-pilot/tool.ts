@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { KeyInput } from "puppeteer-core";
-import { USAGE_SCHEMA_VERSION, createFileUsageLogger, type UsageRecord } from "../../lib/logging";
+import {
+  USAGE_SCHEMA_VERSION,
+  createFileUsageLogger,
+  expandTilde,
+  type UsageRecord,
+} from "../../lib/logging";
 import { PI_VERSION, TOOL_VERSION } from "../../lib/version";
 import { renderHelp, validateAction, type ActionName } from "./actions";
 import { detectChallenge, waitForHuman } from "./challenge";
@@ -1061,13 +1066,13 @@ async function screenshotResult(
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
   const format = params.format === "jpeg" || params.format === "webp" ? params.format : "png";
+  const screenshotDir = config.screenshotsDir
+    ? resolvePath(session.cwd, config.screenshotsDir)
+    : join(session.agentDir, "browser-pilot", "screenshots");
   const path =
     params.path !== undefined
       ? resolvePath(session.cwd, params.path)
-      : join(
-          config.screenshotsDir ?? join(session.agentDir, "browser-pilot", "screenshots"),
-          `${timestamp()}-tab${tab.handle}.${format}`,
-        );
+      : join(screenshotDir, `${timestamp()}-tab${tab.handle}.${format}`);
   mkdirSync(dirname(path), { recursive: true });
   const quality = params.quality;
   if (params.selector) {
@@ -1290,18 +1295,27 @@ function resolveTypedText(params: BrowserPilotParams, cwd: string): string {
 
 function readInputFile(cwd: string, path: string): string {
   const absolute = resolvePath(cwd, path);
-  const size = statSync(absolute).size;
-  if (size > MAX_INPUT_FILE_BYTES) {
+  try {
+    const size = statSync(absolute).size;
+    if (size > MAX_INPUT_FILE_BYTES) {
+      throw new BrowserPilotError(
+        `Input file is ${size} bytes, above the ${MAX_INPUT_FILE_BYTES} byte cap.`,
+        "Pass a smaller file or use an inline expression.",
+      );
+    }
+    return readFileSync(absolute, "utf-8");
+  } catch (error) {
+    if (error instanceof BrowserPilotError) throw error;
     throw new BrowserPilotError(
-      `Input file is ${size} bytes, above the ${MAX_INPUT_FILE_BYTES} byte cap.`,
-      "Pass a smaller file or use an inline expression.",
+      `Could not read ${absolute}: ${error instanceof Error ? error.message : String(error)}`,
+      "Check that the file exists and is readable.",
     );
   }
-  return readFileSync(absolute, "utf-8");
 }
 
 function resolvePath(cwd: string, path: string): string {
-  return isAbsolute(path) ? path : resolve(cwd, path);
+  const expanded = expandTilde(path);
+  return isAbsolute(expanded) ? expanded : resolve(cwd, expanded);
 }
 
 function timestamp(): string {
