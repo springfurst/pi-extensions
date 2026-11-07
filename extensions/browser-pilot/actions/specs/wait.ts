@@ -1,0 +1,106 @@
+import type { ActionSpec } from "../spec-types";
+import { tab, ref, selector, timeout } from "../params";
+
+export const waitSpecs: Record<string, ActionSpec> = {
+  wait: {
+    name: "wait",
+    group: "wait",
+    summary:
+      "Wait for a selector, text, URL, network idle, a response, a JavaScript condition, or a human.",
+    params: [
+      {
+        name: "for",
+        type: "string",
+        required: true,
+        values: ["selector", "text", "url", "network_idle", "response", "function", "human"],
+        description: "What to wait for.",
+      },
+      selector,
+      {
+        name: "text",
+        type: "string",
+        description: "Text to wait for when for:text.",
+      },
+      {
+        name: "url",
+        type: "string",
+        description: "URL substring to wait for when for:url.",
+      },
+      {
+        name: "url_pattern",
+        type: "string",
+        description: "URL glob or substring when for:response.",
+      },
+      {
+        name: "include_body",
+        type: "boolean",
+        description: "Include a response body preview when for:response.",
+      },
+      {
+        name: "expression",
+        type: "string",
+        description: "Truthy JavaScript expression when for:function.",
+      },
+      tab,
+      timeout,
+    ],
+    examples: [
+      '{action:"wait", for:"selector", selector:"main"}',
+      '{action:"wait", for:"response", url_pattern:"/api/items"}',
+      '{action:"wait", for:"human", timeout_ms:300000}',
+    ],
+    related: ["navigate", "read", "network", "status"],
+  },
+
+  expect: {
+    name: "expect",
+    group: "wait",
+    summary: "Assert page text, URL, title, values, attributes, visibility, or element counts.",
+    params: [
+      {
+        name: "check",
+        type: "string",
+        required: true,
+        values: [
+          "text",
+          "selector",
+          "url",
+          "title",
+          "value",
+          "attribute",
+          "visible",
+          "hidden",
+          "count",
+        ],
+        description: "What to assert.",
+      },
+      {
+        name: "operator",
+        type: "string",
+        values: [
+          "equals",
+          "contains",
+          "matches",
+          "not_equals",
+          "not_contains",
+          "gt",
+          "lt",
+          "gte",
+          "lte",
+        ],
+        description: "Comparison operator; defaults to contains for text and equals for others.",
+      },
+      { name: "expected", type: "string", description: "Expected value or pattern." },
+      ref,
+      selector,
+      { name: "attribute", type: "string", description: "Attribute name for check:attribute." },
+      timeout,
+      tab,
+    ],
+    examples: [
+      '{action:"expect", check:"text", expected:"Welcome"}',
+      '{action:"expect", check:"count", selector:".row", expected:"3"}',
+    ],
+    related: ["wait", "snapshot"],
+  },
+};
