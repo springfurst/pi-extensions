@@ -134,6 +134,21 @@ Each session launches its own Chrome process and its own DevTools port. If anoth
 
 Chrome 136 and later refuse remote debugging on the default user-data-dir. Always use a dedicated profile, as this tool does.
 
+### Logging
+
+Logging is opt-in and writes one JSON object per call to `<agentDir>/browser-pilot/logs/browser-pilot.jsonl` by default.
+
+| Key                            | Default                         | Effect                                                        |
+| ------------------------------ | ------------------------------- | ------------------------------------------------------------- |
+| `logging.enabled`              | `false`                         | Record completed calls.                                       |
+| `logging.dir`                  | `<agentDir>/browser-pilot/logs` | Directory for the JSONL file.                                 |
+| `logging.includeArgs`          | `true`                          | Record URLs, selectors, refs, and paths.                      |
+| `logging.includeSensitiveArgs` | `false`                         | Record typed text, `eval` source, and other sensitive values. |
+| `logging.outputs`              | `summary`                       | `none`, `summary`, `snippet`, or `full`.                      |
+| `logging.maxOutputChars`       | `2000`                          | Cap for snippet/full output in a record.                      |
+
+The record includes the shared usage envelope, the action, profile, pid, port, Chrome version, tab count, URL, title, status, challenge, truncation, saved path, safe parameters, and an output summary. Typed text and `eval` source are reduced to length and SHA-256 hash by default. Small structured results are logged in full; large results use a head/tail snippet. Screenshots record the path and metadata, not the image.
+
 ## Behavior and fallbacks
 
 - **Ports.** Chrome is spawned with `--remote-debugging-port=0`. The tool reads the actual port from the profile's `DevToolsActivePort` file, so it never scans for a free port or collides with another window.
