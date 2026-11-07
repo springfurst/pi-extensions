@@ -930,14 +930,17 @@ export class BrowserPilotSession {
 
     if (direction) {
       const options = { waitUntil: wait, timeout, signal };
+      // Same-document history entries navigate without a network response, so the URL is the
+      // reliable signal that the history moved.
+      const before = page.url();
       if (direction === "back") {
         const response = await page.goBack(options);
-        if (!response) note = "No earlier history entry.";
-        else status = response.status();
+        if (response) status = response.status();
+        else if (page.url() === before) note = "No earlier history entry.";
       } else if (direction === "forward") {
         const response = await page.goForward(options);
-        if (!response) note = "No later history entry.";
-        else status = response.status();
+        if (response) status = response.status();
+        else if (page.url() === before) note = "No later history entry.";
       } else {
         const response = await page.reload(options);
         status = response?.status() ?? 200;

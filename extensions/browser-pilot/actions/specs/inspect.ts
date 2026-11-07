@@ -166,8 +166,8 @@ export const inspectSpecs: Record<string, ActionSpec> = {
         name: "op",
         type: "string",
         required: true,
-        values: ["read", "clear"],
-        description: "Console operation.",
+        values: ["read", "list", "clear"],
+        description: "Console operation; list is an alias for read.",
       },
       {
         name: "level",
@@ -204,8 +204,8 @@ export const inspectSpecs: Record<string, ActionSpec> = {
         name: "op",
         type: "string",
         required: true,
-        values: ["read", "get", "clear"],
-        description: "Network operation.",
+        values: ["read", "list", "get", "clear"],
+        description: "Network operation; list is an alias for read.",
       },
       {
         name: "id",

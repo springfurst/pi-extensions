@@ -616,6 +616,25 @@ describe("browser-pilot live", () => {
 
     await run({ action: "close", target: "browser" });
   });
+
+  it("follows same-document history without claiming the entry is missing", async () => {
+    await run({ action: "open", url: `${server.origin}/` });
+    await run({ action: "eval", expression: "history.pushState({}, '', '/same-document')" });
+
+    const back = await run({ action: "navigate", direction: "back" });
+    expect(back.isError, text(back)).toBeUndefined();
+    expect(text(back)).not.toContain("No earlier history entry");
+    const path = await run({ action: "eval", expression: "location.pathname" });
+    expect(text(path)).toContain("/");
+
+    const forward = await run({ action: "navigate", direction: "forward" });
+    expect(forward.isError, text(forward)).toBeUndefined();
+    expect(text(forward)).not.toContain("No later history entry");
+    const forwardPath = await run({ action: "eval", expression: "location.pathname" });
+    expect(text(forwardPath)).toContain("/same-document");
+
+    await run({ action: "close", target: "browser" });
+  });
 });
 
 describe("browser-pilot profiles and tabs live", () => {
