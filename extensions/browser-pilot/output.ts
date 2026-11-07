@@ -3,7 +3,7 @@ import {
   DEFAULT_MAX_LINES,
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
-import type { ChallengeInfo, TabInfo } from "./types";
+import type { BrowserPilotDetails, BrowserPilotToolResult, ChallengeInfo, TabInfo } from "./types";
 
 /** Slice text to a character cap, reporting whether anything was cut. */
 export function capText(
@@ -21,6 +21,15 @@ export function capForModel(text: string): { text: string; truncated: boolean } 
     maxLines: DEFAULT_MAX_LINES,
   });
   return { text: result.content, truncated: result.truncated };
+}
+
+/** Apply the model-safe cap and wrap text with its structured details. */
+export function finalize(text: string, details: BrowserPilotDetails): BrowserPilotToolResult {
+  const capped = capForModel(text);
+  const finalText = capped.truncated
+    ? `${capped.text}\n\n[Output truncated by the model limit.]`
+    : capped.text;
+  return { content: [{ type: "text", text: finalText }], details };
 }
 
 /** A compact tab/URL/title header for an action result. */

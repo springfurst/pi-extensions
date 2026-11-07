@@ -1,26 +1,34 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import type {
-  Browser,
-  CDPSession,
-  Dialog,
-  Frame,
-  HTTPRequest,
-  HTTPResponse,
-  Page,
-} from "puppeteer-core";
-import { expandTilde } from "../../lib/logging";
-import { buildHar } from "./har";
-import { matchesRoute } from "./route";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import type { Browser, Dialog, Frame, HTTPRequest, Page } from "puppeteer-core";
 import {
   closeChrome,
   connectChrome,
   disposeChromeSync,
   ensureChrome,
   instanceRecordPath,
-  resolveProfile,
 } from "./launcher";
+import { expandTilde } from "../../lib/logging";
 import { detectChallenge } from "./challenge";
+import { DownloadTracker } from "./session-downloads";
+import { EmulationController, type NetworkProfileName } from "./session-emulation";
+import { MAX_HAR_BODY_BYTES, RecordingController } from "./session-recording";
+import { RouteController } from "./session-routing";
+import { FrameSelection } from "./session-frames";
+import { NetworkDetailStore, type NetworkDetail } from "./session-network-details";
+import {
+  SESSION_SCHEMA,
+  readSessionRecord,
+  removeSessionRecord,
+  sessionRecordPath,
+} from "./session-records";
+import {
+  headerValue,
+  resolveDevToolsEndpoint,
+  safeResourceType,
+  targetIdOf,
+  trim,
+} from "./session-helpers";
 import { checkNavigationAllowed } from "./security";
 import type {
   BrowserPilotConfig,
@@ -39,22 +47,7 @@ import type {
 } from "./types";
 import { BrowserPilotError } from "./types";
 
-const SESSION_SCHEMA = 1;
 const TAB_IDLE_CLEANUP_MS = 5 * 60_000;
-const MAX_HAR_BODY_BYTES = 1024 * 1024;
-
-type NetworkProfileName = "offline" | "slow3g" | "fast3g" | "slow4g" | "fast4g";
-
-const NETWORK_PROFILES: Record<
-  NetworkProfileName,
-  { latency: number; download: number; upload: number }
-> = {
-  offline: { latency: 0, download: 0, upload: 0 },
-  slow3g: { latency: 2000, download: 50_000, upload: 20_000 },
-  fast3g: { latency: 150, download: 180_000, upload: 80_000 },
-  slow4g: { latency: 100, download: 500_000, upload: 250_000 },
-  fast4g: { latency: 20, download: 4_000_000, upload: 1_000_000 },
-};
 
 const STEALTH_SCRIPT = `
 Object.defineProperty(navigator, "webdriver", { get: () => false });
@@ -87,24 +80,33 @@ export class BrowserPilotSession {
   nextHandle = 1;
   refs = new Map<string, { selector: string; snapshot: number; frame?: Frame }>();
   snapshotCount = 0;
+  readonly frames = new FrameSelection();
   dialogPolicy: "dismiss" | "accept" | "manual" = "dismiss";
   pendingDialog?: DialogInfo;
   challenge?: ChallengeInfo;
-  downloads: DownloadInfo[] = [];
-  routeRules: RouteRule[] = [];
-  emulation: EmulationState = {};
+  readonly downloads = new DownloadTracker();
+  readonly routeController = new RouteController(this);
+
+  get routeRules(): RouteRule[] {
+    return this.routeController.rules;
+  }
+  readonly emulationController = new EmulationController(this);
+
+  get emulation(): EmulationState {
+    return this.emulationController.state;
+  }
+
+  set emulation(value: EmulationState) {
+    this.emulationController.state = value;
+  }
 
   private pendingDialogHandle?: Dialog;
   private requestEntries = new WeakMap<HTTPRequest, NetworkEntry>();
   private networkSequence = 0;
-  private routeSequence = 0;
+  private networkDetails = new NetworkDetailStore();
   private idleTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
-  private downloadClient?: CDPSession;
-  private harRecording = false;
-  private traceClient?: CDPSession;
-  private traceChunks: string[] = [];
-  private traceTab?: number;
+  readonly recording = new RecordingController(this);
 
   constructor(options: {
     sessionId: string;
@@ -150,7 +152,7 @@ export class BrowserPilotSession {
       }
       this.browser.on("disconnected", () => {
         this.browser = undefined;
-        this.downloadClient = undefined;
+        this.downloads.reset();
       });
       await this.restoreExternal();
       await this.configureDownloads();
@@ -178,7 +180,7 @@ export class BrowserPilotSession {
     }
     this.browser.on("disconnected", () => {
       this.browser = undefined;
-      this.downloadClient = undefined;
+      this.downloads.reset();
     });
     await this.restoreOrCreate(signal);
     await this.configureDownloads();
@@ -260,55 +262,8 @@ export class BrowserPilotSession {
 
   /** Configure browser-level download capture into the downloads directory. */
   private async configureDownloads(): Promise<void> {
-    if (!this.browser?.connected || this.downloadClient) return;
-    try {
-      const directory = this.downloadsDir();
-      mkdirSync(directory, { recursive: true, mode: 0o700 });
-      const client = await this.browser.target().createCDPSession();
-      await client.send("Browser.setDownloadBehavior", {
-        behavior: "allow",
-        downloadPath: directory,
-        eventsEnabled: true,
-      });
-      client.on(
-        "Browser.downloadWillBegin",
-        (event: { guid?: string; url?: string; suggestedFilename?: string }) => {
-          if (!event.guid) return;
-          const filename = safeFilename(event.suggestedFilename ?? event.guid);
-          this.downloads.push({
-            id: event.guid,
-            url: event.url ?? "",
-            suggestedFilename: filename,
-            state: "inProgress",
-            receivedBytes: 0,
-            totalBytes: 0,
-            path: join(directory, filename),
-            startedAt: new Date().toISOString(),
-          });
-        },
-      );
-      client.on(
-        "Browser.downloadProgress",
-        (event: {
-          guid?: string;
-          state?: "inProgress" | "completed" | "canceled";
-          receivedBytes?: number;
-          totalBytes?: number;
-        }) => {
-          const download = this.downloads.find((item) => item.id === event.guid);
-          if (!download) return;
-          if (event.state) download.state = event.state;
-          if (event.receivedBytes !== undefined) download.receivedBytes = event.receivedBytes;
-          if (event.totalBytes !== undefined) download.totalBytes = event.totalBytes;
-          if (download.state !== "inProgress" && !download.completedAt) {
-            download.completedAt = new Date().toISOString();
-          }
-        },
-      );
-      this.downloadClient = client;
-    } catch {
-      // Download capture is optional; the browser may not support the command.
-    }
+    if (!this.browser?.connected) return;
+    await this.downloads.configure(this.browser, this.downloadsDir());
   }
 
   /** Directory where downloads are saved. */
@@ -332,266 +287,133 @@ export class BrowserPilotSession {
 
   /** Downloads matching a filename or URL substring, newest last. */
   listDownloads(filter?: string): DownloadInfo[] {
-    return this.downloads.filter(
-      (download) =>
-        !filter || download.suggestedFilename.includes(filter) || download.url.includes(filter),
-    );
+    return this.downloads.list(filter);
   }
 
   /** Wait for the newest matching download to finish. */
-  async waitForDownload(
-    timeoutMs: number,
-    filter?: string,
-    signal?: AbortSignal,
-  ): Promise<DownloadInfo> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      signal?.throwIfAborted();
-      const download = this.listDownloads(filter).at(-1);
-      if (download && download.state !== "inProgress") return download;
-      await sleep(100);
-    }
-    throw new BrowserPilotError(
-      `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for a download.`,
-      'Check download {op:"list"}; the browser may have blocked or canceled the file.',
-    );
+  waitForDownload(timeoutMs: number, filter?: string, signal?: AbortSignal): Promise<DownloadInfo> {
+    return this.downloads.wait(timeoutMs, filter, signal);
   }
 
   /** Clear the download history, not the files on disk. */
   clearDownloads(): number {
-    const count = this.downloads.length;
-    this.downloads.length = 0;
-    return count;
+    return this.downloads.clear();
   }
 
   /** Start recording a HAR. Existing network buffers are cleared. */
   startHar(): void {
-    this.harRecording = true;
-    for (const tab of this.tabs.values()) tab.network.length = 0;
+    this.recording.startHar();
   }
 
   /** True while HAR capture is active. */
   get isRecordingHar(): boolean {
-    return this.harRecording;
+    return this.recording.isRecordingHar;
   }
 
   /** Clear captured network entries used by HAR export. */
   clearHar(): number {
-    let count = 0;
-    for (const tab of this.tabs.values()) {
-      count += tab.network.length;
-      tab.network.length = 0;
-    }
-    return count;
+    return this.recording.clearHar();
   }
 
   /** Stop recording and return a HAR document built from captured entries. */
-  async stopHar(): Promise<{ har: Record<string, unknown>; entries: number }> {
-    this.harRecording = false;
-    const entries = [...this.tabs.values()].flatMap((tab) => tab.network);
-    const har = buildHar(entries, { tabs: await this.listTabs() });
-    return { har, entries: entries.length };
-  }
-
-  /** Add a request interception rule and enable interception on every tab. */
-  async addRouteRule(rule: Omit<RouteRule, "id">): Promise<RouteRule> {
-    const created: RouteRule = { ...rule, id: `r${++this.routeSequence}` };
-    this.routeRules.push(created);
-    await this.setInterception(true);
-    return created;
-  }
-
-  /** Remove one rule by id, disabling interception when no rules remain. */
-  async removeRouteRule(id: string): Promise<boolean> {
-    const index = this.routeRules.findIndex((rule) => rule.id === id);
-    if (index === -1) return false;
-    this.routeRules.splice(index, 1);
-    if (this.routeRules.length === 0) await this.setInterception(false);
-    return true;
-  }
-
-  /** Remove all rules and disable interception. */
-  async clearRouteRules(): Promise<number> {
-    const count = this.routeRules.length;
-    this.routeRules.length = 0;
-    await this.setInterception(false);
-    return count;
-  }
-
-  private async setInterception(enabled: boolean): Promise<void> {
-    for (const tab of this.tabs.values()) {
-      if (tab.page.isClosed()) continue;
-      await tab.page.setRequestInterception(enabled).catch(() => undefined);
-    }
-  }
-
-  private async applyRouteRule(tab: ManagedTab, request: HTTPRequest): Promise<void> {
-    if (request.isInterceptResolutionHandled()) return;
-    let resourceType: string | undefined;
-    try {
-      resourceType = request.resourceType();
-    } catch {
-      resourceType = undefined;
-    }
-    const rule = this.routeRules.find((candidate) =>
-      matchesRoute(candidate, request.url(), resourceType),
-    );
-    try {
-      if (!rule) {
-        await request.continue();
-        return;
-      }
-      if (rule.action === "abort") {
-        await request.abort("blockedbyclient");
-      } else if (rule.action === "delay") {
-        await sleep(rule.delayMs ?? 0);
-        await request.continue();
-      } else if (rule.action === "fulfill") {
-        await request.respond({
-          status: rule.status ?? 200,
-          headers: rule.headers,
-          contentType: rule.contentType ?? "text/plain",
-          body: rule.body ?? "",
-        });
-      } else {
-        await request.continue();
-      }
-    } catch {
-      // A navigation or browser shutdown can close the request first.
-    }
-    tab.lastUsed = Date.now();
+  stopHar(): Promise<{ har: Record<string, unknown>; entries: number }> {
+    return this.recording.stopHar();
   }
 
   /** Start a Chrome trace for one tab. */
-  async startTrace(tabHandle?: number): Promise<TabInfo> {
-    if (this.traceClient) {
-      throw new BrowserPilotError(
-        "A trace is already recording.",
-        'Stop it with {action:"trace", op:"stop"}.',
-      );
-    }
-    const tab = await this.ensureTab(tabHandle);
-    const client = await tab.page.createCDPSession();
-    this.traceChunks = [];
-    this.traceTab = tab.handle;
-    this.traceClient = client;
-    client.on("Tracing.dataCollected", (event: { value?: string[] }) => {
-      if (Array.isArray(event.value)) this.traceChunks.push(...event.value);
-    });
-    await client.send("Tracing.start", {
-      categories:
-        "devtools.timeline,disabled-by-default-devtools.timeline,loading,blink.user_timing,v8",
-      transferMode: "ReportEvents",
-    });
-    const infos = await this.listTabs();
-    return infos.find((info) => info.handle === tab.handle)!;
+  startTrace(tabHandle?: number): Promise<TabInfo> {
+    return this.recording.startTrace(tabHandle);
   }
 
   /** Stop the active trace and return its JSON document. */
-  async stopTrace(): Promise<{ trace: unknown; events: number; tab?: number }> {
-    const client = this.traceClient;
-    if (!client) {
-      throw new BrowserPilotError(
-        "No trace is recording.",
-        'Start one with {action:"trace", op:"start"}.',
-      );
+  stopTrace(): Promise<{ trace: unknown; events: number; tab?: number }> {
+    return this.recording.stopTrace();
+  }
+
+  /** Clear one tab's captured network entries and their detail handles. */
+  clearNetwork(tab: ManagedTab): number {
+    const count = tab.network.length;
+    for (const entry of tab.network) this.networkDetails.delete(entry.id);
+    tab.network.length = 0;
+    return count;
+  }
+
+  /** Find a captured request by id across all tabs. */
+  findNetworkEntry(id: string): { tab: ManagedTab; entry: NetworkEntry } | undefined {
+    for (const tab of this.tabs.values()) {
+      const entry = tab.network.find((candidate) => candidate.id === id);
+      if (entry) return { tab, entry };
     }
-    this.traceClient = undefined;
-    const completed = new Promise<void>((resolvePromise) => {
-      client.once("Tracing.tracingComplete", () => resolvePromise());
-    });
-    await client.send("Tracing.end");
-    await Promise.race([completed, sleep(10_000)]);
-    await client.detach().catch(() => undefined);
-    const events = this.traceChunks.map((chunk) => {
-      try {
-        return JSON.parse(chunk) as unknown;
-      } catch {
-        return { name: "unparsed", args: { raw: chunk } };
-      }
-    });
-    this.traceChunks = [];
-    const tab = this.traceTab;
-    this.traceTab = undefined;
-    return { trace: { traceEvents: events }, events: events.length, tab };
+    return undefined;
+  }
+
+  /** Retained request/response handles and cached body for one network entry. */
+  networkDetail(id: string): NetworkDetail | undefined {
+    return this.networkDetails.get(id);
+  }
+
+  /** Cache a response body preview for later reads. */
+  cacheNetworkBody(id: string, body: string, bodyTruncated: boolean): void {
+    this.networkDetails.cacheBody(id, body, bodyTruncated);
+  }
+
+  /** Clear retained request/response handles. */
+  clearNetworkDetails(): void {
+    this.networkDetails.clear();
+  }
+
+  /** Add a request interception rule and enable interception on every tab. */
+  addRouteRule(rule: Omit<RouteRule, "id">): Promise<RouteRule> {
+    return this.routeController.add(rule);
+  }
+
+  /** Remove one rule by id, disabling interception when no rules remain. */
+  removeRouteRule(id: string): Promise<boolean> {
+    return this.routeController.remove(id);
+  }
+
+  /** Remove all rules and disable interception. */
+  clearRouteRules(): Promise<number> {
+    return this.routeController.clear();
   }
 
   /** Apply the session's emulation overrides to one page. */
-  async applyEmulation(page: Page): Promise<void> {
-    const state = this.emulation;
-    const viewport = state.viewport ?? {
-      width: this.config.viewport.width,
-      height: this.config.viewport.height,
-      deviceScaleFactor: 1,
-      isMobile: false,
-      hasTouch: false,
-    };
-    await page.setViewport({
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: viewport.deviceScaleFactor ?? 1,
-      isMobile: viewport.isMobile ?? false,
-      hasTouch: viewport.hasTouch ?? false,
-    });
-    await page.setUserAgent(state.userAgent ?? this.userAgent());
-    const client = await page.createCDPSession();
-    try {
-      await client.send("Emulation.setEmulatedMedia", {
-        features: [
-          ...(state.colorScheme
-            ? [{ name: "prefers-color-scheme", value: state.colorScheme }]
-            : []),
-          ...(state.reducedMotion
-            ? [{ name: "prefers-reduced-motion", value: state.reducedMotion }]
-            : []),
-        ],
-      });
-      await client.send("Emulation.setCPUThrottlingRate", {
-        rate: state.cpuThrottle ?? 1,
-      });
-      const locale = state.locale ?? this.config.locale;
-      const timezone = state.timezone ?? this.config.timezone;
-      if (locale) {
-        await client.send("Emulation.setLocaleOverride", { locale });
-      } else {
-        await client.send("Emulation.setLocaleOverride", { locale: "" }).catch(() => undefined);
-      }
-      if (timezone) {
-        await client.send("Emulation.setTimezoneOverride", { timezoneId: timezone });
-      } else {
-        await client
-          .send("Emulation.setTimezoneOverride", { timezoneId: "" })
-          .catch(() => undefined);
-      }
-    } finally {
-      await client.detach().catch(() => undefined);
-    }
-    if (state.network !== undefined) {
-      await page.emulateNetworkConditions(state.network).catch(() => undefined);
-    }
-    if (state.geolocation) {
-      await page.setGeolocation(state.geolocation).catch(() => undefined);
-    } else {
-      const geoClient = await page.createCDPSession();
-      await geoClient
-        .send("Emulation.clearGeolocationOverride")
-        .catch(() => undefined)
-        .finally(() => geoClient.detach().catch(() => undefined));
-    }
+  applyEmulation(page: Page): Promise<void> {
+    return this.emulationController.apply(page);
   }
 
   /** Replace the emulation state and apply it to the current tab. */
-  async setEmulation(tabHandle: number | undefined, state: EmulationState): Promise<TabInfo> {
-    const tab = await this.ensureTab(tabHandle);
-    this.emulation = state;
-    await this.applyEmulation(tab.page);
-    const infos = await this.listTabs();
-    return infos.find((info) => info.handle === tab.handle)!;
+  setEmulation(tabHandle: number | undefined, state: EmulationState): Promise<TabInfo> {
+    return this.emulationController.set(tabHandle, state);
   }
 
   /** Build the network emulation condition for a named profile. */
   networkProfile(name: NetworkProfileName) {
-    return NETWORK_PROFILES[name];
+    return this.emulationController.networkProfile(name);
+  }
+
+  /** Grant or clear browser permissions for one origin. */
+  setPermissions(
+    permissions: string[],
+    origin?: string,
+    tabHandle?: number,
+  ): Promise<{ origin: string; permissions: string[] }> {
+    return this.emulationController.setPermissions(permissions, origin, tabHandle);
+  }
+
+  /** List frames for one tab, including the current selection. */
+  listFrames(tab: ManagedTab) {
+    return this.frames.list(tab);
+  }
+
+  /** Select a frame by index, or return to the main frame with undefined. */
+  selectFrame(tab: ManagedTab, index: number | undefined): Frame {
+    return this.frames.select(tab, index);
+  }
+
+  /** The selected frame for a tab, falling back to the main frame. */
+  activeFrame(tab: ManagedTab): Frame {
+    return this.frames.active(tab);
   }
 
   /** Return a usable tab, creating a blank one when necessary. */
@@ -723,21 +545,22 @@ export class BrowserPilotSession {
     });
     page.on("request", (request) => {
       const entry: NetworkEntry = {
-        id: String(++this.networkSequence),
+        id: `r${++this.networkSequence}`,
         timestamp: new Date().toISOString(),
         method: request.method(),
         url: request.url(),
         resourceType: safeResourceType(request),
         startedAt: Date.now(),
       };
-      if (this.harRecording) {
+      if (this.recording.isRecordingHar) {
         entry.requestHeaders = request.headers();
         entry.postData = request.postData() ?? undefined;
       }
       this.requestEntries.set(request, entry);
+      this.networkDetails.touch(entry.id, { request });
       tab.network.push(entry);
       trim(tab.network, this.config.networkBuffer);
-      if (this.routeRules.length > 0) void this.applyRouteRule(tab, request);
+      if (this.routeRules.length > 0) void this.routeController.apply(tab, request);
     });
     page.on("response", (response) => {
       const entry = this.requestEntries.get(response.request());
@@ -746,7 +569,8 @@ export class BrowserPilotSession {
       entry.statusText = response.statusText();
       entry.mimeType = headerValue(response, "content-type");
       entry.durationMs = Date.now() - entry.startedAt;
-      if (this.harRecording) {
+      this.networkDetails.touch(entry.id, { response });
+      if (this.recording.isRecordingHar) {
         entry.responseHeaders = response.headers();
         entry.timing = response.timing();
         const length = Number.parseInt(headerValue(response, "content-length") ?? "", 10);
@@ -848,16 +672,9 @@ export class BrowserPilotSession {
       await page.evaluateOnNewDocument(STEALTH_SCRIPT);
     }
     await this.applyEmulation(page);
-    if (this.routeRules.length > 0) {
+    if (this.routeController.hasRules) {
       await page.setRequestInterception(true).catch(() => undefined);
     }
-  }
-
-  private userAgent(): string {
-    if (this.config.userAgent) return this.config.userAgent;
-    const version = /Chrome\/([\d.]+)/.exec(this.instance?.chromeVersion ?? "")?.[1];
-    const chromeVersion = version ?? "131.0.0.0";
-    return `Mozilla/5.0 (${platformToken()}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
   }
 
   /** Reconnect to an existing tab set, or create a fresh tab. */
@@ -893,26 +710,11 @@ export class BrowserPilotSession {
   }
 
   private sessionRecordPath(): string {
-    return join(this.agentDir, "browser-pilot", "sessions", `${sanitizeFile(this.sessionId)}.json`);
+    return sessionRecordPath(this.agentDir, this.sessionId);
   }
 
   private readSessionRecord(): SessionRecord | undefined {
-    const path = this.sessionRecordPath();
-    if (!existsSync(path)) return undefined;
-    try {
-      const parsed = JSON.parse(readFileSync(path, "utf-8")) as Partial<SessionRecord>;
-      if (
-        parsed.schema !== SESSION_SCHEMA ||
-        typeof parsed.sessionId !== "string" ||
-        typeof parsed.wsEndpoint !== "string" ||
-        !Array.isArray(parsed.tabs)
-      ) {
-        return undefined;
-      }
-      return parsed as SessionRecord;
-    } catch {
-      return undefined;
-    }
+    return readSessionRecord(this.sessionRecordPath());
   }
 
   /** Persist tab handles and URLs so a resumed session can reattach. */
@@ -1088,6 +890,7 @@ export class BrowserPilotSession {
     tab.lastUsed = Date.now();
     this.refs.clear();
     this.snapshotCount++;
+    this.frames.reset(tab.handle);
     this.challenge = await detectChallenge(page).catch(() => undefined);
     this.persist();
     return {
@@ -1124,7 +927,7 @@ export class BrowserPilotSession {
     this.tabs.clear();
     this.current = undefined;
     try {
-      rmSync(this.sessionRecordPath(), { force: true });
+      removeSessionRecord(this.sessionRecordPath());
     } catch {
       // Best effort.
     }
@@ -1199,93 +1002,4 @@ function registerExitHandler(): void {
   });
 }
 
-function targetIdOf(page: Page): string {
-  const target = page.target() as unknown as { _targetId?: string };
-  return target._targetId ?? page.url();
-}
-
-function platformToken(): string {
-  if (process.platform === "win32") return "Windows NT 10.0; Win64; x64";
-  if (process.platform === "darwin") return "Macintosh; Intel Mac OS X 10_15_7";
-  return "X11; Linux x86_64";
-}
-
-function safeResourceType(request: HTTPRequest): string | undefined {
-  try {
-    return request.resourceType();
-  } catch {
-    return undefined;
-  }
-}
-
-function headerValue(response: HTTPResponse, name: string): string | undefined {
-  try {
-    return response.headers()[name];
-  } catch {
-    return undefined;
-  }
-}
-
-function trim<T>(items: T[], limit: number): void {
-  while (items.length > limit) items.shift();
-}
-
-async function resolveDevToolsEndpoint(endpoint: string): Promise<string> {
-  const trimmed = endpoint.trim();
-  const withScheme = /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
-  if (/^wss?:\/\//i.test(withScheme)) return withScheme;
-  if (!/^https?:\/\//i.test(withScheme)) {
-    throw new BrowserPilotError(
-      `Unsupported endpoint scheme: ${endpoint}`,
-      "Use a ws:// DevTools endpoint or an http:// endpoint exposing /json/version.",
-    );
-  }
-  const base = withScheme.replace(/\/+$/, "");
-  let response: Response;
-  try {
-    response = await fetch(`${base}/json/version`);
-  } catch (error) {
-    throw new BrowserPilotError(
-      `Could not reach ${base}: ${error instanceof Error ? error.message : String(error)}`,
-      "Check that Chrome is running with --remote-debugging-port and the port is reachable.",
-    );
-  }
-  if (!response.ok) {
-    throw new BrowserPilotError(
-      `DevTools endpoint ${base}/json/version returned ${response.status}.`,
-    );
-  }
-  const data = (await response.json()) as { webSocketDebuggerUrl?: unknown };
-  if (typeof data.webSocketDebuggerUrl !== "string") {
-    throw new BrowserPilotError(`DevTools endpoint ${base} did not return a websocket URL.`);
-  }
-  return data.webSocketDebuggerUrl;
-}
-
-function safeFilename(value: string): string {
-  const cleaned = Array.from(basename(value))
-    .filter((character) => character.charCodeAt(0) >= 32)
-    .join("")
-    .replace(/[<>:"/\\|?*]/g, "_")
-    .trim();
-  return cleaned || `download-${Date.now()}`;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
-}
-
-function sanitizeFile(value: string): string {
-  const cleaned = value.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return cleaned.slice(0, 80) || `session-${process.pid}`;
-}
-
-/** Resolve the profile a session would use without launching a browser. */
-export function previewProfile(
-  config: BrowserPilotConfig,
-  sessionId: string,
-  agentDir: string,
-  cwd: string,
-): ProfileInfo {
-  return resolveProfile(config.profile, sessionId, agentDir, cwd);
-}
+export { previewProfile } from "./session-helpers";

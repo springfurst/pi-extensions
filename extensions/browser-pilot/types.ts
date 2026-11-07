@@ -155,6 +155,7 @@ export interface EmulationState {
   network?: { offline?: boolean; latency: number; download: number; upload: number } | null;
   cpuThrottle?: number;
   geolocation?: { latitude: number; longitude: number; accuracy?: number } | null;
+  permissions?: { origin: string; values: string[] } | null;
 }
 
 /** A dialog waiting for a decision. */
@@ -189,6 +190,15 @@ export interface BrowserPilotDetails {
   durationMs?: number;
   error?: string;
   [key: string]: unknown;
+}
+
+/** A tool result: model-facing content plus structured details. */
+export interface BrowserPilotToolResult {
+  content: Array<
+    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+  >;
+  details: BrowserPilotDetails;
+  isError?: boolean;
 }
 
 /** Everything one tool call needs from pi and the caller. */
@@ -238,9 +248,10 @@ export interface BrowserPilotParams {
   op?: string;
   target?: "tab" | "tabs" | "browser";
   tab?: number;
+  frame?: number;
   interactive?: boolean;
   max_nodes?: number;
-  format?: "markdown" | "text" | "html" | "png" | "jpeg" | "webp";
+  format?: "markdown" | "text" | "html" | "outline" | "png" | "jpeg" | "webp";
   max_chars?: number;
   save_path?: string;
   endpoint?: string;
@@ -259,17 +270,21 @@ export interface BrowserPilotParams {
   clear?: boolean;
   submit?: boolean;
   delay_ms?: number;
+  duration_ms?: number;
   key?: string;
   values?: string[];
   amount?: number;
-  for?: "selector" | "text" | "url" | "network_idle" | "function" | "human";
+  for?: "selector" | "text" | "url" | "network_idle" | "function" | "human" | "response";
   path?: string;
   full_page?: boolean;
   quality?: number;
   inline?: boolean;
+  annotate?: boolean;
   level?: string;
   limit?: number;
   filter?: string;
+  detail?: boolean;
+  include_body?: boolean;
   policy?: "dismiss" | "accept" | "manual";
   timeout_ms?: number;
   files?: string[];
@@ -300,6 +315,9 @@ export interface BrowserPilotParams {
   latitude?: number;
   longitude?: number;
   accuracy?: number;
+  permissions?: string[];
+  origin?: string;
+  color?: string;
   reset?: boolean;
   paper_format?: string;
   landscape?: boolean;
