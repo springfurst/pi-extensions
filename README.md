@@ -5,7 +5,7 @@ A collection of tools and extensions for [pi](https://pi.dev), the coding agent.
 ## Install
 
 ```sh
-pi install git:github.com/springfurst/pi-extensions@v0.1.0
+pi install git:github.com/springfurst/pi-extensions@v0.1.1
 ```
 
 The named ref pins the install. Use `--local` to write the declaration to a project's `.pi/settings.json` instead of global settings.
@@ -40,7 +40,7 @@ All tools can append one JSON object per call to a per-tool JSONL file, so call 
 
 The agent directory is `~/.pi/agent` unless `PI_CODING_AGENT_DIR` overrides it. When enabled, `web_fetch` appends to `<logging.dir>/web_fetch.jsonl` and `web_search` to `<logging.dir>/web_search.jsonl`. Files are created with user-only permissions and are append-only; delete a file to reset the history.
 
-`browser-pilot` uses the same `logging` section in `browser-pilot.json`, with its own default directory (`<agentDir>/browser-pilot/logs`) and file (`browser-pilot.jsonl`). It adds `logging.outputs` (`none`, `summary`, `snippet`, or `full`; default `summary`), `logging.maxOutputChars` (default `2000`), and `logging.includeSensitiveArgs` (default `false`). Typed text, `eval` source, cookie and storage values, route bodies, and page content are reduced to length and hash unless sensitive arguments are explicitly enabled; screenshots and exports record the path and metadata, not the file contents.
+`browser-pilot` uses the same `logging` section in `browser-pilot.json`, with its own default directory (`<agentDir>/browser-pilot/logs`) and file (`browser-pilot.jsonl`). It adds `logging.outputs` (`none`, `summary`, `snippet`, or `full`; default `summary`), `logging.maxOutputChars` (default `2000`), and `logging.includeSensitiveArgs` (default `false`). Typed text, `eval` source, cookie and storage values, route bodies, assertion values, and page content are reduced to length and hash unless sensitive arguments are explicitly enabled. When `logging.includeArgs` is false, URLs, titles, challenge data, saved paths, and output text are omitted. Screenshots and exports record the path and metadata, not the file contents.
 
 Every record shares an envelope: `schema`, `timestamp`, `tool`, `toolVersion`, `piVersion`, `sessionId`, `sessionFile`, `sessionName`, `toolCallId`, `cwd`, `mode`, `durationMs`, `outcome`, and `error`.
 
@@ -74,7 +74,7 @@ A package entry in pi's settings can narrow which resources load from this repos
 {
   "packages": [
     {
-      "source": "git:github.com/springfurst/pi-extensions@v0.1.0",
+      "source": "git:github.com/springfurst/pi-extensions@v0.1.1",
       "extensions": ["extensions/<tool>/**"]
     }
   ]

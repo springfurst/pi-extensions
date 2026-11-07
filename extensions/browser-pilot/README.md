@@ -20,14 +20,44 @@ Every call has an `action`. Most actions accept a `tab` handle; the current tab 
 | `selector`                                                                                                    | string   | CSS or Puppeteer selector. Ignored when `ref` is set.                                                                     |
 | `url`                                                                                                         | string   | Absolute `http(s)` URL for `open`, `navigate`, or `tabs new`.                                                             |
 | `format`                                                                                                      | string   | `read`: `markdown`, `text`, `html`, `outline`. `screenshot`: `png`, `jpeg`, `webp`.                                       |
-| `max_chars`                                                                                                   | number   | Per-call character cap for `read` and `eval`.                                                                             |
+| `max_chars`                                                                                                   | number   | Per-call character cap for `read`, `eval`, and network body previews.                                                     |
 | `save_path`                                                                                                   | string   | Write the full `read` or `eval` output to a file.                                                                         |
 | `timeout_ms`                                                                                                  | number   | Action deadline.                                                                                                          |
+| `topic`                                                                                                       | string   | `help`: an action name or group name.                                                                                     |
+| `direction`                                                                                                   | string   | `navigate`: `back`, `forward`, `reload`. `scroll`: `up`, `down`, `top`, `bottom`.                                         |
+| `wait_until`                                                                                                  | string   | `navigate`: `load`, `domcontentloaded`, `networkidle0`, `networkidle2`.                                                   |
+| `target`                                                                                                      | string   | `close`: `tab`, `tabs`, `browser`.                                                                                        |
+| `interactive`                                                                                                 | boolean  | `snapshot`: only interactive elements (default true).                                                                     |
+| `max_nodes`                                                                                                   | number   | `snapshot`: maximum nodes to return.                                                                                      |
+| `expression`                                                                                                  | string   | `eval`: inline JavaScript. `wait {for:"function"}`: truthy expression.                                                    |
+| `script_path`                                                                                                 | string   | `eval`: read the JavaScript from this file.                                                                               |
+| `await_promise`                                                                                               | boolean  | `eval`: await a returned promise (default true).                                                                          |
+| `button`                                                                                                      | string   | `click`: `left`, `right`, `middle`.                                                                                       |
+| `click_count`                                                                                                 | number   | `click`: number of clicks.                                                                                                |
+| `modifiers`                                                                                                   | string[] | `click`: `Alt`, `Control`, `Meta`, `Shift`.                                                                               |
+| `humanize`                                                                                                    | boolean  | `click`/`type`: mouse movement and per-key delays.                                                                        |
+| `text`                                                                                                        | string   | `type`, `dialog`, or `clipboard`: inline text.                                                                            |
+| `text_file`                                                                                                   | string   | `type` or `clipboard`: read text from a file.                                                                             |
+| `text_env`                                                                                                    | string   | `type` or `clipboard`: read text from an environment variable.                                                            |
+| `clear`                                                                                                       | boolean  | `type`: clear the field before typing (default true).                                                                     |
+| `submit`                                                                                                      | boolean  | `type`: press Enter after typing (default false).                                                                         |
+| `delay_ms`                                                                                                    | number   | `type`: key delay. `route`: delay before continuing.                                                                      |
+| `values`                                                                                                      | string[] | `select`: option values or labels.                                                                                        |
+| `amount`                                                                                                      | number   | `scroll`: pixels for up/down.                                                                                             |
+| `for`                                                                                                         | string   | `wait`: `selector`, `text`, `url`, `network_idle`, `response`, `function`, `human`.                                       |
+| `path`                                                                                                        | string   | `screenshot`, `pdf`, `har`, `trace`, or `state`: output path.                                                             |
+| `full_page`                                                                                                   | boolean  | `screenshot`: capture the full scrollable page.                                                                           |
+| `quality`                                                                                                     | number   | `screenshot`: JPEG/WebP quality from 0 to 100.                                                                            |
+| `inline`                                                                                                      | boolean  | `screenshot`: return small images to the model.                                                                           |
+| `level`                                                                                                       | string   | `console`: `log`, `info`, `warn`, `error`, `debug`.                                                                       |
+| `limit`                                                                                                       | number   | `console`, `network`, or `download`: maximum entries.                                                                     |
+| `filter`                                                                                                      | string   | `network` or `download`: URL or filename substring.                                                                       |
+| `policy`                                                                                                      | string   | `dialog`: `dismiss`, `accept`, `manual`.                                                                                  |
 | `profile`                                                                                                     | string   | Profile for a new browser: `shared`, `session`, a name, or a path.                                                        |
 | `endpoint`                                                                                                    | string   | `connect`: WebSocket or HTTP DevTools endpoint of an existing Chrome.                                                     |
 | `files`                                                                                                       | string[] | `upload`: file paths for a file input.                                                                                    |
 | `op`                                                                                                          | string   | Operation for tabs, frames, console, network, dialog, download, cookies, storage, state, clipboard, HAR, trace, or route. |
-| `key`                                                                                                         | string   | `storage`: storage key.                                                                                                   |
+| `key`                                                                                                         | string   | `press`: key name. `storage`: storage key.                                                                                |
 | `value`                                                                                                       | string   | `cookies` and `storage`: value to set.                                                                                    |
 | `name`                                                                                                        | string   | `cookies`: cookie name.                                                                                                   |
 | `domain`                                                                                                      | string   | `cookies`: cookie domain.                                                                                                 |
@@ -53,52 +83,52 @@ Every call has an `action`. Most actions accept a `tab` handle; the current tab 
 | `include_body`                                                                                                | boolean  | `network`/`wait`: include a response body preview.                                                                        |
 | `duration_ms`, `color`                                                                                        | mixed    | `highlight`: outline duration and color.                                                                                  |
 | `paper_format`, `landscape`, `print_background`, `scale`, `page_ranges`, `margin`                             | mixed    | `pdf`: print options.                                                                                                     |
-| `url_pattern`, `resource_type`, `route_action`, `status`, `body`, `content_type`, `headers`, `delay_ms`, `id` | mixed    | `route`: interception rule.                                                                                               |
+| `url_pattern`, `resource_type`, `route_action`, `status`, `body`, `content_type`, `headers`, `delay_ms`, `id` | mixed    | `route`: interception rule. Route ids look like `rt1`.                                                                    |
 | `check`, `operator`, `expected`, `attribute`                                                                  | mixed    | `expect`: assertion.                                                                                                      |
 | `steps`, `stop_on_error`                                                                                      | mixed    | `steps`: batch actions and failure policy.                                                                                |
 
 ### Actions
 
-| Group      | Action       | Purpose                                                                   | Key parameters                                      |
-| ---------- | ------------ | ------------------------------------------------------------------------- | --------------------------------------------------- |
-| Lifecycle  | `help`       | List groups, a group, or one action.                                      | `topic`                                             |
-| Lifecycle  | `status`     | Show the browser, profile, port, tabs, current page, challenge, dialog.   |                                                     |
-| Lifecycle  | `doctor`     | Check binary, profile, port, display, sandbox, directories, stale state.  |                                                     |
-| Lifecycle  | `open`       | Ensure a browser and tab; optionally navigate.                            | `url`, `profile`                                    |
-| Lifecycle  | `close`      | Close a tab, all agent tabs, or the browser.                              | `target`, `tab`                                     |
-| Lifecycle  | `connect`    | Attach to an existing Chrome DevTools endpoint.                           | `endpoint`                                          |
-| Batch      | `steps`      | Run several actions in order and return each result.                      | `steps`, `stop_on_error`                            |
-| Tabs       | `tabs`       | List, create, select, close, or clean up tabs.                            | `op`, `tab`, `url`                                  |
-| Tabs       | `frames`     | List frames, select a frame, or return to the main frame.                 | `op`, `frame`                                       |
-| Navigation | `navigate`   | Navigate, go back/forward, or reload.                                     | `url`, `direction`, `wait_until`                    |
-| Inspect    | `snapshot`   | Compact accessibility-style tree with stable refs.                        | `interactive`, `max_nodes`, `selector`              |
-| Inspect    | `read`       | Read the page as markdown, text, HTML, or an outline.                     | `format`, `selector`, `max_chars`, `save_path`      |
-| Inspect    | `eval`       | Evaluate JavaScript in the page.                                          | `expression` or `script_path`                       |
-| Inspect    | `screenshot` | Save the viewport, full page, or an element; optionally annotate refs.    | `path`, `full_page`, `format`, `inline`, `annotate` |
-| Inspect    | `metrics`    | Show heap, DOM, navigation timing, and resource metrics.                  |                                                     |
-| Inspect    | `console`    | Read or clear console messages and page errors.                           | `op`, `level`, `limit`                              |
-| Inspect    | `network`    | Read a compact request overview, inspect one request by id, or clear.     | `op`, `filter`, `limit`, `id`, `include_body`       |
-| Inspect    | `pdf`        | Print the current page to a PDF file.                                     | `path`, `paper_format`, `landscape`, `margin`       |
-| Inspect    | `har`        | Record network activity and export a HAR 1.2 file.                        | `op`, `path`                                        |
-| Inspect    | `trace`      | Record a Chrome trace and write it as JSON.                               | `op`, `path`                                        |
-| Interact   | `click`      | Click by ref or selector.                                                 | `ref`, `selector`, `button`, `modifiers`            |
-| Interact   | `type`       | Fill or type text.                                                        | `ref`, `selector`, `text`, `text_file`, `text_env`  |
-| Interact   | `press`      | Press a key or key combination.                                           | `key`, `ref`, `selector`                            |
-| Interact   | `select`     | Select options in a `<select>`.                                           | `ref`, `selector`, `values`                         |
-| Interact   | `scroll`     | Scroll an element into view or scroll the page.                           | `ref`, `selector`, `direction`, `amount`            |
-| Interact   | `hover`      | Move the mouse over an element.                                           | `ref`, `selector`                                   |
-| Interact   | `highlight`  | Flash an element outline for human handoff.                               | `ref`, `selector`, `duration_ms`, `color`           |
-| Interact   | `upload`     | Set the files of a file input.                                            | `ref`, `selector`, `files`                          |
-| Wait       | `wait`       | Wait for a selector, text, URL, network idle, response, condition, human. | `for`, `selector`, `text`, `url`, `url_pattern`     |
-| Wait       | `expect`     | Assert text, URL, title, values, attributes, visibility, or counts.       | `check`, `operator`, `expected`, `ref`, `selector`  |
-| State      | `dialog`     | Accept/dismiss a pending dialog or change the policy.                     | `op`, `text`, `policy`                              |
-| State      | `download`   | List, wait for, or clear browser downloads.                               | `op`, `filter`, `timeout_ms`                        |
-| State      | `cookies`    | List, set, delete, or clear cookies.                                      | `op`, `name`, `value`, `url`, `domain`              |
-| State      | `storage`    | Read or mutate localStorage and sessionStorage.                           | `op`, `area`, `key`, `value`                        |
-| State      | `state`      | Export or import cookies and per-origin storage as JSON.                  | `op`, `path`                                        |
-| State      | `clipboard`  | Read from or write to the system clipboard.                               | `op`, `text`, `text_file`, `text_env`               |
-| State      | `emulate`    | Apply or reset viewport, media, network, CPU, locale, and geolocation.    | `width`, `height`, `network_profile`, `reset`       |
-| State      | `route`      | Add, remove, list, or clear request interception rules.                   | `op`, `url_pattern`, `route_action`, `id`           |
+| Group      | Action       | Purpose                                                                   | Key parameters                                                         |
+| ---------- | ------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Lifecycle  | `help`       | List groups, a group, or one action.                                      | `topic`                                                                |
+| Lifecycle  | `status`     | Show the browser, profile, port, tabs, current page, challenge, dialog.   |                                                                        |
+| Lifecycle  | `doctor`     | Check binary, profile, port, display, sandbox, directories, stale state.  |                                                                        |
+| Lifecycle  | `open`       | Ensure a browser and tab; optionally navigate.                            | `url`, `profile`                                                       |
+| Lifecycle  | `close`      | Close a tab, all agent tabs, or the browser.                              | `target`, `tab`                                                        |
+| Lifecycle  | `connect`    | Attach to an existing Chrome DevTools endpoint.                           | `endpoint`                                                             |
+| Batch      | `steps`      | Run several actions in order and return each result.                      | `steps`, `stop_on_error`                                               |
+| Tabs       | `tabs`       | List, create, select, close, or clean up tabs.                            | `op`, `tab`, `url`                                                     |
+| Tabs       | `frames`     | List frames, select a frame, or return to the main frame.                 | `op`, `frame`                                                          |
+| Navigation | `navigate`   | Navigate, go back/forward, or reload.                                     | `url`, `direction`, `wait_until`                                       |
+| Inspect    | `snapshot`   | Compact accessibility-style tree with stable refs.                        | `interactive`, `max_nodes`, `selector`                                 |
+| Inspect    | `read`       | Read the page as markdown, text, HTML, or an outline.                     | `format`, `ref`, `selector`, `max_chars`, `save_path`                  |
+| Inspect    | `eval`       | Evaluate JavaScript in the page.                                          | `expression` or `script_path`                                          |
+| Inspect    | `screenshot` | Save the viewport, full page, or an element; optionally annotate refs.    | `path`, `ref`, `selector`, `full_page`, `format`, `inline`, `annotate` |
+| Inspect    | `metrics`    | Show heap, DOM, navigation timing, and resource metrics.                  |                                                                        |
+| Inspect    | `console`    | Read or clear console messages and page errors.                           | `op`, `level`, `limit`                                                 |
+| Inspect    | `network`    | Read a compact request overview, inspect one request by id, or clear.     | `op`, `filter`, `limit`, `id`, `include_body`                          |
+| Inspect    | `pdf`        | Print the current page to a PDF file.                                     | `path`, `paper_format`, `landscape`, `margin`                          |
+| Inspect    | `har`        | Record network activity and export a HAR 1.2 file.                        | `op`, `path`                                                           |
+| Inspect    | `trace`      | Record a Chrome trace and write it as JSON.                               | `op`, `path`                                                           |
+| Interact   | `click`      | Click by ref or selector.                                                 | `ref`, `selector`, `button`, `modifiers`                               |
+| Interact   | `type`       | Fill or type text.                                                        | `ref`, `selector`, `text`, `text_file`, `text_env`                     |
+| Interact   | `press`      | Press a key or key combination.                                           | `key`, `ref`, `selector`                                               |
+| Interact   | `select`     | Select options in a `<select>`.                                           | `ref`, `selector`, `values`                                            |
+| Interact   | `scroll`     | Scroll an element into view or scroll the page.                           | `ref`, `selector`, `direction`, `amount`                               |
+| Interact   | `hover`      | Move the mouse over an element.                                           | `ref`, `selector`                                                      |
+| Interact   | `highlight`  | Flash an element outline for human handoff.                               | `ref`, `selector`, `duration_ms`, `color`                              |
+| Interact   | `upload`     | Set the files of a file input.                                            | `ref`, `selector`, `files`                                             |
+| Wait       | `wait`       | Wait for a selector, text, URL, network idle, response, condition, human. | `for`, `ref`, `selector`, `text`, `url`, `url_pattern`                 |
+| Wait       | `expect`     | Assert text, URL, title, values, attributes, visibility, or counts.       | `check`, `operator`, `expected`, `ref`, `selector`, `attribute`        |
+| State      | `dialog`     | Accept/dismiss a pending dialog or change the policy.                     | `op`, `text`, `policy`                                                 |
+| State      | `download`   | List, wait for, or clear browser downloads.                               | `op`, `filter`, `timeout_ms`                                           |
+| State      | `cookies`    | List, set, delete, or clear cookies.                                      | `op`, `name`, `value`, `url`, `domain`                                 |
+| State      | `storage`    | Read or mutate localStorage and sessionStorage.                           | `op`, `area`, `key`, `value`                                           |
+| State      | `state`      | Export or import cookies and per-origin storage as JSON.                  | `op`, `path`                                                           |
+| State      | `clipboard`  | Read from or write to the system clipboard.                               | `op`, `text`, `text_file`, `text_env`                                  |
+| State      | `emulate`    | Apply or reset viewport, media, network, CPU, locale, and geolocation.    | `width`, `height`, `network_profile`, `reset`                          |
+| State      | `route`      | Add, remove, list, or clear request interception rules.                   | `op`, `url_pattern`, `route_action`, `id`                              |
 
 `type` accepts exactly one of `text`, `text_file`, or `text_env`. The file and environment forms keep long text and passwords out of the transcript.
 
@@ -112,7 +142,7 @@ Every call has an `action`. Most actions accept a `tab` handle; the current tab 
 
 ## Output
 
-Every result starts with the current tab, URL, and title, followed by the action-specific body. Hints and suggested next steps are optional suggestions, not requirements.
+Most action results start with the current tab, URL, and title, followed by the action-specific body. Catalog, status, doctor, and list results have their own shapes. Hints and suggested next steps are optional suggestions, not requirements.
 
 A snapshot looks like this:
 
@@ -161,38 +191,38 @@ Use the id to fetch headers, request data, timing, and a body preview:
 
 `browser-pilot` reads `browser-pilot.json` from the pi agent directory (`~/.pi/agent/browser-pilot.json`) and, when the project is trusted, from `<cwd>/.pi/browser-pilot.json`. Project values override global values. Malformed values are ignored.
 
-| Key                        | Default                                | Effect                                                                     |
-| -------------------------- | -------------------------------------- | -------------------------------------------------------------------------- |
-| `executablePath`           | detected Chrome/Chromium/Edge          | Pin the browser binary.                                                    |
-| `profile`                  | `shared`                               | `shared`, `session`, a named profile, or an absolute path.                 |
-| `headless`                 | `auto`                                 | Headful when a display exists, new headless otherwise.                     |
-| `viewport`                 | `{ "width": 1365, "height": 768 }`     | Default viewport.                                                          |
-| `locale`                   | unset                                  | Chrome locale and page locale override.                                    |
-| `timezone`                 | unset                                  | Page timezone override.                                                    |
-| `userAgent`                | derived from the Chrome version        | Override the user agent.                                                   |
-| `maxTabs`                  | `8`                                    | Per-session tab cap.                                                       |
-| `tabOverflow`              | `nudge`                                | `nudge`, `close-lru`, or `reuse-blank`.                                    |
-| `navigationTimeoutSeconds` | `30`                                   | Navigation deadline.                                                       |
-| `actionTimeoutSeconds`     | `15`                                   | Click/type/wait deadline.                                                  |
-| `challengeWaitSeconds`     | `300`                                  | Default `wait {for:"human"}` deadline.                                     |
-| `idleCloseSeconds`         | `0`                                    | Close the browser after this idle time; `0` disables idle close.           |
-| `closeOnExit`              | `true`                                 | Close the session browser when pi shuts down.                              |
-| `restoreTabs`              | `true`                                 | Reopen the last URL after a crash or relaunch.                             |
-| `stealth`                  | `basic`                                | `off`, `basic`, or `careful` (reserved for additional patches).            |
-| `humanize`                 | `false`                                | Default for click/type mouse movement and key delays.                      |
-| `allowPrivateHosts`        | `true`                                 | Permit localhost and private hosts; cloud metadata endpoints stay blocked. |
-| `screenshotsDir`           | `<agentDir>/browser-pilot/screenshots` | Default screenshot directory.                                              |
-| `downloadsDir`             | `<agentDir>/browser-pilot/downloads`   | Directory for files downloaded by the browser.                             |
-| `exportsDir`               | `<agentDir>/browser-pilot/exports`     | Default directory for PDF, HAR, and trace exports.                         |
-| `maxReadChars`             | `50000`                                | Default `read` cap.                                                        |
-| `maxEvalChars`             | `20000`                                | Default `eval` cap.                                                        |
-| `maxSnapshotNodes`         | `200`                                  | Default snapshot node cap.                                                 |
-| `consoleBuffer`            | `200`                                  | Console entries kept per tab.                                              |
-| `networkBuffer`            | `200`                                  | Network entries kept per tab.                                              |
-| `args`                     | `[]`                                   | Extra Chrome command-line flags.                                           |
-| `noSandbox`                | `false`                                | Add `--no-sandbox` for root/container environments.                        |
+| Key                        | Default                                | Effect                                                                                        |
+| -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `executablePath`           | detected Chrome/Chromium/Edge          | Pin the browser binary; an explicit value wins over the environment.                          |
+| `profile`                  | `shared`                               | `shared`, `session`, a named profile, or an absolute path.                                    |
+| `headless`                 | `auto`                                 | Headful when a display exists, new headless otherwise.                                        |
+| `viewport`                 | `{ "width": 1365, "height": 768 }`     | Default viewport.                                                                             |
+| `locale`                   | unset                                  | Chrome locale and page locale override.                                                       |
+| `timezone`                 | unset                                  | Page timezone override.                                                                       |
+| `userAgent`                | derived from the Chrome version        | Override the user agent.                                                                      |
+| `maxTabs`                  | `8`                                    | Per-session tab cap.                                                                          |
+| `tabOverflow`              | `nudge`                                | `nudge`, `close-lru`, or `reuse-blank`.                                                       |
+| `navigationTimeoutSeconds` | `30`                                   | Navigation deadline.                                                                          |
+| `actionTimeoutSeconds`     | `15`                                   | Click/type/wait deadline.                                                                     |
+| `challengeWaitSeconds`     | `300`                                  | Default `wait {for:"human"}` deadline.                                                        |
+| `idleCloseSeconds`         | `0`                                    | Close the browser after this idle time; `0` disables idle close.                              |
+| `closeOnExit`              | `true`                                 | Close the session browser when pi shuts down.                                                 |
+| `restoreTabs`              | `true`                                 | Reopen the last URL after a crash or relaunch.                                                |
+| `stealth`                  | `basic`                                | `off`, `basic`, or `careful` (reserved for additional patches).                               |
+| `humanize`                 | `false`                                | Default for click/type mouse movement and key delays.                                         |
+| `allowPrivateHosts`        | `true`                                 | Permit localhost and private hosts; metadata endpoints stay blocked for top-level navigation. |
+| `screenshotsDir`           | `<agentDir>/browser-pilot/screenshots` | Default screenshot directory.                                                                 |
+| `downloadsDir`             | `<agentDir>/browser-pilot/downloads`   | Directory for files downloaded by the browser.                                                |
+| `exportsDir`               | `<agentDir>/browser-pilot/exports`     | Default directory for PDF, HAR, and trace exports.                                            |
+| `maxReadChars`             | `50000`                                | Default `read` cap.                                                                           |
+| `maxEvalChars`             | `20000`                                | Default `eval` cap.                                                                           |
+| `maxSnapshotNodes`         | `200`                                  | Default snapshot node cap.                                                                    |
+| `consoleBuffer`            | `200`                                  | Console entries kept per tab.                                                                 |
+| `networkBuffer`            | `200`                                  | Network entries kept per tab.                                                                 |
+| `args`                     | `[]`                                   | Extra Chrome command-line flags.                                                              |
+| `noSandbox`                | `false`                                | Add `--no-sandbox` for root/container environments.                                           |
 
-Environment variables override the binary and profile defaults: `BROWSER_PILOT_EXECUTABLE_PATH`, `PUPPETEER_EXECUTABLE_PATH`, `CHROME_PATH`, and `BROWSER_PILOT_PROFILE`. Secrets stay in the environment; `type` can read a value with `text_env`.
+Environment variables fill the binary and profile defaults when the configuration leaves them unset: `BROWSER_PILOT_EXECUTABLE_PATH`, `PUPPETEER_EXECUTABLE_PATH`, `CHROME_PATH`, and `BROWSER_PILOT_PROFILE`. An explicit `executablePath` in `browser-pilot.json` wins over the environment. Secrets stay in the environment; `type` can read a value with `text_env`.
 
 Path values accept a leading `~`, which expands to the home directory. Relative paths in `profile`, `executablePath`, `screenshotsDir`, `downloadsDir`, `exportsDir`, `logging.dir`, `save_path`, `path`, `text_file`, `files`, and `script_path` resolve against the working directory.
 
@@ -213,39 +243,40 @@ Chrome 136 and later refuse remote debugging on the default user-data-dir. Alway
 
 Logging is opt-in and writes one JSON object per call to `<agentDir>/browser-pilot/logs/browser-pilot.jsonl` by default.
 
-| Key                            | Default                         | Effect                                                        |
-| ------------------------------ | ------------------------------- | ------------------------------------------------------------- |
-| `logging.enabled`              | `false`                         | Record completed calls.                                       |
-| `logging.dir`                  | `<agentDir>/browser-pilot/logs` | Directory for the JSONL file.                                 |
-| `logging.includeArgs`          | `true`                          | Record URLs, selectors, refs, and paths.                      |
-| `logging.includeSensitiveArgs` | `false`                         | Record typed text, `eval` source, and other sensitive values. |
-| `logging.outputs`              | `summary`                       | `none`, `summary`, `snippet`, or `full`.                      |
-| `logging.maxOutputChars`       | `2000`                          | Cap for snippet/full output in a record.                      |
+| Key                            | Default                         | Effect                                                       |
+| ------------------------------ | ------------------------------- | ------------------------------------------------------------ |
+| `logging.enabled`              | `false`                         | Record completed calls.                                      |
+| `logging.dir`                  | `<agentDir>/browser-pilot/logs` | Directory for the JSONL file.                                |
+| `logging.includeArgs`          | `true`                          | Record URLs, selectors, refs, paths, and output text.        |
+| `logging.includeSensitiveArgs` | `false`                         | Record typed text, `eval` source, page content, and secrets. |
+| `logging.outputs`              | `summary`                       | `none`, `summary`, `snippet`, or `full`.                     |
+| `logging.maxOutputChars`       | `2000`                          | Cap for snippet/full output in a record.                     |
 
-The record includes the shared usage envelope, the action, profile, pid, port, Chrome version, tab count, URL, title, status, challenge, truncation, saved path, safe parameters, and an output summary. Typed text, `eval` source, cookie and storage values, and route bodies are reduced to length and SHA-256 hash by default. Small structured results are logged in full; large results use a head/tail snippet. Screenshots and exports record the path and metadata, not the file contents.
+The record includes the shared usage envelope, the action, profile, pid, port, Chrome version, tab count, URL, title, status, challenge, truncation, saved path, safe parameters, and an output summary. Typed text, `eval` source, cookie and storage values, route bodies, and assertion values are reduced to length and SHA-256 hash by default. When `logging.includeArgs` is false, output text, URLs, titles, challenge data, and saved paths are omitted. When `logging.includeSensitiveArgs` is false, page-derived output for `read`, `eval`, `snapshot`, `console`, `network`, `expect`, and `steps` is reduced to character and line counts, and `cookies`, `storage`, and `clipboard` output is never logged. Small structured results from safe actions are logged in full; large results use a head/tail snippet when page content is explicitly enabled. Screenshots and exports record the path and metadata, not the file contents.
 
 ## Behavior and fallbacks
 
 - **Ports.** Chrome is spawned with `--remote-debugging-port=0`. The tool reads the actual port from the profile's `DevToolsActivePort` file, so it never scans for a free port or collides with another window.
 - **Reconnects.** A per-profile instance record and a per-session tab record let the tool reconnect after a reload or a closed window. Stale records are validated by pid and DevTools endpoint before reuse; a dead process is replaced on the next call.
-- **Tabs.** Handles are stable integers. Tabs created by the agent are marked as owned; tabs opened by the user are left alone by cleanup. Popups are attached as new tabs automatically.
-- **Refs.** `snapshot` clears old refs, assigns `data-pi-ref` attributes, and returns one line per visible interactive element across the main document, open shadow roots, and child frames. `selector` scopes the walk to matching subtrees; `ref` is rejected because refs come from the snapshot itself. Refs from iframes are resolved inside that frame; shadow refs use Puppeteer's piercing selector. `read`, `screenshot`, and `wait {for:"selector"}` also accept refs. A navigation or a new snapshot invalidates the old refs.
-- **Downloads.** The browser saves downloads to `downloadsDir`. `download {op:"wait"}` waits for the newest matching file and reports its path, state, and byte counts. `download {op:"clear"}` clears the history, not the files.
+- **Tabs.** Handles are stable integers. Tabs created by the agent are marked as owned; tabs opened by the user are left alone by cleanup. Popups, including `noopener` windows, are attached as new tabs automatically. The `maxTabs` cap applies to popups and user-opened tabs as well as `tabs new`.
+- **Refs.** `snapshot` clears old refs, assigns `data-pi-ref` attributes, and returns one line per visible interactive element across the main document, open shadow roots, and child frames. `selector` scopes the walk to matching subtrees; `ref` is rejected because refs come from the snapshot itself. Refs from iframes are resolved inside that frame; shadow refs use Puppeteer's piercing selector. Refs are scoped to the tab that created them. `read`, `screenshot`, and `wait {for:"selector"}` also accept refs. A navigation, a tab close, or a new snapshot invalidates the old refs.
+- **Downloads.** The browser saves downloads to `downloadsDir`. `download {op:"wait"}` waits for the newest matching file and resolves the path Chrome actually wrote, including collision suffixes. `download {op:"clear"}` clears the history, not the files. Download capture is available for browsers launched by the tool, not for `connect` attachments.
 - **Uploads.** `upload` sets one or more local files on a file input and reports the absolute paths.
-- **Cookies and storage.** `cookies` uses the browser cookie store and supports URL- or domain-scoped cookies. `storage` reads and mutates `localStorage` or `sessionStorage` in the current tab. `state` exports and imports a versioned JSON bundle containing cookies plus per-origin local and session storage; bundles are written with owner-only permissions and contain session credentials.
+- **Cookies and storage.** `cookies` uses the browser cookie store and supports URL- or domain-scoped cookies. `storage` reads and mutates `localStorage` or `sessionStorage` in the current tab. `state` exports and imports a versioned JSON bundle containing cookies plus per-origin local and session storage; bundles are written with owner-only permissions and contain session credentials. Import validates the bundle, accepts only `http(s)` origins, and applies the navigation guard before touching an origin.
 - **Emulation.** `emulate` applies viewport, user agent, locale, timezone, color scheme, reduced motion, network, CPU, and geolocation overrides to the current tab. `permissions` grants or clears browser permissions for an origin. `reset:true` restores configuration defaults.
 - **Clipboard.** `clipboard` reads or writes the system clipboard after granting clipboard permissions for the current origin. It requires a secure context (HTTPS or localhost).
 - **Frames.** `frames {op:"list"}` lists child frames with indices. `frames {op:"select", frame:1}` scopes `read`, `eval`, and element screenshots to that frame; `frames {op:"main"}` returns to the main frame.
-- **Network.** `network {op:"read"}` returns a compact overview with stable request ids. `network {op:"get", id}` reads headers, request data, timing, and a body preview from a recently retained response. `wait {for:"response", url_pattern}` returns the matching request id. `har` remains the guaranteed full-fidelity capture path.
-- **Metrics and doctor.** `metrics` reports heap, DOM, navigation timing, and resource totals. `doctor` checks the binary, profile, port, display, sandbox, writable directories, and stale instance state.
+- **Network.** `network {op:"read"}` returns a compact overview with stable request ids, response sizes from `Content-Length`, and duration. `network {op:"get", id}` reads headers, request data, timing phases, and a body preview from a recently retained response. `wait {for:"response", url_pattern}` returns the matching request id. `har` remains the guaranteed full-fidelity capture path.
+- **Assertions.** `expect` polls until the assertion passes or `timeout_ms` expires. Missing elements count as hidden, so `expect {check:"hidden"}` succeeds for absent elements. `value`, `attribute`, `visible`, `hidden`, and `count` checks require `ref` or `selector`; `attribute` also requires `attribute`.
+- **Metrics and doctor.** `metrics` reports heap, DOM, navigation timing, and resource totals. `doctor` checks the binary (including that a configured path exists), profile, port, display, sandbox, writable screenshots/downloads/exports/logs/profile directories, and stale instance state.
 - **Highlight.** `highlight` flashes an element outline for a short duration, which is useful when handing the window to a human.
-- **Routing.** `route` installs page-level request interception rules. Matching requests can be aborted, continued, delayed, or fulfilled with a synthetic response. Rules are session-wide and apply to existing and new tabs; `clear` disables interception.
-- **Exports.** `pdf` prints the current page, `har` records request/response metadata and response bodies up to 1 MiB per entry, and `trace` records a Chrome trace. Each writes to `exportsDir` unless `path` is set.
-- **External browsers.** `connect` attaches to an existing `ws://` or `http://` DevTools endpoint. `close {target:"browser"}` disconnects from an attached browser without closing Chrome.
+- **Routing.** `route` installs page-level request interception rules. Matching requests can be aborted, continued, delayed, or fulfilled with a synthetic response. Rules are session-wide and apply to tabs managed when the rule is added and to new agent tabs; tabs opened by the user after a rule is added are attached without interception. Rule ids look like `rt1`. `clear` disables interception.
+- **Exports.** `pdf` prints the current page, `har` records request/response metadata and response bodies up to 1 MiB per entry, and `trace` records a Chrome trace. `har {op:"stop"}` requires an active recording; a second `har {op:"start"}` is rejected. A trace that does not receive `tracingComplete` within 10 seconds is written with an incomplete-capture warning. Each export writes to `exportsDir` unless `path` is set.
+- **External browsers.** `connect` attaches to an existing `ws://` or `http://` DevTools endpoint. Existing tabs are attached without changing their viewport, user agent, emulation, or download behavior, and `close {target:"browser"}` disconnects without closing Chrome.
 - **Content.** `read` uses Readability and Turndown for markdown, `innerText` for text, the live DOM for HTML, and a compact structural tree for `outline`. Inline `data:` image payloads are stripped.
 - **Dialogs.** Dialogs are dismissed automatically by default. Set `dialog {op:"policy", policy:"manual"}` to inspect and resolve them explicitly.
 - **Challenges.** Cloudflare, reCAPTCHA, hCaptcha, PerimeterX, DataDome, and generic access-denied pages are detected after navigation and inspection. A blocking challenge is reported with a hint to solve it in the window and call `wait {for:"human"}`. The tool never attempts to solve a challenge.
-- **Errors.** Every error names the action, the current tab and URL when available, and a next-step hint. Ref errors suggest a new snapshot; tab errors suggest a tab list; profile errors name the owning process.
+- **Errors.** Errors carry the action in structured details, name the current tab and URL when available, and include a next-step hint where one is known. Ref errors suggest a new snapshot; tab errors suggest a tab list; profile errors name the owning process.
 - **Logging.** Opt-in JSONL records are written to `<agentDir>/browser-pilot/logs/browser-pilot.jsonl`. See the root README for the shared logging keys.
 
 ## Limitations
@@ -256,15 +287,17 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 - `snapshot` covers open shadow roots and child frames. Closed shadow roots are not accessible.
 - HAR response bodies are capped at 1 MiB per entry; larger bodies and streaming responses may be incomplete. Traces and HAR files can be large on long or busy pages.
 - `network {op:"get"}` reads bodies from a bounded set of recently retained responses. A body can be unavailable after navigation, buffer eviction, or for streaming/binary responses; use `har` when the body must be captured reliably.
-- `state` exports storage for origins that are open in managed tabs at export time. Cookies are exported from the whole browser cookie store.
+- `state` exports storage for origins that are open in managed tabs at export time. Cookies are exported from the whole browser cookie store. Import accepts only `http(s)` origins and blocks metadata hosts.
 - `clipboard` requires a secure context (HTTPS or localhost) and a browser that permits clipboard access. `permissions` is browser-context-wide for the origin.
-- `annotate` draws boxes for refs in the main document. Refs inside iframes and shadow roots are not annotated.
+- `annotate` draws boxes for refs in the main document and open shadow roots. Refs inside iframes are not annotated.
+- The navigation guard checks top-level navigations. Redirects and subresource requests are not re-checked, and metadata hostnames are blocked by name and known address spelling for the initial navigation only.
 - `metrics` reflects the current page and the most recent navigation timing entry; it is not a profiler. Use `trace` for detailed performance work.
 - `doctor` reports common environment problems but cannot detect every OS-specific Chrome failure.
 - Request interception is page-level and applies to the browser tabs this session manages. Service-worker or browser-process requests may bypass it.
 - `pdf` depends on Chrome's print pipeline and may fail in some headless or headful configurations.
 - `eval` runs arbitrary JavaScript in the page. It can read cookies and page storage and can make requests on the page's behalf. Treat page output as untrusted data.
-- `type` values, `eval` source, and page content are not written to usage logs by default; only lengths and hashes are recorded. Enabling `logging.includeSensitiveArgs` changes that.
+- `type` values, `eval` source, cookie and storage values, page content, and network/console output are not written to usage logs by default; only lengths and hashes are recorded. Enabling `logging.includeSensitiveArgs` changes that. URLs, titles, challenge data, saved paths, and output text are omitted when `logging.includeArgs` is false.
+- Download capture is unavailable for `connect` attachments because the tool does not change an external browser's download behavior. `noopener` popups are attached as user tabs and are not closed by tab cleanup.
 - Public sites may still block automated browsers. The tool reports the challenge instead of retrying indefinitely.
 
 ## License and provenance
