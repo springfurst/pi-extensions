@@ -5,6 +5,8 @@ import {
   formatTabs,
   hint,
   pageHeader,
+  previewText,
+  shortenUrl,
   suggestedNext,
   truncationHint,
 } from "./output";
@@ -66,6 +68,34 @@ describe("output helpers", () => {
     });
     expect(text).toContain("cloudflare blocking");
     expect(text).toContain("just a moment");
+  });
+
+  it("leaves short URLs alone", () => {
+    expect(shortenUrl("https://example.com/a?b=c")).toBe("https://example.com/a?b=c");
+  });
+
+  it("collapses a long query string to the origin and path", () => {
+    const url = `https://www.google.com/search?q=${"x".repeat(200)}`;
+    expect(shortenUrl(url)).toBe("https://www.google.com/search?…");
+  });
+
+  it("collapses a fragment and keeps the query marker", () => {
+    const url = `https://example.com/page?${"a=1&".repeat(40)}#${"h".repeat(80)}`;
+    const shortened = shortenUrl(url);
+    expect(shortened).toBe("https://example.com/page?…#…");
+  });
+
+  it("shortens a long path without a query", () => {
+    const url = `https://example.com/${"segment/".repeat(40)}`;
+    const shortened = shortenUrl(url, 40);
+    expect(shortened.length).toBeLessThanOrEqual(40);
+    expect(shortened.endsWith("…")).toBe(true);
+  });
+
+  it("previews text on one line", () => {
+    expect(previewText("  a\n  b\t c  ")).toBe("a b c");
+    expect(previewText("abcdef", 4)).toBe("abc…");
+    expect(previewText("abcdef", 10)).toBe("abcdef");
   });
 
   it("explains truncation and the escape hatch", () => {

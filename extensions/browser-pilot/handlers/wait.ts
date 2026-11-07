@@ -1,6 +1,6 @@
 import { detectChallenge, waitForHuman } from "../challenge";
 import { NETWORK_BODY_PREVIEW_CHARS, readNetworkBody, waitForNetworkResponse } from "../network";
-import { finalize, hint, pageHeader, truncationHint } from "../output";
+import { finalize, hint, pageHeader, previewText, truncationHint } from "../output";
 import type { BrowserPilotSession } from "../session";
 import {
   appendChallenge,
@@ -26,6 +26,7 @@ export async function waitResult(
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
   const kind = params.for!;
+  const awaited = describeWait(params);
   const timeout =
     params.timeout_ms ??
     (kind === "human" ? config.challengeWaitSeconds * 1000 : config.actionTimeoutSeconds * 1000);
@@ -77,6 +78,7 @@ export async function waitResult(
         title: await tab.page.title().catch(() => ""),
         challenge: result.challenge ?? result.initialChallenge,
         elapsedMs: result.elapsedMs,
+        preview: "human challenge",
       },
     );
   }
@@ -123,6 +125,7 @@ export async function waitResult(
       response: entry,
       body: body?.text,
       truncated: body?.truncated,
+      preview: `response ${params.url_pattern ?? ""} · ${entry.id} ${entry.status ?? "..."}`,
     });
   }
 
@@ -176,6 +179,7 @@ export async function waitResult(
     title: await tab.page.title().catch(() => ""),
     elapsedMs: elapsed,
     challenge,
+    preview: awaited,
   });
 }
 
@@ -237,8 +241,29 @@ export async function expectResult(
       expected,
       actual,
       elapsedMs: Date.now() - started,
+      preview: `${params.check} ${operator} ${JSON.stringify(expected)} → ${JSON.stringify(actual)}`,
     },
   );
+}
+
+/** Describe what a wait is waiting for, for the one-line result summary. */
+function describeWait(params: BrowserPilotParams): string {
+  switch (params.for) {
+    case "selector":
+      return params.ref ? `selector for ref ${params.ref}` : `selector ${params.selector ?? ""}`;
+    case "text":
+      return `text ${JSON.stringify(previewText(params.text ?? "", 60))}`;
+    case "url":
+      return `url containing ${JSON.stringify(previewText(params.url ?? "", 60))}`;
+    case "function":
+      return `function ${previewText(params.expression ?? "", 80)}`;
+    case "response":
+      return `response ${params.url_pattern ?? ""}`;
+    case "network_idle":
+      return "network idle";
+    default:
+      return "human";
+  }
 }
 
 interface ElementSnapshot {

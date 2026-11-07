@@ -1,10 +1,12 @@
 import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import type { ElementHandle, KeyInput } from "puppeteer-core";
 import { detectChallenge } from "../challenge";
-import { finalize, hint, pageHeader } from "../output";
+import { finalize, hint, pageHeader, previewText } from "../output";
 import type { BrowserPilotSession } from "../session";
 import {
   appendChallenge,
+  describeElement,
   locatorFor,
   pressKeyCombo,
   resolvePath,
@@ -22,6 +24,13 @@ import type {
 } from "../types";
 import { BrowserPilotError } from "../types";
 
+/** Describe typed text without echoing values that came from a file or the environment. */
+function typedPreview(params: BrowserPilotParams, text: string): string {
+  if (params.text_env) return `${text.length} characters from $${params.text_env}`;
+  if (params.text_file) return `${text.length} characters from ${params.text_file}`;
+  return previewText(text, 80);
+}
+
 export async function clickResult(
   params: BrowserPilotParams,
   session: BrowserPilotSession,
@@ -36,8 +45,9 @@ export async function clickResult(
     .setEnsureElementIsInTheViewport(true)
     .setWaitForStableBoundingBox(true);
   const beforeUrl = tab.page.url();
+  const handle = await locator.waitHandle();
+  const subject = await describeElement(handle);
   if (humanize) {
-    const handle = await locator.waitHandle();
     const box = await handle.boundingBox();
     if (box) {
       await tab.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
@@ -78,6 +88,7 @@ export async function clickResult(
     url: afterUrl,
     title: await tab.page.title().catch(() => ""),
     target: targetLabel(params),
+    subject,
     challenge,
   });
 }
@@ -96,6 +107,7 @@ export async function typeResult(
     .setVisibility("visible")
     .setWaitForEnabled(true)
     .setEnsureElementIsInTheViewport(true);
+  const subject = await describeElement(await locator.waitHandle());
   if (humanize || (params.delay_ms ?? 0) > 0) {
     await locator.click();
     if (params.clear !== false) {
@@ -138,6 +150,8 @@ export async function typeResult(
     title: await tab.page.title().catch(() => ""),
     target: targetLabel(params),
     textLength: text.length,
+    subject,
+    preview: typedPreview(params, text),
     challenge,
   });
 }
@@ -149,10 +163,12 @@ export async function pressResult(
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
+  let subject: string | undefined;
   if (params.ref || params.selector) {
     const locator = locatorFor(session, tab, params, timeout)
       .setVisibility("visible")
       .setWaitForEnabled(true);
+    subject = await describeElement(await locator.waitHandle());
     await locator.click();
   }
   await pressKeyCombo(tab.page, params.key!);
@@ -163,7 +179,14 @@ export async function pressResult(
       pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
       `Pressed ${params.key}.`,
     ].join("\n"),
-    { action: "press", tab: tab.handle, url: tab.page.url(), key: params.key },
+    {
+      action: "press",
+      tab: tab.handle,
+      url: tab.page.url(),
+      key: params.key,
+      subject,
+      preview: `key ${params.key}`,
+    },
   );
 }
 
@@ -178,6 +201,7 @@ export async function selectResult(
     .setVisibility("visible")
     .setWaitForEnabled(true);
   const handle = (await locator.waitHandle()) as ElementHandle<HTMLSelectElement>;
+  const subject = await describeElement(handle);
   const options = await selectOptionInfo(handle);
   const requested = params.values ?? [];
   const { values, missing } = resolveSelectValues(options, requested);
@@ -208,6 +232,8 @@ export async function selectResult(
     target: targetLabel(params),
     selected,
     missing,
+    subject,
+    preview: `selected ${selected.join(", ")}`,
   });
 }
 
@@ -269,10 +295,11 @@ export async function hoverResult(
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
   const timeout = params.timeout_ms ?? config.actionTimeoutSeconds * 1000;
-  await locatorFor(session, tab, params, timeout)
+  const locator = locatorFor(session, tab, params, timeout)
     .setVisibility("visible")
-    .setEnsureElementIsInTheViewport(true)
-    .hover();
+    .setEnsureElementIsInTheViewport(true);
+  const subject = await describeElement(await locator.waitHandle());
+  await locator.hover();
   tab.lastUsed = Date.now();
   session.persist();
   return finalize(
@@ -280,7 +307,13 @@ export async function hoverResult(
       pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
       `Hovered ${targetLabel(params)}.`,
     ].join("\n"),
-    { action: "hover", tab: tab.handle, url: tab.page.url(), target: targetLabel(params) },
+    {
+      action: "hover",
+      tab: tab.handle,
+      url: tab.page.url(),
+      target: targetLabel(params),
+      subject,
+    },
   );
 }
 
@@ -305,6 +338,7 @@ export async function uploadResult(
     .setVisibility("visible")
     .setWaitForEnabled(true);
   const handle = (await locator.waitHandle()) as ElementHandle<HTMLInputElement>;
+  const subject = await describeElement(handle);
   await handle.uploadFile(...files);
   tab.lastUsed = Date.now();
   session.persist();
@@ -321,6 +355,8 @@ export async function uploadResult(
       title: await tab.page.title().catch(() => ""),
       target: targetLabel(params),
       files,
+      subject,
+      preview: files.map((file) => basename(file)).join(", "),
     },
   );
 }

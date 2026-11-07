@@ -171,5 +171,11 @@ export async function doctorResult(
     profile: profile.label,
     userDataDir: profile.userDataDir,
     headless,
+    preview:
+      failures > 0
+        ? `${failures} blocking issue(s), ${warnings} warning(s)`
+        : warnings > 0
+          ? `${warnings} warning(s); the browser can still run`
+          : "all checks passed",
   });
 }

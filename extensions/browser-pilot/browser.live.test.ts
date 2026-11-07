@@ -182,6 +182,7 @@ describe("browser-pilot live", () => {
 
     const clicked = await run({ action: "click", ref: goRef });
     expect(clicked.isError).toBeUndefined();
+    expect(clicked.details.subject).toBe('button "Go"');
     const clickedValue = await run({
       action: "eval",
       expression: "document.getElementById('out').textContent",
@@ -190,6 +191,8 @@ describe("browser-pilot live", () => {
 
     const typed = await run({ action: "type", ref: nameRef, text: "Ada" });
     expect(typed.isError).toBeUndefined();
+    expect(typed.details.subject).toBe('textbox "Name"');
+    expect(typed.details.preview).toBe("Ada");
     const nameValue = await run({
       action: "eval",
       expression: "document.getElementById('name').value",
@@ -236,6 +239,7 @@ describe("browser-pilot live", () => {
     const read = await run({ action: "read", format: "markdown" });
     expect(text(read)).toContain("A Useful Article");
     expect(text(read)).toContain("main content");
+    expect(read.details.preview).toContain("A Useful Article");
 
     const savedPath = join(agentDir, "article.md");
     const savedRead = await run({ action: "read", save_path: savedPath });
@@ -250,6 +254,7 @@ describe("browser-pilot live", () => {
     const objectEval = await run({ action: "eval", expression: "({a: 1, b: [2, 3]})" });
     expect(text(objectEval)).toContain('"a": 1');
     expect(text(objectEval)).toContain('"b"');
+    expect(objectEval.details.preview).toBe("({a: 1, b: [2, 3]})");
 
     await run({ action: "navigate", url: `${server.origin}/` });
     const snapshot2 = text(await run({ action: "snapshot" }));

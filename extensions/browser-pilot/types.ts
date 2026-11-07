@@ -170,6 +170,10 @@ export interface BrowserPilotDetails {
   url?: string;
   title?: string;
   status?: number;
+  /** One-line description of the element an action targeted, such as `button "Sign in"`. */
+  subject?: string;
+  /** One-line preview of what an action read, wrote, or evaluated. */
+  preview?: string;
   challenge?: ChallengeInfo;
   truncated?: boolean;
   savedPath?: string;

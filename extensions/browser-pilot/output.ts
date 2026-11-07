@@ -32,10 +32,34 @@ export function finalize(text: string, details: BrowserPilotDetails): BrowserPil
   return { content: [{ type: "text", text: finalText }], details };
 }
 
+const MAX_URL_CHARS = 120;
+
+/**
+ * Shorten a URL for display. The origin and the start of the path stay readable; a query string or
+ * fragment collapses to a marker so long search and tracking URLs fit on one line.
+ */
+export function shortenUrl(url: string, maxChars = MAX_URL_CHARS): string {
+  if (url.length <= maxChars) return url;
+  const queryIndex = url.indexOf("?");
+  const hashIndex = url.indexOf("#");
+  const cuts = [queryIndex, hashIndex].filter((index) => index >= 0);
+  const head = cuts.length > 0 ? url.slice(0, Math.min(...cuts)) : url;
+  const tail = `${queryIndex >= 0 ? "?…" : ""}${hashIndex >= 0 ? "#…" : ""}`;
+  const budget = Math.max(16, maxChars - tail.length - 1);
+  const shortened = head.length > budget ? `${head.slice(0, budget)}…` : head;
+  return `${shortened}${tail}`;
+}
+
+/** Collapse whitespace and shorten text to a single-line preview. */
+export function previewText(text: string, maxChars = 100): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > maxChars ? `${clean.slice(0, maxChars - 1)}…` : clean;
+}
+
 /** A compact tab/URL/title header for an action result. */
 export function pageHeader(tab: number, url: string, title: string): string {
   const suffix = title ? ` · ${JSON.stringify(title)}` : "";
-  return `Tab ${tab} · ${url || "about:blank"}${suffix}`;
+  return `Tab ${tab} · ${shortenUrl(url) || "about:blank"}${suffix}`;
 }
 
 /** Label a non-binding suggestion. */
@@ -63,7 +87,9 @@ export function formatTabs(tabs: TabInfo[], maxTabs: number): string {
     const marker = tab.current ? "*" : " ";
     const owner = tab.owned ? "" : " (user)";
     const title = tab.title ? `  ${JSON.stringify(tab.title)}` : "";
-    lines.push(`  ${marker} ${tab.handle}  ${tab.url || "about:blank"}${title}${owner}`);
+    lines.push(
+      `  ${marker} ${tab.handle}  ${shortenUrl(tab.url) || "about:blank"}${title}${owner}`,
+    );
   }
   return lines.join("\n");
 }

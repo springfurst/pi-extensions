@@ -202,6 +202,79 @@ export async function pressKeyCombo(page: Page, combo: string): Promise<void> {
   }
 }
 
+/**
+ * Describe an element as `role "name"`, matching the names snapshots use, so a click or a type can
+ * say what it touched. Returns undefined when the element is gone.
+ */
+export async function describeElement(handle: ElementHandle): Promise<string | undefined> {
+  try {
+    return await handle.evaluate((element) => {
+      const el = element as HTMLElement;
+      const clean = (value: string) => value.replace(/\s+/g, " ").trim().slice(0, 60);
+      const tag = el.tagName.toLowerCase();
+      const type = el instanceof HTMLInputElement ? el.type : undefined;
+      const role = (() => {
+        if (tag === "a") return "link";
+        if (tag === "img") return "image";
+        if (/^h[1-6]$/.test(tag)) return "heading";
+        if (tag === "select") return "combobox";
+        if (tag === "textarea") return "textbox";
+        if (tag !== "input") return tag;
+        if (type === "checkbox" || type === "radio" || type === "file") return type;
+        if (type === "button" || type === "submit" || type === "reset") return "button";
+        if (type === "search") return "searchbox";
+        if (type === "number" || type === "range") return "slider";
+        return "textbox";
+      })();
+      const name = (() => {
+        const ariaLabel = el.getAttribute("aria-label");
+        if (ariaLabel?.trim()) return ariaLabel;
+        if (
+          el instanceof HTMLInputElement ||
+          el instanceof HTMLTextAreaElement ||
+          el instanceof HTMLSelectElement
+        ) {
+          // A label wraps its control, so drop the control and any option text it carries.
+          const labels = Array.from(el.labels ?? [])
+            .map((label) => {
+              const clone = label.cloneNode(true) as HTMLElement;
+              for (const child of Array.from(
+                clone.querySelectorAll("input, select, textarea, button, option"),
+              )) {
+                child.remove();
+              }
+              return clone.textContent ?? "";
+            })
+            .join(" ");
+          if (labels.trim()) return labels;
+          if (el instanceof HTMLSelectElement) {
+            const selected = Array.from(el.selectedOptions)
+              .map((option) => option.textContent ?? "")
+              .join(", ");
+            if (selected.trim()) return selected;
+          } else if (el.placeholder) {
+            return el.placeholder;
+          }
+          if (el instanceof HTMLInputElement && el.value && el.type !== "password") {
+            return el.value;
+          }
+        }
+        for (const attribute of ["alt", "title"]) {
+          const value = el.getAttribute(attribute);
+          if (value?.trim()) return value;
+        }
+        return el.innerText ?? el.textContent ?? "";
+      })();
+      const label = clean(name);
+      if (label) return `${role} "${label}"`;
+      if (tag === "input" && type) return `input[type=${type}]`;
+      return role;
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 /** One option of a select element, as read from the page. */
 export interface SelectOptionInfo {
   value: string;

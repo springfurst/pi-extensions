@@ -1,5 +1,5 @@
 import type { Page } from "puppeteer-core";
-import { finalize, pageHeader } from "./output";
+import { finalize, pageHeader, previewText } from "./output";
 import type { BrowserPilotSession } from "./session";
 import { resolveTypedText } from "./tool-helpers";
 import type { BrowserPilotContext, BrowserPilotParams, BrowserPilotToolResult } from "./types";
@@ -60,6 +60,7 @@ export async function clipboardResult(
         tab: tab.handle,
         url: tab.page.url(),
         textLength: text.length,
+        preview: text ? previewText(text, 120) : "(clipboard is empty)",
       },
     );
   }
@@ -86,6 +87,7 @@ export async function clipboardResult(
       tab: tab.handle,
       url: tab.page.url(),
       textLength: text.length,
+      preview: previewText(text, 120),
     },
   );
 }

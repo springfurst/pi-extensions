@@ -144,6 +144,19 @@ Every call has an `action`. Most actions accept a `tab` handle; the current tab 
 
 Most action results start with the current tab, URL, and title, followed by the action-specific body. Catalog, status, doctor, and list results have their own shapes. Hints and suggested next steps are optional suggestions, not requirements.
 
+URLs in results are shortened for display: the origin and the start of the path stay readable, and a long query string or fragment collapses to `?…` or `#…`. The full URL is still available from `eval {expression:"location.href"}`.
+
+The terminal view of a call shows the action with the arguments that identify it, such as `browser-pilot type · e3 · "ada@example.com"`. The result view adds a one-line summary of what the action touched and what it produced, then the shortened URL and title:
+
+```text
+browser-pilot click · e5
+button "Sign in"
+https://example.com/login
+"Sign in · Example"
+```
+
+That summary is `subject` (the element, named the way snapshots name it) and `preview` (typed text, evaluated script, read content, selected options, pressed keys, or the awaited condition) in the structured details. Element subjects never include a password value. Typed text that came from `text_env` or `text_file` is reduced to a length and its source. When an action has neither, the first body line stands in. Expanding the result shows the full body without repeating the header or the summary line.
+
 A snapshot looks like this:
 
 ```text
@@ -185,7 +198,7 @@ Use the id to fetch headers, request data, timing, and a body preview:
 
 `wait {for:"response", url_pattern:"/api/items"}` returns the matching request id and summary, and can include a body preview with `include_body:true`. Bodies are read on demand from recently retained responses; use `har` when a guaranteed full capture is needed.
 
-`steps` collapses repeated page headers into one header for the batch, and `console` collapses repeated messages as `×N`. The tool result also carries structured details for the terminal renderer and scripts: action, tab, URL, title, status, tabs, challenge, truncation, saved path, and errors.
+`steps` collapses repeated page headers into one header for the batch, and `console` collapses repeated messages as `×N`. The tool result also carries structured details for the terminal renderer and scripts: action, tab, URL, title, status, subject, preview, tabs, challenge, truncation, saved path, and errors.
 
 ## Configuration
 
@@ -264,7 +277,7 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 - **Uploads.** `upload` sets one or more local files on a file input and reports the absolute paths.
 - **Cookies and storage.** `cookies` uses the browser cookie store and supports URL- or domain-scoped cookies. `storage` reads and mutates `localStorage` or `sessionStorage` in the current tab. `state` exports and imports a versioned JSON bundle containing cookies plus per-origin local and session storage; bundles are written with owner-only permissions and contain session credentials. Import validates the bundle, accepts only `http(s)` origins, and applies the navigation guard before touching an origin.
 - **Emulation.** `emulate` applies viewport, user agent, locale, timezone, color scheme, reduced motion, network, CPU, and geolocation overrides to the current tab. `permissions` grants or clears browser permissions for an origin. `reset:true` restores configuration defaults.
-- **Clipboard.** `clipboard` reads or writes the system clipboard after granting clipboard permissions for the current origin. It requires a secure context (HTTPS or localhost).
+- **Clipboard.** `clipboard` reads or writes the system clipboard after granting clipboard permissions for the current origin. It requires a secure context (HTTPS or localhost). Because a background window is not a focused document, the tab is brought forward and focus emulation is enabled for the duration of the call; if access is still denied, the error names the window focus as the cause.
 - **Frames.** `frames {op:"list"}` lists child frames with indices. `frames {op:"select", frame:1}` scopes `read`, `eval`, and element screenshots to that frame; `frames {op:"main"}` returns to the main frame.
 - **Network.** `network {op:"read"}` returns a compact overview with stable request ids, response sizes from `Content-Length`, and duration. `network {op:"get", id}` reads headers, request data, timing phases, and a body preview from a recently retained response. `wait {for:"response", url_pattern}` returns the matching request id. `har` remains the guaranteed full-fidelity capture path.
 - **Assertions.** `expect` polls until the assertion passes or `timeout_ms` expires. Missing elements count as hidden, so `expect {check:"hidden"}` succeeds for absent elements. `value`, `attribute`, `visible`, `hidden`, and `count` checks require `ref` or `selector`; `attribute` also requires `attribute`.
@@ -276,6 +289,9 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 - **Content.** `read` uses Readability and Turndown for markdown, `innerText` for text, the live DOM for HTML, and a compact structural tree for `outline`. Inline `data:` image payloads are stripped.
 - **Dialogs.** Dialogs are dismissed automatically by default. Set `dialog {op:"policy", policy:"manual"}` to inspect and resolve them explicitly.
 - **Challenges.** Cloudflare, reCAPTCHA, hCaptcha, PerimeterX, DataDome, and generic access-denied pages are detected after navigation and inspection. A blocking challenge is reported with a hint to solve it in the window and call `wait {for:"human"}`. The tool never attempts to solve a challenge.
+- **History.** `navigate {direction:"back"}` and `{direction:"forward"}` report a missing history entry only when the URL did not change. Same-document entries, such as those created by `history.pushState`, move the history without a network response and are reported as a normal navigation.
+- **Key combinations.** `press` splits `Control+A`-style combinations into held modifiers (`Control`, `Shift`, `Alt`, `Meta`, and the aliases `Ctrl`, `Cmd`, `Command`, `Option`) and a base key. Unknown modifiers and keys are rejected with a hint.
+- **Option matching.** `select` matches each requested value against option values first, then option labels, then visible text. Requests that match nothing are reported; a call where nothing matches fails and lists the available options.
 - **Errors.** Errors carry the action in structured details, name the current tab and URL when available, and include a next-step hint where one is known. Ref errors suggest a new snapshot; tab errors suggest a tab list; profile errors name the owning process.
 - **Logging.** Opt-in JSONL records are written to `<agentDir>/browser-pilot/logs/browser-pilot.jsonl`. See the root README for the shared logging keys.
 
@@ -288,7 +304,7 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 - HAR response bodies are capped at 1 MiB per entry; larger bodies and streaming responses may be incomplete. Traces and HAR files can be large on long or busy pages.
 - `network {op:"get"}` reads bodies from a bounded set of recently retained responses. A body can be unavailable after navigation, buffer eviction, or for streaming/binary responses; use `har` when the body must be captured reliably.
 - `state` exports storage for origins that are open in managed tabs at export time. Cookies are exported from the whole browser cookie store. Import accepts only `http(s)` origins and blocks metadata hosts.
-- `clipboard` requires a secure context (HTTPS or localhost) and a browser that permits clipboard access. `permissions` is browser-context-wide for the origin.
+- `clipboard` requires a secure context (HTTPS or localhost) and a browser that permits clipboard access. `permissions` is browser-context-wide for the origin. A window that never gets focus, such as a fully backgrounded one on some window managers, can still be refused by the browser.
 - `annotate` draws boxes for refs in the main document and open shadow roots. Refs inside iframes are not annotated.
 - The navigation guard checks top-level navigations. Redirects and subresource requests are not re-checked, and metadata hostnames are blocked by name and known address spelling for the initial navigation only.
 - `metrics` reflects the current page and the most recent navigation timing entry; it is not a profiler. Use `trace` for detailed performance work.

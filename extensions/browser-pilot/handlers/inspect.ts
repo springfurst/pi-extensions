@@ -4,11 +4,20 @@ import type { PaperFormat } from "puppeteer-core";
 import { detectChallenge } from "../challenge";
 import { readPageContent } from "../content";
 import { evaluateInFrame, evaluateInPage, formatEvalValue } from "../eval";
-import { capForModel, capText, finalize, hint, pageHeader, truncationHint } from "../output";
+import {
+  capForModel,
+  capText,
+  finalize,
+  hint,
+  pageHeader,
+  previewText,
+  truncationHint,
+} from "../output";
 import type { BrowserPilotSession } from "../session";
 import { refSelector, snapshotPage } from "../snapshot";
 import {
   appendChallenge,
+  formatBytes,
   indentText,
   readInputFile,
   resolvePath,
@@ -137,6 +146,7 @@ export async function readResult(
     chars: content.chars,
     truncated: capped.truncated || model.truncated,
     savedPath,
+    preview: content.text.trim() ? previewText(content.text, 120) : undefined,
     challenge,
   });
 }
@@ -197,6 +207,7 @@ export async function evalResult(
     title: await tab.page.title().catch(() => ""),
     resultType: result.type,
     chars: text.length,
+    preview: previewText(source, 120),
     truncated: capped.truncated || model.truncated,
     savedPath,
   });
@@ -291,6 +302,7 @@ export async function screenshotResult(
       bytes,
       dimensions,
       annotated,
+      preview: `${format} · ${formatBytes(bytes)} · viewport ${dimensions.viewport.width}×${dimensions.viewport.height}`,
     },
   };
 }
@@ -422,6 +434,7 @@ export async function pdfResult(
       title: await tab.page.title().catch(() => ""),
       savedPath: path,
       bytes,
+      preview: `pdf · ${formatBytes(bytes)}${params.paper_format ? ` · ${params.paper_format}` : ""}`,
     },
   );
 }
