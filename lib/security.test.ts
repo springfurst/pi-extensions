@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkUrlAllowed, isBlockedHostname, isPrivateAddress } from "./security";
+import {
+  checkUrlAllowed,
+  isBlockedHostname,
+  isPrivateAddress,
+  normalizeIpv4Address,
+} from "./security";
 
 describe("isPrivateAddress", () => {
   it("flags loopback, private, link-local, metadata, and reserved ranges", () => {
@@ -19,9 +24,23 @@ describe("isPrivateAddress", () => {
       "fc00::1",
       "fe80::1",
       "::ffff:127.0.0.1",
+      "::ffff:7f00:1",
+      "2852039166",
+      "0xa9fea9fe",
+      "0251.0376.0251.0376",
     ]) {
       expect(isPrivateAddress(address), address).toBe(true);
     }
+  });
+
+  it("normalizes alternate IPv4 spellings", () => {
+    expect(normalizeIpv4Address("2852039166")).toBe("169.254.169.254");
+    expect(normalizeIpv4Address("0xa9fea9fe")).toBe("169.254.169.254");
+    expect(normalizeIpv4Address("0251.0376.0251.0376")).toBe("169.254.169.254");
+    expect(normalizeIpv4Address("::ffff:a9fe:a9fe")).toBe("169.254.169.254");
+    expect(normalizeIpv4Address("::ffff:169.254.169.254")).toBe("169.254.169.254");
+    expect(normalizeIpv4Address("8.8.8.8")).toBe("8.8.8.8");
+    expect(normalizeIpv4Address("2606:4700::1111")).toBeUndefined();
   });
 
   it("allows public addresses", () => {
@@ -37,6 +56,7 @@ describe("isBlockedHostname", () => {
     expect(isBlockedHostname("LOCALHOST")).toBe(true);
     expect(isBlockedHostname("app.localhost")).toBe(true);
     expect(isBlockedHostname("metadata.google.internal")).toBe(true);
+    expect(isBlockedHostname("metadata.google.internal.")).toBe(true);
     expect(isBlockedHostname("example.com")).toBe(false);
   });
 });

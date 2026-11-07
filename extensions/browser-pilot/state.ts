@@ -2,12 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { CookieData } from "puppeteer-core";
 import { finalize, hint, pageHeader } from "./output";
+import { checkNavigationAllowed } from "./security";
 import type { BrowserPilotSession } from "./session";
 import { resolvePath } from "./tool-helpers";
 import type { BrowserPilotContext, BrowserPilotParams, BrowserPilotToolResult } from "./types";
 import { BrowserPilotError } from "./types";
 
-interface StorageStateBundle {
+export interface StorageStateBundle {
   version: 1;
   exportedAt: string;
   cookies: CookieData[];
@@ -86,12 +87,19 @@ export async function stateResult(
     }
   }
   let importedOrigins = 0;
+  let originFailures = 0;
   for (const origin of bundle.origins) {
+    const guard = await checkNavigationAllowed(origin.origin, session.config.allowPrivateHosts);
+    if (!guard.allowed) {
+      originFailures++;
+      continue;
+    }
     try {
       await importOriginStorage(session, tab, origin);
       importedOrigins++;
     } catch {
       // A single origin can fail without invalidating the rest of the bundle.
+      originFailures++;
     }
   }
   return finalize(
@@ -99,6 +107,9 @@ export async function stateResult(
       pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")),
       `Imported ${importedCookies} cookie(s) and ${importedOrigins} origin(s) from ${path}.`,
       cookieFailures > 0 ? `${cookieFailures} cookie(s) could not be set.` : undefined,
+      originFailures > 0
+        ? `${originFailures} origin(s) were blocked or could not be imported.`
+        : undefined,
       hint("reload the page so the imported state takes effect."),
     ]
       .filter((line): line is string => !!line)
@@ -112,6 +123,7 @@ export async function stateResult(
       cookies: importedCookies,
       origins: importedOrigins,
       cookieFailures,
+      originFailures,
     },
   );
 }
@@ -126,21 +138,68 @@ function readStorageState(path: string): StorageStateBundle {
       'Export a bundle first with {action:"state", op:"export", path:"./auth.json"}.',
     );
   }
-  if (!parsed || typeof parsed !== "object") {
-    throw new BrowserPilotError(`Storage state ${path} is not a JSON object.`);
+  return validateStorageBundle(parsed);
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+/** Validate a versioned auth-state bundle before any navigation or storage write. */
+export function validateStorageBundle(value: unknown): StorageStateBundle {
+  if (!value || typeof value !== "object") {
+    throw new BrowserPilotError("Storage state is not a JSON object.");
   }
-  const bundle = parsed as Partial<StorageStateBundle>;
+  const bundle = value as Partial<StorageStateBundle>;
   if (bundle.version !== 1 || !Array.isArray(bundle.cookies) || !Array.isArray(bundle.origins)) {
     throw new BrowserPilotError(
-      `Storage state ${path} has an unsupported format.`,
+      "Storage state has an unsupported format.",
       "Use a bundle exported by this tool (version 1).",
     );
   }
+  for (const cookie of bundle.cookies) {
+    if (
+      !cookie ||
+      typeof cookie !== "object" ||
+      typeof (cookie as CookieData).name !== "string" ||
+      typeof (cookie as CookieData).value !== "string"
+    ) {
+      throw new BrowserPilotError("Storage state contains an invalid cookie entry.");
+    }
+  }
+  const origins = bundle.origins.map((origin) => {
+    if (!origin || typeof origin !== "object" || typeof origin.origin !== "string") {
+      throw new BrowserPilotError("Storage state contains an invalid origin entry.");
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(origin.origin);
+    } catch {
+      throw new BrowserPilotError(`Storage state contains an invalid origin: ${origin.origin}`);
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new BrowserPilotError(
+        `Storage state origin must be http(s): ${origin.origin}`,
+        "Re-export the bundle from a browser-pilot session.",
+      );
+    }
+    if (!isStringRecord(origin.localStorage) || !isStringRecord(origin.sessionStorage)) {
+      throw new BrowserPilotError(
+        `Storage state origin ${origin.origin} has invalid storage values.`,
+      );
+    }
+    return {
+      origin: origin.origin,
+      localStorage: { ...origin.localStorage },
+      sessionStorage: { ...origin.sessionStorage },
+    };
+  });
   return {
     version: 1,
     exportedAt: typeof bundle.exportedAt === "string" ? bundle.exportedAt : "",
     cookies: bundle.cookies as CookieData[],
-    origins: bundle.origins as StorageStateBundle["origins"],
+    origins,
   };
 }
 
@@ -176,6 +235,10 @@ async function importOriginStorageViaPage(
   session: BrowserPilotSession,
   origin: StorageStateBundle["origins"][number],
 ): Promise<void> {
+  const guard = await checkNavigationAllowed(origin.origin, session.config.allowPrivateHosts);
+  if (!guard.allowed) {
+    throw new BrowserPilotError(`Blocked storage origin: ${guard.reason ?? origin.origin}`);
+  }
   const page = await session.browser!.newPage();
   try {
     await page.goto(origin.origin, { waitUntil: "domcontentloaded", timeout: 15_000 });

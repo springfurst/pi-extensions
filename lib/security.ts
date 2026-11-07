@@ -31,12 +31,52 @@ blocked.addSubnet("fe80::", 10, "ipv6");
 blocked.addSubnet("ff00::", 8, "ipv6");
 blocked.addSubnet("64:ff9b::", 96, "ipv6");
 
+/**
+ * Normalize an IPv4 literal, including decimal, hex, octal, and IPv4-mapped
+ * IPv6 forms. Browsers accept these spellings, so a string comparison on the
+ * dotted form is not enough.
+ */
+export function normalizeIpv4Address(address: string): string | undefined {
+  const bare = address.replace(/^\[/, "").replace(/\]$/, "").replace(/%.*$/, "").toLowerCase();
+  const mappedHex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(bare);
+  if (mappedHex) {
+    const high = Number.parseInt(mappedHex[1], 16);
+    const low = Number.parseInt(mappedHex[2], 16);
+    return [high >> 8, high & 0xff, low >> 8, low & 0xff].join(".");
+  }
+  const mapped = /^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/.exec(bare);
+  if (mapped) return normalizeIpv4Address(mapped[1]);
+  const single = /^0x[0-9a-f]+$/.test(bare)
+    ? Number.parseInt(bare.slice(2), 16)
+    : /^0[0-7]+$/.test(bare)
+      ? Number.parseInt(bare.slice(1), 8)
+      : /^\d+$/.test(bare)
+        ? Number(bare)
+        : undefined;
+  if (single !== undefined) {
+    if (!Number.isSafeInteger(single) || single < 0 || single > 0xffffffff) return undefined;
+    return [single >>> 24, (single >>> 16) & 0xff, (single >>> 8) & 0xff, single & 0xff].join(".");
+  }
+  const parts = bare.split(".");
+  if (parts.length !== 4) return undefined;
+  const numbers = parts.map((part) => {
+    if (/^0x[0-9a-f]+$/.test(part)) return Number.parseInt(part.slice(2), 16);
+    if (/^0[0-7]+$/.test(part)) return Number.parseInt(part.slice(1), 8);
+    if (/^\d+$/.test(part)) return Number.parseInt(part, 10);
+    return Number.NaN;
+  });
+  if (numbers.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) {
+    return undefined;
+  }
+  return numbers.join(".");
+}
+
 /** True when a literal IP address is in a blocked (private or non-routable) range. */
 export function isPrivateAddress(address: string): boolean {
   const bare = address.replace(/^\[/, "").replace(/\]$/, "").replace(/%.*$/, "");
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(bare);
+  const ipv4 = normalizeIpv4Address(bare);
   try {
-    if (mapped) return blocked.check(mapped[1], "ipv4");
+    if (ipv4) return blocked.check(ipv4, "ipv4");
     const family = isIP(bare);
     if (family === 4) return blocked.check(bare, "ipv4");
     if (family === 6) return blocked.check(bare, "ipv6");
@@ -55,7 +95,7 @@ const BLOCKED_HOSTNAMES = new Set(["localhost", "metadata.google.internal"]);
 
 /** True when a hostname is a local alias or a known cloud metadata service. */
 export function isBlockedHostname(hostname: string): boolean {
-  const host = hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  const host = hostname.replace(/^\[/, "").replace(/\]$/, "").replace(/\.+$/, "").toLowerCase();
   return host.endsWith(".localhost") || BLOCKED_HOSTNAMES.has(host);
 }
 
