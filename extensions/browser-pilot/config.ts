@@ -71,11 +71,12 @@ export function loadBrowserPilotConfig(
     },
   };
 
+  const env = options.env ?? process.env;
   config.executablePath ??=
-    envString("BROWSER_PILOT_EXECUTABLE_PATH") ??
-    envString("PUPPETEER_EXECUTABLE_PATH") ??
-    envString("CHROME_PATH");
-  config.profile = envString("BROWSER_PILOT_PROFILE") ?? config.profile;
+    envString(env, "BROWSER_PILOT_EXECUTABLE_PATH") ??
+    envString(env, "PUPPETEER_EXECUTABLE_PATH") ??
+    envString(env, "CHROME_PATH");
+  config.profile = envString(env, "BROWSER_PILOT_PROFILE") ?? config.profile;
   if (config.logging.dir === undefined) {
     config.logging.dir = join(options.agentDir, "browser-pilot", "logs");
   }
@@ -171,8 +172,8 @@ function pickLogging(raw: unknown): Partial<BrowserPilotLoggingConfig> {
   return out;
 }
 
-function envString(name: string): string | undefined {
-  return asNonEmptyString(process.env[name]);
+function envString(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return asNonEmptyString(env[name]);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {

@@ -258,4 +258,6 @@ export interface BrowserPilotConfig {
 export interface LoadBrowserPilotConfigOptions {
   agentDir: string;
   projectTrusted: boolean;
+  /** Environment source; defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
 }

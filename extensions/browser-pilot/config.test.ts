@@ -80,19 +80,16 @@ describe("loadBrowserPilotConfig", () => {
   it("reads profile and executable overrides from the environment", () => {
     const agentDir = tempDir();
     const cwd = tempDir();
-    const previousProfile = process.env.BROWSER_PILOT_PROFILE;
-    const previousChrome = process.env.BROWSER_PILOT_EXECUTABLE_PATH;
-    process.env.BROWSER_PILOT_PROFILE = "env-profile";
-    process.env.BROWSER_PILOT_EXECUTABLE_PATH = "/tmp/chrome";
-    try {
-      const config = loadBrowserPilotConfig(cwd, { agentDir, projectTrusted: true });
-      expect(config.profile).toBe("env-profile");
-      expect(config.executablePath).toBe("/tmp/chrome");
-    } finally {
-      if (previousProfile === undefined) delete process.env.BROWSER_PILOT_PROFILE;
-      else process.env.BROWSER_PILOT_PROFILE = previousProfile;
-      if (previousChrome === undefined) delete process.env.BROWSER_PILOT_EXECUTABLE_PATH;
-      else process.env.BROWSER_PILOT_EXECUTABLE_PATH = previousChrome;
-    }
+    const config = loadBrowserPilotConfig(cwd, {
+      agentDir,
+      projectTrusted: true,
+      env: {
+        ...process.env,
+        BROWSER_PILOT_PROFILE: "env-profile",
+        BROWSER_PILOT_EXECUTABLE_PATH: "/tmp/chrome",
+      },
+    });
+    expect(config.profile).toBe("env-profile");
+    expect(config.executablePath).toBe("/tmp/chrome");
   });
 });

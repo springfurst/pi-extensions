@@ -13,6 +13,7 @@ Derived code stays under its original license. The repository license (MIT, see 
   - `extensions/web_fetch/` — URL reader pipeline, fetch layer, selectors, extraction, output shaping, the site-specific scraper set, and the browser reader backend
   - `extensions/web_search/` — query parser and constraint filter, engine HTML/JSON parsers, aggregation, result formatting, and the browser-backed Google/Ecosia/Mojeek engines
   - `lib/format.ts`, `lib/http.ts` — formatting and bounded-response helpers adapted from upstream utilities
+  - `lib/markdown.ts`, `lib/readability.ts` — Readability and Turndown conversion adapted from oh-my-pi's extraction helpers
   - `lib/browser.ts` — headless browser session, page interception, and executable resolution adapted from oh-my-pi's browser launcher and search `browser-page.ts`
   - `lib/security.ts` — the SSRF guard shared by the HTTP fetch layer and the browser session
 

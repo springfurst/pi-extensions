@@ -59,8 +59,11 @@ jq -r 'select(.tool=="web_fetch") | .parserKind + " " + .parser' ~/.pi/agent/web
 # Per-engine search yield: engine, status, returned, contributed.
 jq -r 'select(.tool=="web_search") | .perEngine[] | "\(.id) \(.status) \(.returned) \(.contributed)"' ~/.pi/agent/web-tools/usage/web_search.jsonl | sort | uniq -c
 
-# Outcome counts across both tools.
+# Outcome counts across both web tools.
 jq -r '.tool + " " + .outcome' ~/.pi/agent/web-tools/usage/*.jsonl | sort | uniq -c
+
+# browser-pilot actions by outcome.
+jq -r 'select(.tool=="browser-pilot") | .action + " " + .outcome' ~/.pi/agent/browser-pilot/logs/browser-pilot.jsonl | sort | uniq -c
 ```
 
 ## Selecting resources
