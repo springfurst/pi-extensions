@@ -389,7 +389,7 @@ export async function ensureChrome(options: {
     const sameSession = !existing.ownerSessionId || existing.ownerSessionId === options.sessionId;
     if (pidAlive(existing.pid)) {
       const probe = await probeInstance(existing.port);
-      if (probe) {
+      if (probe && (!existing.wsEndpoint || probe.wsEndpoint === existing.wsEndpoint)) {
         if (!sameSession) throw new ProfileInUseError(profile, existing);
         return {
           profile,
@@ -400,11 +400,19 @@ export async function ensureChrome(options: {
           },
         };
       }
-      if (!sameSession) throw new ProfileInUseError(profile, existing);
-      // This session owns a live but unresponsive process. Kill it before relaunching.
-      await killProcessTree(existing.pid);
+      if (probe) {
+        // The port now belongs to a different browser. Do not kill a pid we cannot verify.
+        removeInstanceRecord(recordPath);
+      } else if (!sameSession) {
+        throw new ProfileInUseError(profile, existing);
+      } else {
+        // This session owns a live but unresponsive process. Kill it before relaunching.
+        await killProcessTree(existing.pid);
+        removeInstanceRecord(recordPath);
+      }
+    } else {
+      removeInstanceRecord(recordPath);
     }
-    removeInstanceRecord(recordPath);
   }
 
   const executablePath = await resolveBrowserExecutable({
