@@ -1,4 +1,4 @@
-import type { Page } from "puppeteer-core";
+import type { Frame, Page } from "puppeteer-core";
 import { BrowserPilotError } from "./types";
 
 export interface EvalOptions {
@@ -56,6 +56,30 @@ export async function evaluateInPage(page: Page, options: EvalOptions): Promise<
     return { value: remote.value, type: remote.type, description: remote.description };
   } finally {
     await client.detach().catch(() => undefined);
+  }
+}
+
+/** Evaluate inside one frame using its own JavaScript context. */
+export async function evaluateInFrame(frame: Frame, options: EvalOptions): Promise<EvalResult> {
+  const json = await frame.evaluate(
+    async (source, serializer, awaitPromise) => {
+      let value = (0, eval)(source);
+      if (awaitPromise && value && typeof value.then === "function") value = await value;
+      if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+        return value;
+      }
+      const summarize = (0, eval)(`(${serializer})`) as (this: unknown) => string;
+      return summarize.call(value);
+    },
+    options.source,
+    SERIALIZER_SOURCE,
+    options.awaitPromise,
+  );
+  if (typeof json !== "string") return { value: json, type: typeof json };
+  try {
+    return { value: JSON.parse(json), type: "object" };
+  } catch {
+    return { value: json, type: "string" };
   }
 }
 

@@ -41,6 +41,7 @@ const BrowserPilotParamsSchema = Type.Object({
         "list",
         "new",
         "select",
+        "main",
         "close",
         "close_others",
         "cleanup",
@@ -58,6 +59,9 @@ const BrowserPilotParamsSchema = Type.Object({
         "start",
         "stop",
         "add",
+        "export",
+        "import",
+        "write",
       ],
       {
         description:
@@ -69,6 +73,7 @@ const BrowserPilotParamsSchema = Type.Object({
     StringEnum(["tab", "tabs", "browser"], { description: "What close should close." }),
   ),
   tab: Type.Optional(Type.Number({ description: "Tab handle; defaults to the current tab." })),
+  frame: Type.Optional(Type.Number({ description: "frames: frame index; 0 is the main frame." })),
   interactive: Type.Optional(
     Type.Boolean({
       description:
@@ -77,8 +82,8 @@ const BrowserPilotParamsSchema = Type.Object({
   ),
   max_nodes: Type.Optional(Type.Number({ description: "snapshot: maximum nodes to return." })),
   format: Type.Optional(
-    StringEnum(["markdown", "text", "html", "png", "jpeg", "webp"], {
-      description: "read: markdown/text/html. screenshot: png/jpeg/webp.",
+    StringEnum(["markdown", "text", "html", "outline", "png", "jpeg", "webp"], {
+      description: "read: markdown/text/html/outline. screenshot: png/jpeg/webp.",
     }),
   ),
   max_chars: Type.Optional(Type.Number({ description: "read/eval: per-call character cap." })),
@@ -99,7 +104,7 @@ const BrowserPilotParamsSchema = Type.Object({
   ref: Type.Optional(
     Type.String({
       description:
-        "Element ref from snapshot, such as e12 (click, type, press, select, upload, scroll, hover, expect).",
+        "Element ref from snapshot, such as e12 (click, type, press, select, upload, scroll, hover, expect, read, screenshot, wait).",
     }),
   ),
   selector: Type.Optional(
@@ -143,7 +148,7 @@ const BrowserPilotParamsSchema = Type.Object({
   ),
   amount: Type.Optional(Type.Number({ description: "scroll: pixels for up/down." })),
   for: Type.Optional(
-    StringEnum(["selector", "text", "url", "network_idle", "function", "human"], {
+    StringEnum(["selector", "text", "url", "network_idle", "response", "function", "human"], {
       description: "wait: what to wait for.",
     }),
   ),
@@ -157,6 +162,9 @@ const BrowserPilotParamsSchema = Type.Object({
   inline: Type.Optional(
     Type.Boolean({ description: "screenshot: return the image to the model when small enough." }),
   ),
+  annotate: Type.Optional(
+    Type.Boolean({ description: "screenshot: draw ref boxes and labels before capture." }),
+  ),
   level: Type.Optional(
     StringEnum(["log", "info", "warn", "error", "debug"], {
       description: "console: filter by level.",
@@ -165,6 +173,15 @@ const BrowserPilotParamsSchema = Type.Object({
   limit: Type.Optional(Type.Number({ description: "console/network: maximum entries to return." })),
   filter: Type.Optional(
     Type.String({ description: "network: only include URLs containing this substring." }),
+  ),
+  detail: Type.Optional(
+    Type.Boolean({ description: "console: include stack traces for page errors." }),
+  ),
+  include_body: Type.Optional(
+    Type.Boolean({
+      description:
+        "network/wait: include a response body preview (network op:get defaults to true).",
+    }),
   ),
   policy: Type.Optional(
     StringEnum(["dismiss", "accept", "manual"], {
@@ -232,6 +249,16 @@ const BrowserPilotParamsSchema = Type.Object({
   latitude: Type.Optional(Type.Number({ description: "emulate: geolocation latitude." })),
   longitude: Type.Optional(Type.Number({ description: "emulate: geolocation longitude." })),
   accuracy: Type.Optional(Type.Number({ description: "emulate: geolocation accuracy in metres." })),
+  permissions: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "emulate: permissions to grant for the origin, such as geolocation or notifications.",
+    }),
+  ),
+  origin: Type.Optional(Type.String({ description: "emulate/clipboard: origin for permissions." })),
+  color: Type.Optional(
+    Type.String({ description: "highlight: CSS color for the outline (default #ff5c5c)." }),
+  ),
   reset: Type.Optional(
     Type.Boolean({ description: "emulate: reset all overrides to configuration defaults." }),
   ),
@@ -244,7 +271,10 @@ const BrowserPilotParamsSchema = Type.Object({
   page_ranges: Type.Optional(Type.String({ description: "pdf: page ranges such as 1-5,8." })),
   margin: Type.Optional(Type.String({ description: "pdf: uniform margin such as 10mm." })),
   url_pattern: Type.Optional(
-    Type.String({ description: "route: URL glob such as *://example.com/api/*." }),
+    Type.String({
+      description:
+        "route: URL glob such as *://example.com/api/*. wait for:response: URL glob or substring.",
+    }),
   ),
   resource_type: Type.Optional(
     Type.String({ description: "route: only match this resource type." }),
@@ -266,7 +296,9 @@ const BrowserPilotParamsSchema = Type.Object({
       description: "route: response headers for fulfill.",
     }),
   ),
-  id: Type.Optional(Type.String({ description: "route: rule id for op:remove." })),
+  id: Type.Optional(
+    Type.String({ description: "network: request id such as r12. route: rule id for op:remove." }),
+  ),
   check: Type.Optional(
     StringEnum(
       ["text", "selector", "url", "title", "value", "attribute", "visible", "hidden", "count"],
@@ -299,7 +331,7 @@ export default function browserPilotExtension(pi: ExtensionAPI) {
     name: "browser-pilot",
     label: "Browser Pilot",
     description:
-      'Pilot a visible Chrome window over the DevTools protocol. Actions: help, status, open, close, connect, navigate, tabs, snapshot, read, eval, click, type, press, select, upload, scroll, hover, wait, expect, screenshot, pdf, console, network, har, trace, cookies, storage, emulate, route, dialog, steps. Call {action:"help"} for the full catalog and per-action parameters.',
+      'Pilot a visible Chrome window over the DevTools protocol. Actions: help, status, doctor, open, close, connect, navigate, tabs, frames, snapshot, read, eval, click, type, press, select, upload, scroll, hover, highlight, wait, expect, screenshot, metrics, pdf, console, network, har, trace, cookies, storage, state, clipboard, emulate, route, dialog, steps. Call {action:"help"} for the full catalog and per-action parameters.',
     promptSnippet:
       "Pilot a visible Chrome window: navigate, inspect, click, type, run JS, and manage tabs.",
     promptGuidelines: [

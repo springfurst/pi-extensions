@@ -3,12 +3,14 @@ import type { Frame, Page } from "puppeteer-core";
 export interface SnapshotOptions {
   interactive: boolean;
   maxNodes: number;
+  selector?: string;
 }
 
 export interface SnapshotResult {
   lines: string[];
   count: number;
   truncated: boolean;
+  matched: boolean;
   refs: Array<{ ref: string; frame?: Frame }>;
 }
 
@@ -18,20 +20,30 @@ export async function snapshotPage(page: Page, options: SnapshotOptions): Promis
   const refs: Array<{ ref: string; frame?: Frame }> = [];
   let count = 0;
   let truncated = false;
+  let matched = options.selector === undefined;
   const mainFrame = page.mainFrame();
 
   for (const frame of page.frames()) {
     if (frame.isDetached()) continue;
-    let result: { lines: string[]; count: number; truncated: boolean };
+    let result: {
+      lines: string[];
+      count: number;
+      truncated: boolean;
+      matched: boolean;
+      error?: string;
+    };
     try {
       result = await frame.evaluate(collectSnapshot, {
         interactive: options.interactive,
         maxNodes: options.maxNodes - count,
         startIndex: count,
+        selector: options.selector,
       });
     } catch {
       continue;
     }
+    if (result.error) throw new Error(result.error);
+    matched ||= result.matched;
     if (frame !== mainFrame && result.lines.length > 0) {
       lines.push(`Frame: ${frame.url()}`);
     }
@@ -48,7 +60,7 @@ export async function snapshotPage(page: Page, options: SnapshotOptions): Promis
     }
   }
 
-  return { lines, count, truncated, refs };
+  return { lines, count, truncated, matched, refs };
 }
 
 /**
@@ -60,6 +72,8 @@ function collectSnapshot(options: SnapshotOptions & { startIndex?: number }): {
   lines: string[];
   count: number;
   truncated: boolean;
+  matched: boolean;
+  error?: string;
 } {
   const lines: string[] = [];
   let count = 0;
@@ -280,11 +294,46 @@ function collectSnapshot(options: SnapshotOptions & { startIndex?: number }): {
     return out;
   };
 
-  for (const previous of deepElements(document)) {
+  const allElements = deepElements(document);
+  for (const previous of allElements) {
     if (previous.hasAttribute("data-pi-ref")) previous.removeAttribute("data-pi-ref");
   }
 
-  for (const el of deepElements(document)) {
+  let candidates = allElements;
+  let matched = true;
+  if (options.selector) {
+    let roots: Element[];
+    try {
+      roots = allElements.filter((element) => element.matches(options.selector!));
+    } catch (error) {
+      return {
+        lines: [],
+        count: 0,
+        truncated: false,
+        matched: false,
+        error: `Invalid snapshot selector: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    matched = roots.length > 0;
+    const seen = new Set<Element>();
+    candidates = [];
+    for (const root of roots) {
+      if (!seen.has(root)) {
+        seen.add(root);
+        candidates.push(root);
+      }
+      const rootsToWalk = root.shadowRoot ? [root, root.shadowRoot] : [root];
+      for (const scope of rootsToWalk) {
+        for (const descendant of deepElements(scope)) {
+          if (seen.has(descendant)) continue;
+          seen.add(descendant);
+          candidates.push(descendant);
+        }
+      }
+    }
+  }
+
+  for (const el of candidates) {
     if (count >= options.maxNodes) {
       truncated = true;
       break;
@@ -317,7 +366,7 @@ function collectSnapshot(options: SnapshotOptions & { startIndex?: number }): {
     lines.push(parts.join(" "));
   }
 
-  return { lines, count, truncated };
+  return { lines, count, truncated, matched };
 }
 
 /** Escape a ref for use in a CSS attribute selector. Refs are generated, not user text. */
