@@ -15,6 +15,7 @@ export const waitSpecs: Record<string, ActionSpec> = {
         values: ["selector", "text", "url", "network_idle", "response", "function", "human"],
         description: "What to wait for.",
       },
+      ref,
       selector,
       {
         name: "text",

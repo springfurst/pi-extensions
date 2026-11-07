@@ -11,7 +11,7 @@ export const lifecycleSpecs: Record<string, ActionSpec> = {
         name: "topic",
         type: "string",
         description:
-          "An action name, or a group name (lifecycle, navigation, inspect, interact, state).",
+          "An action name, or a group name (lifecycle, tabs, navigation, inspect, interact, wait, state, batch).",
       },
     ],
     examples: ['{action:"help"}', '{action:"help", topic:"click"}'],

@@ -25,7 +25,6 @@ export const stateSpecs: Record<string, ActionSpec> = {
         values: ["dismiss", "accept", "manual"],
         description: "Automatic policy when op:policy.",
       },
-      tab,
     ],
     examples: ['{action:"dialog", op:"accept"}', '{action:"dialog", op:"policy", policy:"manual"}'],
     related: ["status"],
@@ -288,7 +287,6 @@ export const stateSpecs: Record<string, ActionSpec> = {
       },
       { name: "headers", type: "object", description: "Response headers for fulfill." },
       { name: "delay_ms", type: "number", description: "Delay before continuing." },
-      tab,
     ],
     examples: [
       '{action:"route", op:"add", url_pattern:"*://*/*.png", route_action:"abort"}',

@@ -93,6 +93,23 @@ const TINY_ACTIONS = new Set<ActionName>([
 
 const MAX_STEP_CHARS = 4_000;
 
+/** Actions whose output contains values that must never reach usage logs. */
+const REDACTED_OUTPUT_ACTIONS = new Set<ActionName>(["clipboard", "cookies", "storage"]);
+
+/** Actions whose output is page-derived and needs `includeSensitiveArgs`. */
+const CONTENT_OUTPUT_ACTIONS = new Set<ActionName>([
+  "console",
+  "eval",
+  "expect",
+  "network",
+  "read",
+  "snapshot",
+  "steps",
+]);
+
+/** Actions whose output is safe even when argument logging is disabled. */
+const SAFE_OUTPUT_ACTIONS = new Set<ActionName>(["help", "metrics"]);
+
 /** Run one browser-pilot action, including validation, logging, and output caps. */
 export async function executeBrowserPilot(
   params: BrowserPilotParams,
@@ -295,12 +312,14 @@ async function stepsResult(
   const steps = params.steps ?? [];
   const results: Array<Record<string, unknown>> = [];
   const lines: string[] = [];
+  let failed = false;
   for (let index = 0; index < steps.length; index++) {
     const step = steps[index] as unknown as BrowserPilotParams;
     const action = step.action;
     const label = `Step ${index + 1}: ${String(action)}`;
     if (!action || !ACTION_NAMES.includes(action)) {
       const error = `Unknown step action "${String(action)}".`;
+      failed = true;
       results.push({ action, ok: false, error });
       lines.push(`${label}\n${error}`);
       if (params.stop_on_error !== false) break;
@@ -326,11 +345,13 @@ async function stepsResult(
       const text = capped.truncated
         ? `${capped.text}\n[Step output truncated at ${MAX_STEP_CHARS} characters.]`
         : capped.text;
+      if (result.isError) failed = true;
       results.push({ action, ok: !result.isError, text, details: result.details });
       lines.push(`${label}\n${text}`);
       if (result.isError && params.stop_on_error !== false) break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      failed = true;
       results.push({ action, ok: false, error: message });
       lines.push(`${label}\n${message}`);
       if (params.stop_on_error !== false) break;
@@ -342,7 +363,14 @@ async function stepsResult(
       ? pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => ""))
       : undefined;
   const body = lines.join("\n\n");
-  return finalize(header ? `${header}\n\n${body}` : body, { action: "steps", steps: results });
+  const result = finalize(header ? `${header}\n\n${body}` : body, {
+    action: "steps",
+    steps: results,
+    failed,
+    error: failed ? "One or more steps failed." : undefined,
+  });
+  if (failed) result.isError = true;
+  return result;
 }
 
 function currentPageLine(session: BrowserPilotSession): string | undefined {
@@ -365,7 +393,7 @@ async function pageDetails(
   };
 }
 
-interface UsageRecordOptions {
+export interface UsageRecordOptions {
   params: BrowserPilotParams;
   config: BrowserPilotConfig;
   session?: BrowserPilotSession;
@@ -381,7 +409,7 @@ interface UsageRecordOptions {
   mode?: string;
 }
 
-function buildUsageRecord(options: UsageRecordOptions): UsageRecord {
+export function buildUsageRecord(options: UsageRecordOptions): UsageRecord {
   const { params, config, session, details, outputText, durationMs, error } = options;
   const safe = safeParams(params, config);
   const output = summarizeOutput(params.action, outputText, config);
@@ -411,9 +439,9 @@ function buildUsageRecord(options: UsageRecordOptions): UsageRecord {
     url: config.logging.includeArgs ? details.url : undefined,
     title: config.logging.includeArgs ? details.title : undefined,
     status: details.status,
-    challenge: details.challenge,
+    challenge: config.logging.includeArgs ? details.challenge : undefined,
     truncated: details.truncated,
-    savedPath: details.savedPath,
+    savedPath: config.logging.includeArgs ? details.savedPath : undefined,
     params: safe,
     output,
   };
@@ -441,7 +469,6 @@ export function safeParams(
     "annotate",
     "duration_ms",
     "permissions",
-    "origin",
     "color",
     "button",
     "click_count",
@@ -495,7 +522,6 @@ export function safeParams(
     "scale",
     "page_ranges",
     "margin",
-    "url_pattern",
     "resource_type",
     "route_action",
     "status",
@@ -504,7 +530,6 @@ export function safeParams(
     "name",
     "check",
     "operator",
-    "expected",
     "attribute",
     "stop_on_error",
   ];
@@ -525,6 +550,8 @@ export function safeParams(
       "endpoint",
       "files",
       "headers",
+      "url_pattern",
+      "origin",
     ]) {
       const value = params[key as keyof BrowserPilotParams];
       if (value !== undefined) out[key] = value;
@@ -541,6 +568,13 @@ export function safeParams(
       out.expression = params.expression.slice(0, config.logging.maxOutputChars);
     } else {
       out.expression = { length: params.expression.length, sha256: sha256(params.expression) };
+    }
+  }
+  if (params.expected !== undefined) {
+    if (config.logging.includeSensitiveArgs) {
+      out.expected = params.expected.slice(0, config.logging.maxOutputChars);
+    } else {
+      out.expected = { length: params.expected.length, sha256: sha256(params.expected) };
     }
   }
   for (const key of ["value", "body"] as const) {
@@ -571,7 +605,15 @@ export function summarizeOutput(
     chars: text.length,
     lines: text.split("\n").length,
   };
-  if (action === "clipboard") return base;
+  if (REDACTED_OUTPUT_ACTIONS.has(action)) {
+    return { ...base, redacted: "sensitive output" };
+  }
+  if (CONTENT_OUTPUT_ACTIONS.has(action) && !config.logging.includeSensitiveArgs) {
+    return { ...base, redacted: "page content" };
+  }
+  if (!config.logging.includeArgs && !SAFE_OUTPUT_ACTIONS.has(action)) {
+    return { ...base, redacted: "arguments" };
+  }
   if (config.logging.outputs === "full") {
     return { ...base, text: text.slice(0, cap), truncated: text.length > cap };
   }

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DEFAULT_BROWSER_PILOT_CONFIG } from "./config";
 import { disposeAllSessions } from "./session";
 import {
+  buildUsageRecord,
   executeBrowserPilot,
   safeParams,
   summarizeOutput,
@@ -163,6 +164,55 @@ describe("safeParams", () => {
   });
 });
 
+describe("buildUsageRecord", () => {
+  const config: BrowserPilotConfig = {
+    ...DEFAULT_BROWSER_PILOT_CONFIG,
+    logging: { ...DEFAULT_BROWSER_PILOT_CONFIG.logging, includeArgs: true },
+  };
+
+  function record(includeArgs: boolean) {
+    return buildUsageRecord({
+      params: { action: "screenshot", path: "/tmp/shot.png" },
+      config: { ...config, logging: { ...config.logging, includeArgs } },
+      details: {
+        action: "screenshot",
+        url: "https://example.com/private",
+        title: "Private",
+        savedPath: "/tmp/shot.png",
+        challenge: {
+          type: "cloudflare",
+          severity: "blocking",
+          evidence: [],
+          url: "https://example.com/private",
+          title: "Private",
+        },
+      },
+      outputText: "Screenshot: /tmp/shot.png",
+      durationMs: 1,
+      cwd: "/tmp",
+      sessionId: "log-test",
+    });
+  }
+
+  it("records URLs, titles, paths, and challenge data when includeArgs is true", () => {
+    const result = record(true);
+    expect(result.url).toBe("https://example.com/private");
+    expect(result.title).toBe("Private");
+    expect(result.savedPath).toBe("/tmp/shot.png");
+    expect(result.challenge).toBeDefined();
+    expect(result.output).toMatchObject({ text: "Screenshot: /tmp/shot.png" });
+  });
+
+  it("omits URLs, titles, paths, challenge data, and output text when includeArgs is false", () => {
+    const result = record(false);
+    expect(result.url).toBeUndefined();
+    expect(result.title).toBeUndefined();
+    expect(result.savedPath).toBeUndefined();
+    expect(result.challenge).toBeUndefined();
+    expect(result.output).toMatchObject({ redacted: "arguments" });
+  });
+});
+
 describe("summarizeOutput", () => {
   const config: BrowserPilotConfig = {
     ...DEFAULT_BROWSER_PILOT_CONFIG,
@@ -180,10 +230,49 @@ describe("summarizeOutput", () => {
     });
   });
 
-  it("uses head and tail snippets for large results", () => {
-    const result = summarizeOutput("read", "abcdefghijklmnopqrstuvwxyz", config);
+  it("uses head and tail snippets for large results when page content is allowed", () => {
+    const result = summarizeOutput("read", "abcdefghijklmnopqrstuvwxyz", {
+      ...config,
+      logging: { ...config.logging, includeSensitiveArgs: true },
+    });
     expect(result).toMatchObject({ head: "abcdefghij", tail: "qrstuvwxyz" });
     expect(result).not.toHaveProperty("text");
+  });
+
+  it("redacts page content unless sensitive arguments are enabled", () => {
+    expect(summarizeOutput("read", "secret page text", config)).toMatchObject({
+      redacted: "page content",
+    });
+    expect(summarizeOutput("network", "secret body", config)).toMatchObject({
+      redacted: "page content",
+    });
+    expect(summarizeOutput("steps", "secret step output", config)).toMatchObject({
+      redacted: "page content",
+    });
+  });
+
+  it("never logs cookie, storage, or clipboard output", () => {
+    for (const action of ["cookies", "storage", "clipboard"] as const) {
+      const result = summarizeOutput(action, "token=secret", config);
+      expect(result).toMatchObject({ redacted: "sensitive output" });
+      expect(JSON.stringify(result)).not.toContain("secret");
+    }
+  });
+
+  it("redacts output that can contain arguments when includeArgs is false", () => {
+    const withoutArgs = {
+      ...config,
+      logging: { ...config.logging, includeArgs: false },
+    };
+    expect(summarizeOutput("open", "Tab 1 · https://example.com", withoutArgs)).toMatchObject({
+      redacted: "arguments",
+    });
+    expect(summarizeOutput("help", "safe help text", withoutArgs)).toMatchObject({
+      text: "safe help text",
+    });
+    expect(summarizeOutput("metrics", "Heap: 1MB", withoutArgs)).toMatchObject({
+      text: "Heap: 1MB",
+    });
   });
 
   it("can disable output logging", () => {

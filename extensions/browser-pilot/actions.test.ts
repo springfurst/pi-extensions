@@ -59,9 +59,13 @@ describe("validateAction", () => {
     expect(() => validateAction("type", { ref: "e1", text: "a" })).not.toThrow();
   });
 
-  it("requires an expression or script path for eval", () => {
-    expect(() => validateAction("eval", {})).toThrow(/expression or script_path/);
+  it("requires exactly one expression or script path for eval", () => {
+    expect(() => validateAction("eval", {})).toThrow(/exactly one/);
     expect(() => validateAction("eval", { expression: "1 + 1" })).not.toThrow();
+    expect(() => validateAction("eval", { script_path: "script.js" })).not.toThrow();
+    expect(() => validateAction("eval", { expression: "1 + 1", script_path: "script.js" })).toThrow(
+      /exactly one/,
+    );
   });
 
   it("requires the payload for a specific wait", () => {
@@ -115,6 +119,20 @@ describe("validateAction", () => {
     ).not.toThrow();
     expect(() => validateAction("expect", {})).toThrow(/requires check/);
     expect(() => validateAction("expect", { check: "text", expected: "hi" })).not.toThrow();
+    expect(() => validateAction("expect", { check: "value", expected: "x" })).toThrow(
+      /requires ref or selector/,
+    );
+    expect(() =>
+      validateAction("expect", { check: "attribute", ref: "e1", expected: "x" }),
+    ).toThrow(/requires attribute/);
+    expect(() =>
+      validateAction("expect", {
+        check: "attribute",
+        ref: "e1",
+        attribute: "href",
+        expected: "x",
+      }),
+    ).not.toThrow();
   });
 
   it("validates steps", () => {
@@ -126,6 +144,15 @@ describe("validateAction", () => {
     expect(() => validateAction("steps", { steps: [{ action: "steps", steps: [] }] })).toThrow(
       /Nested steps/,
     );
+    expect(() => validateAction("steps", { steps: [{ action: "wait", for: "bogus" }] })).toThrow(
+      /wait for must be one of/,
+    );
+    expect(() =>
+      validateAction("steps", { steps: [{ action: "click", ref: "e1", button: "sideways" }] }),
+    ).toThrow(/click button must be one of/);
+    expect(() =>
+      validateAction("steps", { steps: [{ action: "dialog", op: "policy", policy: "ask" }] }),
+    ).toThrow(/dialog policy must be one of/);
   });
 
   it("formats a usage block", () => {

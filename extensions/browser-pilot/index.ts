@@ -14,7 +14,7 @@ const BrowserPilotParamsSchema = Type.Object({
   topic: Type.Optional(
     Type.String({
       description:
-        "Help topic: a group (lifecycle, tabs, navigation, inspect, interact, wait, state) or an action name.",
+        "Help topic: a group (lifecycle, tabs, navigation, inspect, interact, wait, state, batch) or an action name.",
     }),
   ),
   profile: Type.Optional(
@@ -65,7 +65,7 @@ const BrowserPilotParamsSchema = Type.Object({
       ],
       {
         description:
-          "Operation for tabs, console, network, dialog, cookies, storage, download, har, trace, or route.",
+          "Operation for tabs, frames, console, network, dialog, download, cookies, storage, state, clipboard, har, trace, or route.",
       },
     ),
   ),
@@ -124,7 +124,7 @@ const BrowserPilotParamsSchema = Type.Object({
   humanize: Type.Optional(
     Type.Boolean({ description: "click/type: add mouse movement and per-key delays." }),
   ),
-  text: Type.Optional(Type.String({ description: "type: inline text." })),
+  text: Type.Optional(Type.String({ description: "type/dialog/clipboard: inline text." })),
   text_file: Type.Optional(
     Type.String({ description: "type: read the text from this file instead of text." }),
   ),
@@ -139,9 +139,17 @@ const BrowserPilotParamsSchema = Type.Object({
   submit: Type.Optional(
     Type.Boolean({ description: "type: press Enter after typing (default false)." }),
   ),
-  delay_ms: Type.Optional(Type.Number({ description: "type: delay between keystrokes." })),
+  delay_ms: Type.Optional(
+    Type.Number({ description: "type: delay between keystrokes. route: delay before continuing." }),
+  ),
+  duration_ms: Type.Optional(
+    Type.Number({ description: "highlight: outline duration in milliseconds." }),
+  ),
   key: Type.Optional(
-    Type.String({ description: 'press: key name, such as "Enter", "Escape", or "Control+A".' }),
+    Type.String({
+      description:
+        'press: key name, such as "Enter", "Escape", or "Control+A". storage: storage key.',
+    }),
   ),
   values: Type.Optional(
     Type.Array(Type.String(), { description: "select: option values or labels to select." }),
@@ -152,7 +160,7 @@ const BrowserPilotParamsSchema = Type.Object({
       description: "wait: what to wait for.",
     }),
   ),
-  path: Type.Optional(Type.String({ description: "screenshot/pdf/har/trace: output path." })),
+  path: Type.Optional(Type.String({ description: "screenshot/pdf/har/trace/state: output path." })),
   full_page: Type.Optional(
     Type.Boolean({ description: "screenshot: capture the full scrollable page." }),
   ),
@@ -170,9 +178,13 @@ const BrowserPilotParamsSchema = Type.Object({
       description: "console: filter by level.",
     }),
   ),
-  limit: Type.Optional(Type.Number({ description: "console/network: maximum entries to return." })),
+  limit: Type.Optional(
+    Type.Number({ description: "console/network/download: maximum entries to return." }),
+  ),
   filter: Type.Optional(
-    Type.String({ description: "network: only include URLs containing this substring." }),
+    Type.String({
+      description: "network/download: only include URLs or filenames containing this substring.",
+    }),
   ),
   detail: Type.Optional(
     Type.Boolean({ description: "console: include stack traces for page errors." }),

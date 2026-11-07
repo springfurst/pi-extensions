@@ -68,11 +68,14 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       'Example: {action:"select", ref:"e7", values:["US"]}',
     );
   }
-  if (action === "eval" && isMissing(params.expression) && isMissing(params.script_path)) {
-    throw new BrowserPilotError(
-      "eval requires expression or script_path.",
-      'Example: {action:"eval", expression:"document.title"}',
-    );
+  if (action === "eval") {
+    const sources = [params.expression, params.script_path].filter((value) => !isMissing(value));
+    if (sources.length !== 1) {
+      throw new BrowserPilotError(
+        "eval requires exactly one of expression or script_path.",
+        'Example: {action:"eval", expression:"document.title"}',
+      );
+    }
   }
   if (action === "wait") {
     const kind = String(params.for);
@@ -196,7 +199,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (op === "remove" && isMissing(params.id)) {
       throw new BrowserPilotError(
         "route op:remove requires id.",
-        'Example: {action:"route", op:"remove", id:"r1"}',
+        'Example: {action:"route", op:"remove", id:"rt1"}',
       );
     }
     if (op === "add" && isMissing(params.route_action)) {
@@ -222,6 +225,23 @@ export function validateAction(action: ActionName, params: Record<string, unknow
         'Example: {action:"expect", check:"count", selector:".row", expected:"3"}',
       );
     }
+    const needsTarget = ["value", "attribute", "visible", "hidden", "count"];
+    if (
+      needsTarget.includes(String(params.check)) &&
+      isMissing(params.ref) &&
+      isMissing(params.selector)
+    ) {
+      throw new BrowserPilotError(
+        `expect check:${String(params.check)} requires ref or selector.`,
+        'Run {action:"snapshot"} to get refs.',
+      );
+    }
+    if (params.check === "attribute" && isMissing(params.attribute)) {
+      throw new BrowserPilotError(
+        "expect check:attribute requires attribute.",
+        'Example: {action:"expect", check:"attribute", ref:"e4", attribute:"href", expected:"/docs"}',
+      );
+    }
   }
   if (action === "steps") {
     if (!Array.isArray(params.steps) || params.steps.length === 0) {
@@ -230,8 +250,15 @@ export function validateAction(action: ActionName, params: Record<string, unknow
         'Example: {action:"steps", steps:[{action:"navigate", url:"https://example.com"},{action:"snapshot"}]}',
       );
     }
-    if (params.steps.some((step) => step.action === "steps")) {
-      throw new BrowserPilotError("Nested steps are not allowed.");
+    for (const step of params.steps as Array<Record<string, unknown>>) {
+      const stepAction = step.action;
+      if (typeof stepAction !== "string" || !ACTION_NAMES.includes(stepAction as ActionName)) {
+        throw new BrowserPilotError(`Unknown step action "${String(stepAction)}".`);
+      }
+      if (stepAction === "steps") {
+        throw new BrowserPilotError("Nested steps are not allowed.");
+      }
+      validateAction(stepAction as ActionName, step);
     }
   }
 
@@ -276,6 +303,28 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       action === "route" ? params.route_action : undefined,
       ["abort", "continue", "fulfill", "delay"],
     ],
+    [
+      "wait for",
+      action === "wait" ? params.for : undefined,
+      ["selector", "text", "url", "network_idle", "response", "function", "human"],
+    ],
+    [
+      "console level",
+      action === "console" ? params.level : undefined,
+      ["log", "info", "warn", "error", "debug"],
+    ],
+    ["click button", action === "click" ? params.button : undefined, ["left", "right", "middle"]],
+    [
+      "dialog policy",
+      action === "dialog" ? params.policy : undefined,
+      ["dismiss", "accept", "manual"],
+    ],
+    [
+      "cookie same_site",
+      action === "cookies" ? params.same_site : undefined,
+      ["Strict", "Lax", "None"],
+    ],
+    ["close target", action === "close" ? params.target : undefined, ["tab", "tabs", "browser"]],
     [
       "expect check",
       action === "expect" ? params.check : undefined,
@@ -393,7 +442,7 @@ function renderCatalog(): string {
     '  Clean up:           tabs {op:"list"} → tabs {op:"close", tab:N}',
     "",
     'Call {action:"help", topic:"<action>"} for one action, or',
-    'topic:"<group>" for lifecycle, navigation, inspect, interact, wait, state, or batch.',
+    'topic:"<group>" for lifecycle, tabs, navigation, inspect, interact, wait, state, or batch.',
     "",
     "Hints and suggested next steps in results are optional suggestions.",
   ];

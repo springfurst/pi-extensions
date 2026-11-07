@@ -1,5 +1,5 @@
 import type { ActionSpec } from "../spec-types";
-import { tab, selector, timeout } from "../params";
+import { tab, ref, selector, timeout } from "../params";
 
 export const inspectSpecs: Record<string, ActionSpec> = {
   snapshot: {
@@ -37,6 +37,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
         default: "markdown",
         description: "Output format.",
       },
+      ref,
       selector,
       {
         name: "max_chars",
@@ -111,6 +112,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
         default: "false",
         description: "Capture the full scrollable page.",
       },
+      ref,
       selector,
       {
         name: "format",

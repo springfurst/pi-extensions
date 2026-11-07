@@ -34,6 +34,7 @@ describe("browser-pilot extension entry", () => {
     expect(tool.executionMode).toBe("sequential");
     expect(String(tool.description)).toContain('action:"help"');
     expect(JSON.stringify(tool.parameters)).toContain('"help"');
+    expect(JSON.stringify(tool.parameters)).toContain('"duration_ms"');
     expect(events).toContain("session_shutdown");
   });
 
