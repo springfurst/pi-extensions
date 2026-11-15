@@ -36,6 +36,9 @@ describe("browser-pilot extension entry", () => {
     expect(JSON.stringify(tool.parameters)).toContain('"help"');
     expect(JSON.stringify(tool.parameters)).toContain('"params"');
     expect(JSON.stringify(tool.parameters)).not.toContain('"duration_ms"');
+    expect(
+      Object.keys((tool.parameters as { properties: Record<string, unknown> }).properties),
+    ).toEqual(["action", "params"]);
     expect(events).toContain("session_shutdown");
   });
 

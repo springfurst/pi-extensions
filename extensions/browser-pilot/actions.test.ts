@@ -7,6 +7,7 @@ describe("action registry", () => {
     for (const name of ACTION_NAMES) {
       expect(ACTIONS[name].name).toBe(name);
       expect(ACTIONS[name].summary.length).toBeGreaterThan(0);
+      expect(ACTIONS[name].when.length).toBeGreaterThan(0);
       expect(ACTIONS[name].examples.length).toBeGreaterThan(0);
     }
   });
@@ -15,6 +16,8 @@ describe("action registry", () => {
     const help = renderHelp();
     expect(help).toContain("browser-pilot topics");
     expect(help).toContain("Discover the tool in three steps");
+    expect(help).toContain('{action:"help", params:{group:"inspect"}}');
+    expect(help).toContain('{action:"help", params:{action:"snapshot"}}');
     expect(help).toContain("Group");
     for (const group of [
       "Lifecycle",
@@ -43,6 +46,10 @@ describe("action registry", () => {
     expect(click).toContain("Use when:");
     expect(click).toContain("Examples:");
     expect(click).toContain("Related:");
+    const help = renderHelp({ action: "help" });
+    expect(help).toContain('{action:"help"}');
+    expect(help).toContain('{action:"help",params:{group:"inspect"}}');
+    expect(help).toContain('{action:"help",params:{action:"snapshot"}}');
   });
 
   it("rejects an unknown group or action", () => {
