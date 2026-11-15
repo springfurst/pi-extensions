@@ -193,7 +193,7 @@ export class BrowserPilotSession {
     if (this.browser?.connected || this.instance) {
       throw new BrowserPilotError(
         "This session is already connected to a browser.",
-        'Run {action:"close", target:"browser"} first, then connect to another endpoint.',
+        'Run {action:"close", params:{target:"browser"}} first, then connect to another endpoint.',
       );
     }
     const wsEndpoint = await resolveDevToolsEndpoint(endpoint);
@@ -425,7 +425,7 @@ export class BrowserPilotSession {
       if (!found || found.page.isClosed()) {
         throw new BrowserPilotError(
           `Tab ${tab} is not open.`,
-          'Run tabs {op:"list"} to see open tabs.',
+          'Run {action:"tabs", params:{operation:"list"}} to see open tabs.',
         );
       }
       found.lastUsed = Date.now();
@@ -497,7 +497,7 @@ export class BrowserPilotSession {
       .join("\n");
     return new BrowserPilotError(
       `Tab limit reached (${this.config.maxTabs}). Open tabs:\n${list}`,
-      `Close one with tabs {op:"close", tab:<n>}, or set maxTabs higher in browser-pilot.json.`,
+      `Close one with {action:"tabs", params:{operation:"close", tab:<n>}}, or set maxTabs higher in browser-pilot.json.`,
     );
   }
 
@@ -856,7 +856,7 @@ export class BrowserPilotSession {
     if (!tab || tab.page.isClosed()) {
       throw new BrowserPilotError(
         `Tab ${handle} is not open.`,
-        'Run tabs {op:"list"} to see open tabs.',
+        'Run {action:"tabs", params:{operation:"list"}} to see open tabs.',
       );
     }
     this.current = handle;
@@ -873,7 +873,7 @@ export class BrowserPilotSession {
     if (!tab) {
       throw new BrowserPilotError(
         `Tab ${handle} is not open.`,
-        'Run tabs {op:"list"} to see open tabs.',
+        'Run {action:"tabs", params:{operation:"list"}} to see open tabs.',
       );
     }
     if (!tab.page.isClosed()) await tab.page.close().catch(() => undefined);
@@ -958,7 +958,7 @@ export class BrowserPilotSession {
     } else {
       throw new BrowserPilotError(
         "navigate requires a url, or direction back/forward/reload.",
-        'Example: {action:"navigate", url:"https://example.com"}',
+        'Example: {action:"navigate", params:{url:"https://example.com"}}',
       );
     }
 

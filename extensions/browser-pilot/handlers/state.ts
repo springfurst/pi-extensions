@@ -13,16 +13,16 @@ export async function dialogResult(
   session: BrowserPilotSession,
 ): Promise<BrowserPilotToolResult> {
   const result = await session.resolveDialog({
-    op: params.op as "accept" | "dismiss" | "policy",
+    op: params.operation as "accept" | "dismiss" | "policy",
     text: params.text,
     policy: params.policy,
   });
   const text = result.dialog
-    ? `${params.op === "accept" ? "Accepted" : "Dismissed"} ${result.dialog.type}: ${result.dialog.message}`
+    ? `${params.operation === "accept" ? "Accepted" : "Dismissed"} ${result.dialog.type}: ${result.dialog.message}`
     : `Dialog policy: ${result.policy}`;
   return finalize(text, {
     action: "dialog",
-    op: params.op,
+    op: params.operation,
     policy: result.policy,
     dialog: result.dialog,
   });
@@ -40,7 +40,7 @@ export async function downloadResult(
       "Use a browser launched by browser-pilot, or manage downloads in the external browser.",
     );
   }
-  if (params.op === "clear") {
+  if (params.operation === "clear") {
     const count = session.clearDownloads();
     return finalize(`Cleared ${count} download record(s).`, {
       action: "download",
@@ -49,7 +49,7 @@ export async function downloadResult(
       count,
     });
   }
-  if (params.op === "wait") {
+  if (params.operation === "wait") {
     const timeout = params.timeout_ms ?? session.config.actionTimeoutSeconds * 1000;
     const download = await session.waitForDownload(timeout, params.filter, ctx.signal);
     return finalize(
@@ -100,7 +100,7 @@ export async function cookiesResult(
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
   const browser = session.browser!;
-  const op = String(params.op);
+  const op = String(params.operation);
   if (op === "list") {
     const cookies = params.url ? await tab.page.cookies(params.url) : await browser.cookies();
     const body =
@@ -186,7 +186,7 @@ export async function storageResult(
   session: BrowserPilotSession,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const area = params.area === "session" ? "sessionStorage" : "localStorage";
+  const area = params.storage_area === "session" ? "sessionStorage" : "localStorage";
   const result = await tab.page.evaluate(
     ({ areaName, op, key, value }) => {
       const storage = window[areaName as "localStorage" | "sessionStorage"];
@@ -203,25 +203,25 @@ export async function storageResult(
       storage.clear();
       return true;
     },
-    { areaName: area, op: params.op, key: params.key, value: params.value },
+    { areaName: area, op: params.operation, key: params.key, value: params.value },
   );
   const text =
-    params.op === "get"
+    params.operation === "get"
       ? result === null
         ? `${params.key} is not set in ${area}.`
         : String(result)
-      : params.op === "keys"
+      : params.operation === "keys"
         ? Array.isArray(result) && result.length > 0
           ? result.join("\n")
           : `No keys in ${area}.`
-        : `${params.op} ${area}${params.key ? ` key ${params.key}` : ""}.`;
+        : `${params.operation} ${area}${params.key ? ` key ${params.key}` : ""}.`;
   return finalize(
     [pageHeader(tab.handle, tab.page.url(), await tab.page.title().catch(() => "")), text].join(
       "\n",
     ),
     {
       action: "storage",
-      op: params.op,
+      op: params.operation,
       tab: tab.handle,
       url: tab.page.url(),
       area,
@@ -374,7 +374,7 @@ export async function routeResult(
   session: BrowserPilotSession,
   _config: BrowserPilotConfig,
 ): Promise<BrowserPilotToolResult> {
-  if (params.op === "list") {
+  if (params.operation === "list") {
     const body =
       session.routeRules.length > 0
         ? session.routeRules
@@ -394,7 +394,7 @@ export async function routeResult(
       rules: session.routeRules,
     });
   }
-  if (params.op === "clear") {
+  if (params.operation === "clear") {
     const count = await session.clearRouteRules();
     return finalize(`Cleared ${count} route rule(s).`, {
       action: "route",
@@ -402,18 +402,18 @@ export async function routeResult(
       count,
     });
   }
-  if (params.op === "remove") {
-    const removed = await session.removeRouteRule(params.id!);
+  if (params.operation === "remove") {
+    const removed = await session.removeRouteRule(params.rule_id!);
     if (!removed) {
       throw new BrowserPilotError(
-        `No route rule with id ${params.id}.`,
-        'Run {action:"route", op:"list"} to see rule ids.',
+        `No route rule with id ${params.rule_id}.`,
+        'Run {action:"route", params:{operation:"list"}} to see rule ids.',
       );
     }
-    return finalize(`Removed route rule ${params.id}.`, {
+    return finalize(`Removed route rule ${params.rule_id}.`, {
       action: "route",
       op: "remove",
-      id: params.id,
+      id: params.rule_id,
     });
   }
   await session.ensure();
@@ -421,10 +421,10 @@ export async function routeResult(
     urlPattern: params.url_pattern ?? "*",
     resourceType: params.resource_type,
     action: params.route_action!,
-    status: params.status,
-    body: params.body,
-    contentType: params.content_type,
-    headers: params.headers,
+    status: params.response_status,
+    body: params.response_body,
+    contentType: params.response_content_type,
+    headers: params.response_headers,
     delayMs: params.delay_ms,
   });
   return finalize(`Added route rule ${rule.id}: ${rule.action} ${rule.urlPattern}`, {

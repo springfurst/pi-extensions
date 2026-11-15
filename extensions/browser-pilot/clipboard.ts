@@ -33,7 +33,7 @@ export async function clipboardResult(
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const op = String(params.op);
+  const op = String(params.operation);
   const permissions = ["clipboard-read", "clipboard-write", "clipboard-sanitized-write"];
   await session.setPermissions(permissions, params.origin, params.tab);
   if (op === "read") {
@@ -46,7 +46,7 @@ export async function clipboardResult(
       if (!isFocusError(error)) throw error;
       throw new BrowserPilotError(
         "The clipboard could not be read because the page is not focused.",
-        'Bring the Chrome window to the front, then retry clipboard {op:"read"}.',
+        'Bring the Chrome window to the front, then retry {action:"clipboard", params:{operation:"read"}}.',
       );
     }
     return finalize(
@@ -73,7 +73,7 @@ export async function clipboardResult(
     if (!isFocusError(error)) throw error;
     throw new BrowserPilotError(
       "The clipboard could not be written because the page is not focused.",
-      'Bring the Chrome window to the front, then retry clipboard {op:"write"}.',
+      'Bring the Chrome window to the front, then retry {action:"clipboard", params:{operation:"write"}}.',
     );
   }
   return finalize(

@@ -52,7 +52,7 @@ export async function tabsResult(
   session: BrowserPilotSession,
   config: BrowserPilotConfig,
 ): Promise<BrowserPilotToolResult> {
-  const op = String(params.op);
+  const op = String(params.operation);
   if (op === "list" && !session.instance) {
     return finalize("No browser is running.\n\n" + hint('call {action:"open"} first.'), {
       action: "tabs",

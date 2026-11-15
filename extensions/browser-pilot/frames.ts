@@ -7,7 +7,7 @@ export async function framesResult(
   session: BrowserPilotSession,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const op = String(params.op);
+  const op = String(params.operation);
   if (op === "list") {
     const frames = session.listFrames(tab);
     const lines = [
@@ -17,7 +17,9 @@ export async function framesResult(
           `${frame.selected ? "*" : " "} ${frame.index}${frame.main ? " main" : ""} ${frame.url}${frame.name ? ` (${frame.name})` : ""}`,
       ),
       "",
-      hint('use frames {op:"select", frame:1} to scope read, eval, and screenshot.'),
+      hint(
+        'use {action:"frames", params:{operation:"select", frame:1}} to scope read, eval, and screenshot.',
+      ),
     ];
     return finalize(lines.join("\n"), {
       action: "frames",

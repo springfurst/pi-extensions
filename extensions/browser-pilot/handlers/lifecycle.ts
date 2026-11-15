@@ -85,7 +85,9 @@ export async function statusResult(
   } else if (challenge?.severity === "blocking") {
     lines.push(
       "",
-      hint('solve the challenge in the Chrome window, then run {action:"wait", for:"human"}.'),
+      hint(
+        'solve the challenge in the Chrome window, then run {action:"wait", params:{until:"human"}}.',
+      ),
     );
   }
   return {
@@ -147,7 +149,9 @@ export async function openResult(
     "",
     formatTabs(infos, config.maxTabs),
     "",
-    hint('run {action:"snapshot"} to see interactive elements, or {action:"navigate", url:"..."}.'),
+    hint(
+      'run {action:"snapshot"} to see interactive elements, or {action:"navigate", params:{url:"..."}}.',
+    ),
   ].join("\n");
   return finalize(text, {
     action: "open",
@@ -192,7 +196,7 @@ export async function closeResult(
   if (handle === undefined) {
     throw new BrowserPilotError(
       "No tab is open to close.",
-      'Use {action:"close", target:"browser"} to close the browser.',
+      'Use {action:"close", params:{target:"browser"}} to close the browser.',
     );
   }
   await session.closeTab(handle);

@@ -25,7 +25,7 @@ export async function waitResult(
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  const kind = params.for!;
+  const kind = params.until!;
   const awaited = describeWait(params);
   const timeout =
     params.timeout_ms ??
@@ -61,7 +61,7 @@ export async function waitResult(
     if (!result.cleared) {
       throw new BrowserPilotError(
         `Timed out after ${Math.round(result.elapsedMs / 1000)}s waiting for the challenge to clear.`,
-        'The challenge is still present. Solve it in the Chrome window, then run wait {for:"human"} again.',
+        'The challenge is still present. Solve it in the Chrome window, then run {action:"wait", params:{until:"human"}} again.',
       );
     }
     const text = result.initialChallenge
@@ -114,7 +114,12 @@ export async function waitResult(
     } else if (body?.note) {
       lines.push("", `Body: ${body.note}`);
     }
-    lines.push("", hint(`use network {op:"get", id:"${entry.id}"} for headers and body.`));
+    lines.push(
+      "",
+      hint(
+        `use {action:"network", params:{operation:"get", request_id:"${entry.id}"}} for headers and body.`,
+      ),
+    );
     return finalize(lines.join("\n"), {
       action: "wait",
       tab: tab.handle,
@@ -248,7 +253,7 @@ export async function expectResult(
 
 /** Describe what a wait is waiting for, for the one-line result summary. */
 function describeWait(params: BrowserPilotParams): string {
-  switch (params.for) {
+  switch (params.until) {
     case "selector":
       return params.ref ? `selector for ref ${params.ref}` : `selector ${params.selector ?? ""}`;
     case "text":

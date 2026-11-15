@@ -37,7 +37,7 @@ export class FrameSelection {
     if (!frame || frame.isDetached()) {
       throw new BrowserPilotError(
         `Frame ${index} is not available in tab ${tab.handle}.`,
-        'Run {action:"frames", op:"list"} to see frame indices.',
+        'Run {action:"frames", params:{operation:"list"}} to see frame indices.',
       );
     }
     this.selected = { tab: tab.handle, index };

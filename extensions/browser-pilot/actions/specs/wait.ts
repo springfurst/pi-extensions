@@ -10,7 +10,7 @@ export const waitSpecs: Record<string, ActionSpec> = {
     when: "Use to wait for a selector, text, URL, network response, JavaScript condition, or a human to clear a challenge.",
     params: [
       {
-        name: "for",
+        name: "until",
         type: "string",
         required: true,
         values: ["selector", "text", "url", "network_idle", "response", "function", "human"],
@@ -21,35 +21,35 @@ export const waitSpecs: Record<string, ActionSpec> = {
       {
         name: "text",
         type: "string",
-        description: "Text to wait for when for:text.",
+        description: "Text to wait for when until:text.",
       },
       {
         name: "url",
         type: "string",
-        description: "URL substring to wait for when for:url.",
+        description: "URL substring to wait for when until:url.",
       },
       {
         name: "url_pattern",
         type: "string",
-        description: "URL glob or substring when for:response.",
+        description: "URL glob or substring when until:response.",
       },
       {
         name: "include_body",
         type: "boolean",
-        description: "Include a response body preview when for:response.",
+        description: "Include a response body preview when until:response.",
       },
       {
         name: "expression",
         type: "string",
-        description: "Truthy JavaScript expression when for:function.",
+        description: "Truthy JavaScript expression when until:function.",
       },
       tab,
       timeout,
     ],
     examples: [
-      '{action:"wait",params:{for:"selector",selector:"main"}}',
-      '{action:"wait",params:{for:"response",url_pattern:"/api/items"}}',
-      '{action:"wait",params:{for:"human",timeout_ms:300000}}',
+      '{action:"wait",params:{until:"selector",selector:"main"}}',
+      '{action:"wait",params:{until:"response",url_pattern:"/api/items"}}',
+      '{action:"wait",params:{until:"human",timeout_ms:300000}}',
     ],
     related: ["navigate", "read", "network", "status"],
   },

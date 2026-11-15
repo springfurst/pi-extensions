@@ -114,7 +114,7 @@ export class DownloadTracker {
     }
     throw new BrowserPilotError(
       `Timed out after ${Math.round(timeoutMs / 1000)}s waiting for a download.`,
-      'Check download {op:"list"}; the browser may have blocked or canceled the file.',
+      'Check {action:"download", params:{operation:"list"}}; the browser may have blocked or canceled the file.',
     );
   }
 

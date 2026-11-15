@@ -60,7 +60,7 @@ export function targetFor(
   if (entry.tab !== tab.handle) {
     throw new BrowserPilotError(
       `Ref ${params.ref} belongs to tab ${entry.tab}, not tab ${tab.handle}.`,
-      `Run {action:"snapshot", tab:${tab.handle}} to get refs for this tab.`,
+      `Run {action:"snapshot", params:{tab:${tab.handle}}} to get refs for this tab.`,
     );
   }
   if (entry.frame?.isDetached()) {
@@ -169,7 +169,7 @@ export function parseKeyCombo(combo: string): KeyCombo {
   if (!key) {
     throw new BrowserPilotError(
       "press requires a key.",
-      'Example: {action:"press", key:"Enter"} or {action:"press", key:"Control+A"}',
+      'Example: {action:"press", params:{key:"Enter"}} or {action:"press", params:{key:"Control+A"}}',
     );
   }
   const modifiers: KeyInput[] = [];
@@ -320,6 +320,8 @@ export function appendChallenge(lines: string[], challenge: ChallengeInfo | unde
   if (!challenge) return;
   lines.push("", formatChallenge(challenge)!);
   if (challenge.severity === "blocking") {
-    lines.push(hint('solve it in the Chrome window, then run {action:"wait", for:"human"}.'));
+    lines.push(
+      hint('solve it in the Chrome window, then run {action:"wait", params:{until:"human"}}.'),
+    );
   }
 }

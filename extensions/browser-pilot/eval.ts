@@ -29,7 +29,7 @@ export async function evaluateInPage(page: Page, options: EvalOptions): Promise<
     if (response.exceptionDetails) {
       throw new BrowserPilotError(
         formatException(response.exceptionDetails),
-        'The expression threw. Use console {op:"read"} to inspect page errors.',
+        'The expression threw. Use {action:"console", params:{operation:"read"}} to inspect page errors.',
       );
     }
     const remote = response.result;

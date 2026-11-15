@@ -20,7 +20,7 @@ export class RecordingController {
     if (this.harRecording) {
       throw new BrowserPilotError(
         "A HAR recording is already active.",
-        'Stop it with {action:"har", op:"stop"}.',
+        'Stop it with {action:"har", params:{operation:"stop"}}.',
       );
     }
     this.harRecording = true;
@@ -49,7 +49,7 @@ export class RecordingController {
     if (!this.harRecording) {
       throw new BrowserPilotError(
         "No HAR recording is active.",
-        'Start one with {action:"har", op:"start"}.',
+        'Start one with {action:"har", params:{operation:"start"}}.',
       );
     }
     this.harRecording = false;
@@ -63,7 +63,7 @@ export class RecordingController {
     if (this.traceClient) {
       throw new BrowserPilotError(
         "A trace is already recording.",
-        'Stop it with {action:"trace", op:"stop"}.',
+        'Stop it with {action:"trace", params:{operation:"stop"}}.',
       );
     }
     const tab = await this.session.ensureTab(tabHandle);
@@ -97,7 +97,7 @@ export class RecordingController {
     if (!client) {
       throw new BrowserPilotError(
         "No trace is recording.",
-        'Start one with {action:"trace", op:"start"}.',
+        'Start one with {action:"trace", params:{operation:"start"}}.',
       );
     }
     this.traceClient = undefined;

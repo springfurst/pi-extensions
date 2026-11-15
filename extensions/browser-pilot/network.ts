@@ -14,7 +14,7 @@ export async function networkResult(
   session: BrowserPilotSession,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  if (params.op === "clear") {
+  if (params.operation === "clear") {
     const count = session.clearNetwork(tab);
     return finalize(`Cleared ${count} network entries.`, {
       action: "network",
@@ -23,7 +23,7 @@ export async function networkResult(
       count,
     });
   }
-  if (params.op === "get") {
+  if (params.operation === "get") {
     return networkGetResult(params, session, tab);
   }
   const limit = params.limit ?? 100;
@@ -39,7 +39,12 @@ export async function networkResult(
     lines.push("", "No network entries.");
   } else {
     lines.push("", ...entries.map((entry) => networkLine(entry, pageUrl)));
-    lines.push("", hint('use network {op:"get", id:"r12"} for headers and body.'));
+    lines.push(
+      "",
+      hint(
+        'use {action:"network", params:{operation:"get", request_id:"r12"}} for headers and body.',
+      ),
+    );
   }
   return finalize(lines.join("\n"), {
     action: "network",
@@ -91,12 +96,12 @@ async function networkGetResult(
   session: BrowserPilotSession,
   currentTab: Awaited<ReturnType<BrowserPilotSession["ensureTab"]>>,
 ): Promise<BrowserPilotToolResult> {
-  const id = params.id!;
+  const id = params.request_id!;
   const found = session.findNetworkEntry(id);
   if (!found) {
     throw new BrowserPilotError(
       `No network entry with id ${id}.`,
-      'Run {action:"network", op:"read"} to see available ids.',
+      'Run {action:"network", params:{operation:"read"}} to see available ids.',
     );
   }
   const { tab, entry } = found;
@@ -309,6 +314,6 @@ export async function waitForNetworkResponse(
   }
   throw new BrowserPilotError(
     `Timed out after ${Math.round(timeout / 1000)}s waiting for a response matching ${pattern}.`,
-    'Run {action:"network", op:"read"} to inspect captured requests, or raise timeout_ms.',
+    'Run {action:"network", params:{operation:"read"}} to inspect captured requests, or raise timeout_ms.',
   );
 }

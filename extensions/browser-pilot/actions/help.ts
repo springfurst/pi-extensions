@@ -92,11 +92,11 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     }
   }
   if (action === "wait") {
-    const kind = String(params.for);
+    const kind = String(params.until);
     if (kind === "selector" && isMissing(params.selector) && isMissing(params.ref)) {
       throw new BrowserPilotError(
-        "wait for:selector requires selector or ref.",
-        'Example: {action:"wait",params:{for:"selector",selector:"main"}}',
+        "wait until:selector requires selector or ref.",
+        'Example: {action:"wait",params:{until:"selector",selector:"main"}}',
       );
     }
     const needs: Record<string, string> = {
@@ -108,48 +108,48 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     const required = needs[kind];
     if (required && isMissing(params[required])) {
       throw new BrowserPilotError(
-        `wait for:${kind} requires ${required}.`,
-        `Example: {action:"wait",params:{for:"${kind}",${required}:"..."}}`,
+        `wait until:${kind} requires ${required}.`,
+        `Example: {action:"wait",params:{until:"${kind}",${required}:"..."}}`,
       );
     }
   }
   if (
     action === "tabs" &&
-    ["select", "close"].includes(String(params.op)) &&
+    ["select", "close"].includes(String(params.operation)) &&
     isMissing(params.tab)
   ) {
     throw new BrowserPilotError(
-      `tabs op:${String(params.op)} requires tab.`,
-      'Example: {action:"tabs",params:{op:"close",tab:2}}',
+      `tabs operation:${String(params.operation)} requires tab.`,
+      'Example: {action:"tabs",params:{operation:"close",tab:2}}',
     );
   }
-  if (action === "frames" && params.op === "select" && isMissing(params.frame)) {
+  if (action === "frames" && params.operation === "select" && isMissing(params.frame)) {
     throw new BrowserPilotError(
-      "frames op:select requires frame.",
-      'Run {action:"frames",params:{op:"list"}} to see frame indices.',
+      "frames operation:select requires frame.",
+      'Run {action:"frames",params:{operation:"list"}} to see frame indices.',
     );
   }
-  if (action === "clipboard" && params.op === "write") {
+  if (action === "clipboard" && params.operation === "write") {
     const sources = [params.text, params.text_file, params.text_env].filter(
       (value) => !isMissing(value),
     );
     if (sources.length !== 1) {
       throw new BrowserPilotError(
-        "clipboard op:write requires exactly one of text, text_file, or text_env.",
-        'Example: {action:"clipboard",params:{op:"write",text:"hello"}}',
+        "clipboard operation:write requires exactly one of text, text_file, or text_env.",
+        'Example: {action:"clipboard",params:{operation:"write",text:"hello"}}',
       );
     }
   }
-  if (action === "network" && params.op === "get" && isMissing(params.id)) {
+  if (action === "network" && params.operation === "get" && isMissing(params.request_id)) {
     throw new BrowserPilotError(
-      "network op:get requires id.",
-      'Run {action:"network",params:{op:"read"}} to see request ids such as r12.',
+      "network operation:get requires request_id.",
+      'Run {action:"network",params:{operation:"read"}} to see request ids such as r12.',
     );
   }
-  if (action === "dialog" && params.op === "policy" && isMissing(params.policy)) {
+  if (action === "dialog" && params.operation === "policy" && isMissing(params.policy)) {
     throw new BrowserPilotError(
-      "dialog op:policy requires policy dismiss/accept/manual.",
-      'Example: {action:"dialog",params:{op:"policy",policy:"manual"}}',
+      "dialog operation:policy requires policy dismiss/accept/manual.",
+      'Example: {action:"dialog",params:{operation:"policy",policy:"manual"}}',
     );
   }
   if (action === "connect" && isMissing(params.endpoint)) {
@@ -173,53 +173,53 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     }
   }
   if (action === "cookies") {
-    const op = String(params.op);
+    const op = String(params.operation);
     if (op === "set" && (isMissing(params.name) || isMissing(params.value))) {
       throw new BrowserPilotError(
-        "cookies op:set requires name and value.",
-        'Example: {action:"cookies",params:{op:"set",name:"theme",value:"dark",url:"https://example.com"}}',
+        "cookies operation:set requires name and value.",
+        'Example: {action:"cookies",params:{operation:"set",name:"theme",value:"dark",url:"https://example.com"}}',
       );
     }
     if ((op === "set" || op === "delete") && isMissing(params.url) && isMissing(params.domain)) {
       throw new BrowserPilotError(
-        `cookies op:${op} requires url or domain.`,
-        'Example: {action:"cookies",params:{op:"delete",name:"theme",domain:"example.com"}}',
+        `cookies operation:${op} requires url or domain.`,
+        'Example: {action:"cookies",params:{operation:"delete",name:"theme",domain:"example.com"}}',
       );
     }
     if (op === "delete" && isMissing(params.name)) {
       throw new BrowserPilotError(
-        "cookies op:delete requires name.",
-        'Example: {action:"cookies",params:{op:"delete",name:"theme",domain:"example.com"}}',
+        "cookies operation:delete requires name.",
+        'Example: {action:"cookies",params:{operation:"delete",name:"theme",domain:"example.com"}}',
       );
     }
   }
   if (action === "storage") {
-    const op = String(params.op);
+    const op = String(params.operation);
     if ((op === "get" || op === "remove") && isMissing(params.key)) {
       throw new BrowserPilotError(
-        `storage op:${op} requires key.`,
-        'Example: {action:"storage",params:{op:"get",key:"token"}}',
+        `storage operation:${op} requires key.`,
+        'Example: {action:"storage",params:{operation:"get",key:"token"}}',
       );
     }
     if (op === "set" && (isMissing(params.key) || isMissing(params.value))) {
       throw new BrowserPilotError(
-        "storage op:set requires key and value.",
-        'Example: {action:"storage",params:{op:"set",key:"theme",value:"dark"}}',
+        "storage operation:set requires key and value.",
+        'Example: {action:"storage",params:{operation:"set",key:"theme",value:"dark"}}',
       );
     }
   }
   if (action === "route") {
-    const op = String(params.op);
-    if (op === "remove" && isMissing(params.id)) {
+    const op = String(params.operation);
+    if (op === "remove" && isMissing(params.rule_id)) {
       throw new BrowserPilotError(
-        "route op:remove requires id.",
-        'Example: {action:"route",params:{op:"remove",id:"rt1"}}',
+        "route operation:remove requires rule_id.",
+        'Example: {action:"route",params:{operation:"remove",rule_id:"rt1"}}',
       );
     }
     if (op === "add" && isMissing(params.route_action)) {
       throw new BrowserPilotError(
-        "route op:add requires route_action.",
-        'Example: {action:"route",params:{op:"add",url_pattern:"*://*/*.png",route_action:"abort"}}',
+        "route operation:add requires route_action.",
+        'Example: {action:"route",params:{operation:"add",url_pattern:"*://*/*.png",route_action:"abort"}}',
       );
     }
   }
@@ -309,38 +309,66 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       ["png", "jpeg", "webp"],
     ],
     [
-      "tabs op",
-      action === "tabs" ? params.op : undefined,
+      "tabs operation",
+      action === "tabs" ? params.operation : undefined,
       ["list", "new", "select", "close", "close_others", "cleanup"],
     ],
-    ["console op", action === "console" ? params.op : undefined, ["read", "list", "clear"]],
-    ["network op", action === "network" ? params.op : undefined, ["read", "list", "get", "clear"]],
-    ["frames op", action === "frames" ? params.op : undefined, ["list", "select", "main"]],
-    ["state op", action === "state" ? params.op : undefined, ["export", "import"]],
-    ["clipboard op", action === "clipboard" ? params.op : undefined, ["read", "write"]],
-    ["dialog op", action === "dialog" ? params.op : undefined, ["accept", "dismiss", "policy"]],
-    ["download op", action === "download" ? params.op : undefined, ["list", "wait", "clear"]],
     [
-      "cookies op",
-      action === "cookies" ? params.op : undefined,
+      "console operation",
+      action === "console" ? params.operation : undefined,
+      ["read", "list", "clear"],
+    ],
+    [
+      "network operation",
+      action === "network" ? params.operation : undefined,
+      ["read", "list", "get", "clear"],
+    ],
+    [
+      "frames operation",
+      action === "frames" ? params.operation : undefined,
+      ["list", "select", "main"],
+    ],
+    ["state operation", action === "state" ? params.operation : undefined, ["export", "import"]],
+    [
+      "clipboard operation",
+      action === "clipboard" ? params.operation : undefined,
+      ["read", "write"],
+    ],
+    [
+      "dialog operation",
+      action === "dialog" ? params.operation : undefined,
+      ["accept", "dismiss", "policy"],
+    ],
+    [
+      "download operation",
+      action === "download" ? params.operation : undefined,
+      ["list", "wait", "clear"],
+    ],
+    [
+      "cookies operation",
+      action === "cookies" ? params.operation : undefined,
       ["list", "set", "delete", "clear"],
     ],
     [
-      "storage op",
-      action === "storage" ? params.op : undefined,
+      "storage operation",
+      action === "storage" ? params.operation : undefined,
       ["get", "set", "remove", "clear", "keys"],
     ],
-    ["har op", action === "har" ? params.op : undefined, ["start", "stop", "clear"]],
-    ["trace op", action === "trace" ? params.op : undefined, ["start", "stop"]],
-    ["route op", action === "route" ? params.op : undefined, ["add", "remove", "clear", "list"]],
+    ["har operation", action === "har" ? params.operation : undefined, ["start", "stop", "clear"]],
+    ["trace operation", action === "trace" ? params.operation : undefined, ["start", "stop"]],
+    [
+      "route operation",
+      action === "route" ? params.operation : undefined,
+      ["add", "remove", "clear", "list"],
+    ],
     [
       "route action",
       action === "route" ? params.route_action : undefined,
       ["abort", "continue", "fulfill", "delay"],
     ],
     [
-      "wait for",
-      action === "wait" ? params.for : undefined,
+      "wait until",
+      action === "wait" ? params.until : undefined,
       ["selector", "text", "url", "network_idle", "response", "function", "human"],
     ],
     [
@@ -385,7 +413,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       action === "emulate" ? params.reduced_motion : undefined,
       ["reduce", "no-preference"],
     ],
-    ["storage area", action === "storage" ? params.area : undefined, ["local", "session"]],
+    ["storage area", action === "storage" ? params.storage_area : undefined, ["local", "session"]],
   ];
   for (const [label, value, allowed] of closedSets) {
     if (value !== undefined && !allowed.includes(String(value))) {
@@ -404,7 +432,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     "height",
     "device_scale_factor",
     "cpu_throttle",
-    "status",
+    "response_status",
   ];
   for (const key of positive) {
     const value = params[key];
@@ -415,7 +443,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
   for (const key of [
     "delay_ms",
     "duration_ms",
-    "amount",
+    "pixels",
     "latency",
     "download_throughput",
     "upload_throughput",

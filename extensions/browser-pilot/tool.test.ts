@@ -71,7 +71,7 @@ describe("executeBrowserPilot", () => {
 
   it("does not launch Chrome for a tab list", async () => {
     const result = await run(
-      { action: "tabs", params: { op: "list" } },
+      { action: "tabs", params: { operation: "list" } },
       context(tempDir(), "tabs-1"),
     );
     expect(result.isError).toBeUndefined();
@@ -147,17 +147,17 @@ describe("safeParams", () => {
 
   it("redacts cookie, storage, and route payloads by default", () => {
     const cookie = safeParams(
-      { action: "cookies", op: "set", name: "token", value: "secret" },
+      { action: "cookies", operation: "set", name: "token", value: "secret" },
       config,
     );
     expect(cookie.value).toMatchObject({ length: 6, sha256: expect.any(String) });
     expect(cookie.value).not.toBe("secret");
 
     const route = safeParams(
-      { action: "route", op: "add", route_action: "fulfill", body: "secret" },
+      { action: "route", operation: "add", route_action: "fulfill", response_body: "secret" },
       config,
     );
-    expect(route.body).toMatchObject({ length: 6, sha256: expect.any(String) });
+    expect(route.response_body).toMatchObject({ length: 6, sha256: expect.any(String) });
 
     const steps = safeParams(
       {

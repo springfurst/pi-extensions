@@ -9,7 +9,7 @@ export const tabsSpecs: Record<string, ActionSpec> = {
     when: "Use to list, create, select, close, or clean up pages.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["list", "new", "select", "close", "close_others", "cleanup"],
@@ -19,13 +19,13 @@ export const tabsSpecs: Record<string, ActionSpec> = {
       {
         name: "url",
         type: "string",
-        description: "URL for op:new.",
+        description: "URL for operation:new.",
       },
     ],
     examples: [
-      '{action:"tabs",params:{op:"list"}}',
-      '{action:"tabs",params:{op:"new",url:"https://example.com"}}',
-      '{action:"tabs",params:{op:"select",tab:2}}',
+      '{action:"tabs",params:{operation:"list"}}',
+      '{action:"tabs",params:{operation:"new",url:"https://example.com"}}',
+      '{action:"tabs",params:{operation:"select",tab:2}}',
     ],
     related: ["open", "close"],
   },
@@ -37,7 +37,7 @@ export const tabsSpecs: Record<string, ActionSpec> = {
     when: "Use when content lives in an iframe and read, eval, or element screenshots need to target it.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["list", "select", "main"],
@@ -46,14 +46,14 @@ export const tabsSpecs: Record<string, ActionSpec> = {
       {
         name: "frame",
         type: "number",
-        description: "Frame index for op:select; 0 is the main frame.",
+        description: "Frame index for operation:select; 0 is the main frame.",
       },
       tab,
     ],
     examples: [
-      '{action:"frames",params:{op:"list"}}',
-      '{action:"frames",params:{op:"select",frame:1}}',
-      '{action:"frames",params:{op:"main"}}',
+      '{action:"frames",params:{operation:"list"}}',
+      '{action:"frames",params:{operation:"select",frame:1}}',
+      '{action:"frames",params:{operation:"main"}}',
     ],
     related: ["snapshot", "read", "eval"],
   },

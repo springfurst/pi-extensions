@@ -158,7 +158,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
         description: "Scroll direction.",
       },
       {
-        name: "amount",
+        name: "pixels",
         type: "number",
         default: "500",
         description: "Pixels for up/down.",

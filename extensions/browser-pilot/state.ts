@@ -27,7 +27,7 @@ export async function stateResult(
   await session.ensure(ctx.signal);
   const tab = await session.ensureTab(params.tab);
   const path = resolvePath(ctx.cwd, params.path!);
-  if (params.op === "export") {
+  if (params.operation === "export") {
     const cookies = (await session.browser!.cookies()) as CookieData[];
     const origins = new Map<string, StorageStateBundle["origins"][number]>();
     for (const candidate of session.tabs.values()) {
@@ -135,7 +135,7 @@ function readStorageState(path: string): StorageStateBundle {
   } catch (error) {
     throw new BrowserPilotError(
       `Could not read storage state ${path}: ${error instanceof Error ? error.message : String(error)}`,
-      'Export a bundle first with {action:"state", op:"export", path:"./auth.json"}.',
+      'Export a bundle first with {action:"state", params:{operation:"export", path:"./auth.json"}}.',
     );
   }
   return validateStorageBundle(parsed);

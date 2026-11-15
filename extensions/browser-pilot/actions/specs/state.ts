@@ -9,7 +9,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to accept or dismiss a native dialog, or to switch to manual dialog handling.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["accept", "dismiss", "policy"],
@@ -18,18 +18,18 @@ export const stateSpecs: Record<string, ActionSpec> = {
       {
         name: "text",
         type: "string",
-        description: "Prompt response when op:accept.",
+        description: "Prompt response when operation:accept.",
       },
       {
         name: "policy",
         type: "string",
         values: ["dismiss", "accept", "manual"],
-        description: "Automatic policy when op:policy.",
+        description: "Automatic policy when operation:policy.",
       },
     ],
     examples: [
-      '{action:"dialog",params:{op:"accept"}}',
-      '{action:"dialog",params:{op:"policy",policy:"manual"}}',
+      '{action:"dialog",params:{operation:"accept"}}',
+      '{action:"dialog",params:{operation:"policy",policy:"manual"}}',
     ],
     related: ["status"],
   },
@@ -41,7 +41,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to list, wait for, or clear files downloaded by the browser.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["list", "wait", "clear"],
@@ -55,8 +55,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       timeout,
     ],
     examples: [
-      '{action:"download",params:{op:"list"}}',
-      '{action:"download",params:{op:"wait",timeout_ms:30000}}',
+      '{action:"download",params:{operation:"list"}}',
+      '{action:"download",params:{operation:"wait",timeout_ms:30000}}',
     ],
     related: ["click", "status"],
   },
@@ -68,14 +68,14 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to inspect or change cookies for the current browser.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["list", "set", "delete", "clear"],
         description: "Cookie operation.",
       },
       { name: "name", type: "string", description: "Cookie name." },
-      { name: "value", type: "string", description: "Cookie value for op:set." },
+      { name: "value", type: "string", description: "Cookie value for operation:set." },
       {
         name: "url",
         type: "string",
@@ -99,8 +99,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"cookies",params:{op:"list"}}',
-      '{action:"cookies",params:{op:"set",name:"theme",value:"dark",url:"https://example.com"}}',
+      '{action:"cookies",params:{operation:"list"}}',
+      '{action:"cookies",params:{operation:"set",name:"theme",value:"dark",url:"https://example.com"}}',
     ],
     related: ["storage", "status"],
   },
@@ -112,26 +112,26 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to inspect or change localStorage or sessionStorage for the current tab.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["get", "set", "remove", "clear", "keys"],
         description: "Storage operation.",
       },
       {
-        name: "area",
+        name: "storage_area",
         type: "string",
         values: ["local", "session"],
         default: "local",
         description: "Storage area.",
       },
       { name: "key", type: "string", description: "Storage key." },
-      { name: "value", type: "string", description: "Storage value for op:set." },
+      { name: "value", type: "string", description: "Storage value for operation:set." },
       tab,
     ],
     examples: [
-      '{action:"storage",params:{op:"get",key:"token"}}',
-      '{action:"storage",params:{op:"set",key:"theme",value:"dark"}}',
+      '{action:"storage",params:{operation:"get",key:"token"}}',
+      '{action:"storage",params:{operation:"set",key:"theme",value:"dark"}}',
     ],
     related: ["cookies", "eval"],
   },
@@ -143,7 +143,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to export or import cookies and per-origin storage for reuse in another session.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["export", "import"],
@@ -158,8 +158,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"state",params:{op:"export",path:"./auth.json"}}',
-      '{action:"state",params:{op:"import",path:"./auth.json"}}',
+      '{action:"state",params:{operation:"export",path:"./auth.json"}}',
+      '{action:"state",params:{operation:"import",path:"./auth.json"}}',
     ],
     related: ["cookies", "storage", "open"],
   },
@@ -171,7 +171,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to read or write the system clipboard from a secure page.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["read", "write"],
@@ -195,8 +195,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"clipboard",params:{op:"read"}}',
-      '{action:"clipboard",params:{op:"write",text:"hello"}}',
+      '{action:"clipboard",params:{operation:"read"}}',
+      '{action:"clipboard",params:{operation:"write",text:"hello"}}',
     ],
     related: ["type", "eval"],
   },
@@ -272,13 +272,13 @@ export const stateSpecs: Record<string, ActionSpec> = {
     when: "Use to intercept, block, delay, or fulfill requests for the pages this session manages.",
     params: [
       {
-        name: "op",
+        name: "operation",
         type: "string",
         required: true,
         values: ["add", "remove", "clear", "list"],
         description: "Route operation.",
       },
-      { name: "id", type: "string", description: "Rule id for op:remove." },
+      { name: "rule_id", type: "string", description: "Rule id for operation:remove." },
       {
         name: "url_pattern",
         type: "string",
@@ -292,19 +292,19 @@ export const stateSpecs: Record<string, ActionSpec> = {
         values: ["abort", "continue", "fulfill", "delay"],
         description: "Action for matching requests.",
       },
-      { name: "status", type: "number", description: "Response status for fulfill." },
-      { name: "body", type: "string", description: "Response body for fulfill." },
+      { name: "response_status", type: "number", description: "Response status for fulfill." },
+      { name: "response_body", type: "string", description: "Response body for fulfill." },
       {
-        name: "content_type",
+        name: "response_content_type",
         type: "string",
         description: "Response content type for fulfill.",
       },
-      { name: "headers", type: "object", description: "Response headers for fulfill." },
+      { name: "response_headers", type: "object", description: "Response headers for fulfill." },
       { name: "delay_ms", type: "number", description: "Delay before continuing." },
     ],
     examples: [
-      '{action:"route",params:{op:"add",url_pattern:"*://*/*.png",route_action:"abort"}}',
-      '{action:"route",params:{op:"list"}}',
+      '{action:"route",params:{operation:"add",url_pattern:"*://*/*.png",route_action:"abort"}}',
+      '{action:"route",params:{operation:"list"}}',
     ],
     related: ["network", "wait"],
   },

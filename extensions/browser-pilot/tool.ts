@@ -229,7 +229,7 @@ async function dispatch(
   if (session.pendingDialog && !["dialog", "status", "close", "help"].includes(params.action)) {
     throw new BrowserPilotError(
       `A ${session.pendingDialog.type} dialog is open: ${session.pendingDialog.message}`,
-      'Resolve it with {action:"dialog", op:"accept"} or {action:"dialog", op:"dismiss"}.',
+      'Resolve it with {action:"dialog", params:{operation:"accept"}} or {action:"dialog", params:{operation:"dismiss"}}.',
     );
   }
   switch (params.action) {
@@ -471,7 +471,7 @@ export function safeParams(
     "action",
     "group",
     "help_action",
-    "op",
+    "operation",
     "target",
     "tab",
     "direction",
@@ -495,18 +495,18 @@ export function safeParams(
     "delay_ms",
     "key",
     "values",
-    "amount",
-    "for",
+    "pixels",
+    "until",
     "full_page",
     "quality",
-    "inline",
+    "inline_image",
     "level",
     "limit",
-    "detail",
+    "stack_traces",
     "include_body",
     "policy",
     "timeout_ms",
-    "area",
+    "storage_area",
     "domain",
     "cookie_path",
     "expires",
@@ -540,9 +540,10 @@ export function safeParams(
     "margin",
     "resource_type",
     "route_action",
-    "status",
-    "content_type",
-    "id",
+    "response_status",
+    "response_content_type",
+    "request_id",
+    "rule_id",
     "name",
     "check",
     "operator",
@@ -565,7 +566,7 @@ export function safeParams(
       "script_path",
       "endpoint",
       "files",
-      "headers",
+      "response_headers",
       "url_pattern",
       "origin",
     ]) {
@@ -593,7 +594,7 @@ export function safeParams(
       out.expected = { length: params.expected.length, sha256: sha256(params.expected) };
     }
   }
-  for (const key of ["value", "body"] as const) {
+  for (const key of ["value", "response_body"] as const) {
     const value = params[key];
     if (value === undefined) continue;
     if (config.logging.includeSensitiveArgs) {

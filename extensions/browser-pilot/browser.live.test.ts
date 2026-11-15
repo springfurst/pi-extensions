@@ -177,10 +177,10 @@ describe("browser-pilot live", () => {
     expect(opened.isError).toBeUndefined();
     expect(text(opened)).toContain("Pilot Test");
 
-    await run({ action: "wait", for: "network_idle", timeout_ms: 5_000 });
-    const consoleLogs = await run({ action: "console", op: "read" });
+    await run({ action: "wait", until: "network_idle", timeout_ms: 5_000 });
+    const consoleLogs = await run({ action: "console", operation: "read" });
     expect(text(consoleLogs)).toContain("hello from page");
-    const network = await run({ action: "network", op: "read", filter: "/api" });
+    const network = await run({ action: "network", operation: "read", filter: "/api" });
     expect(text(network)).toContain("/api");
 
     const snapshot = text(await run({ action: "snapshot" }));
@@ -295,7 +295,7 @@ describe("browser-pilot live", () => {
     expect(shot.isError).toBeUndefined();
     expect(existsSync(shotPath)).toBe(true);
 
-    const tabs = await run({ action: "tabs", params: { op: "list" } });
+    const tabs = await run({ action: "tabs", params: { operation: "list" } });
     expect(text(tabs)).toContain("Tabs: 1/3");
 
     const closed = await run({ action: "close", params: { target: "browser" } });
@@ -308,7 +308,7 @@ describe("browser-pilot live", () => {
     expect(text(status)).toContain("cloudflare");
     expect(text(status)).toContain("blocking");
 
-    const waited = await run({ action: "wait", for: "human", timeout_ms: 10_000 });
+    const waited = await run({ action: "wait", until: "human", timeout_ms: 10_000 });
     expect(waited.isError, text(waited)).toBeUndefined();
     expect(text(waited)).toContain("Challenge cleared");
 
@@ -341,19 +341,19 @@ describe("browser-pilot live", () => {
     });
     expect(visible.isError, text(visible)).toBeUndefined();
 
-    await run({ action: "tabs", op: "new" });
-    await run({ action: "tabs", op: "new", url: `${server.origin}/result` });
-    const reused = await run({ action: "tabs", op: "new", url: `${server.origin}/article` });
+    await run({ action: "tabs", operation: "new" });
+    await run({ action: "tabs", operation: "new", url: `${server.origin}/result` });
+    const reused = await run({ action: "tabs", operation: "new", url: `${server.origin}/article` });
     expect(reused.isError, text(reused)).toBeUndefined();
     expect(text(reused)).toContain("Article");
-    await run({ action: "tabs", op: "close", tab: 3 });
+    await run({ action: "tabs", operation: "close", tab: 3 });
 
     await run({ action: "navigate", url: `${server.origin}/popup-page` });
     const snapshot = text(await run({ action: "snapshot" }));
     const popupRef = refFor(snapshot, /\[(e\d+)\] button "Open"/);
     await run({ action: "click", ref: popupRef });
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const tabs = text(await run({ action: "tabs", params: { op: "list" } }));
+    const tabs = text(await run({ action: "tabs", params: { operation: "list" } }));
     expect(tabs).toContain("/result");
   });
 
@@ -396,27 +396,32 @@ describe("browser-pilot live", () => {
     const downloadSnapshot = text(await run({ action: "snapshot" }));
     const downloadRef = refFor(downloadSnapshot, /\[(e\d+)\] link "Download sample"/);
     await run({ action: "click", ref: downloadRef });
-    const downloaded = await run({ action: "download", op: "wait", timeout_ms: 10_000 });
+    const downloaded = await run({ action: "download", operation: "wait", timeout_ms: 10_000 });
     expect(downloaded.isError, text(downloaded)).toBeUndefined();
     expect(text(downloaded)).toContain("sample.txt");
 
     await run({ action: "navigate", url: `${server.origin}/` });
     const setCookie = await run({
       action: "cookies",
-      op: "set",
+      operation: "set",
       name: "pilot",
       value: "yes",
       url: server.origin,
     });
     expect(setCookie.isError, text(setCookie)).toBeUndefined();
-    const cookies = await run({ action: "cookies", op: "list" });
+    const cookies = await run({ action: "cookies", operation: "list" });
     expect(text(cookies)).toContain("pilot=yes");
-    const storageSet = await run({ action: "storage", op: "set", key: "theme", value: "dark" });
+    const storageSet = await run({
+      action: "storage",
+      operation: "set",
+      key: "theme",
+      value: "dark",
+    });
     expect(storageSet.isError).toBeUndefined();
-    const storageGet = await run({ action: "storage", op: "get", key: "theme" });
+    const storageGet = await run({ action: "storage", operation: "get", key: "theme" });
     expect(text(storageGet)).toContain("dark");
-    await run({ action: "storage", op: "remove", key: "theme" });
-    await run({ action: "cookies", op: "clear" });
+    await run({ action: "storage", operation: "remove", key: "theme" });
+    await run({ action: "cookies", operation: "clear" });
 
     await run({ action: "navigate", url: `${server.origin}/emulate` });
     const emulated = await run({
@@ -439,19 +444,19 @@ describe("browser-pilot live", () => {
 
     const route = await run({
       action: "route",
-      op: "add",
+      operation: "add",
       url_pattern: `${server.origin}/mocked`,
       route_action: "fulfill",
-      status: 200,
-      body: '{"mocked":true}',
-      content_type: "application/json",
+      response_status: 200,
+      response_body: '{"mocked":true}',
+      response_content_type: "application/json",
     });
     expect(route.isError, text(route)).toBeUndefined();
     await run({ action: "navigate", url: `${server.origin}/route-page` });
     await run({ action: "expect", check: "text", expected: "mocked", timeout_ms: 5_000 });
-    const routeList = await run({ action: "route", op: "list" });
+    const routeList = await run({ action: "route", operation: "list" });
     expect(text(routeList)).toContain("fulfill");
-    await run({ action: "route", op: "clear" });
+    await run({ action: "route", operation: "clear" });
 
     const expectedTitle = await run({ action: "expect", check: "title", expected: "Route Test" });
     expect(expectedTitle.isError).toBeUndefined();
@@ -474,9 +479,9 @@ describe("browser-pilot live", () => {
     expect(text(steps)).toContain("Step 2: expect");
 
     const harPath = join(cwd, "network.har");
-    await run({ action: "har", op: "start" });
+    await run({ action: "har", operation: "start" });
     await run({ action: "navigate", url: `${server.origin}/` });
-    const har = await run({ action: "har", op: "stop", path: harPath });
+    const har = await run({ action: "har", operation: "stop", path: harPath });
     expect(har.isError, text(har)).toBeUndefined();
     expect(existsSync(harPath)).toBe(true);
     const harJson = JSON.parse(readFileSync(harPath, "utf-8")) as {
@@ -486,9 +491,9 @@ describe("browser-pilot live", () => {
     expect(harJson.log.entries.length).toBeGreaterThan(0);
 
     const tracePath = join(cwd, "trace.json");
-    await run({ action: "trace", op: "start" });
+    await run({ action: "trace", operation: "start" });
     await run({ action: "eval", expression: "1 + 1" });
-    const trace = await run({ action: "trace", op: "stop", path: tracePath });
+    const trace = await run({ action: "trace", operation: "stop", path: tracePath });
     expect(trace.isError, text(trace)).toBeUndefined();
     expect(existsSync(tracePath)).toBe(true);
     const traceJson = JSON.parse(readFileSync(tracePath, "utf-8")) as {
@@ -540,35 +545,35 @@ describe("browser-pilot live", () => {
     expect(annotated.isError, text(annotated)).toBeUndefined();
     expect(annotated.details.annotated).toBeGreaterThan(0);
 
-    const frames = await run({ action: "frames", op: "list" });
+    const frames = await run({ action: "frames", operation: "list" });
     expect(text(frames)).toContain("/frame");
     const frameList = frames.details.frames as Array<{ index: number; url: string }>;
     const frameIndex = frameList.find((frame) => frame.url.endsWith("/frame"))?.index;
     expect(frameIndex).toBeGreaterThan(0);
 
-    await run({ action: "frames", op: "select", frame: frameIndex });
+    await run({ action: "frames", operation: "select", frame: frameIndex });
     const frameRead = await run({ action: "read", format: "text" });
     expect(text(frameRead)).toContain("Frame Button");
     const frameEval = await run({ action: "eval", expression: "document.title" });
     expect(text(frameEval)).toContain("Frame Test");
-    await run({ action: "frames", op: "main" });
+    await run({ action: "frames", operation: "main" });
 
     await run({ action: "navigate", url: `${server.origin}/` });
-    await run({ action: "wait", for: "network_idle", timeout_ms: 5_000 });
-    const overview = await run({ action: "network", op: "read", filter: "/api" });
+    await run({ action: "wait", until: "network_idle", timeout_ms: 5_000 });
+    const overview = await run({ action: "network", operation: "read", filter: "/api" });
     const overviewText = text(overview);
     expect(overviewText).toMatch(/r\d+ 200 GET \/api/);
     const requestId = /r\d+/.exec(overviewText)?.[0];
     expect(requestId).toBeTruthy();
 
-    const detail = await run({ action: "network", op: "get", id: requestId });
+    const detail = await run({ action: "network", operation: "get", request_id: requestId });
     expect(detail.isError, text(detail)).toBeUndefined();
     expect(text(detail)).toContain("Response headers:");
     expect(text(detail)).toContain('{"ok":true}');
 
     const responseWait = await run({
       action: "wait",
-      for: "response",
+      until: "response",
       url_pattern: "/api",
       include_body: true,
       timeout_ms: 5_000,
@@ -590,23 +595,23 @@ describe("browser-pilot live", () => {
 
     await run({
       action: "cookies",
-      op: "set",
+      operation: "set",
       name: "pilot_state",
       value: "yes",
       url: server.origin,
     });
-    await run({ action: "storage", op: "set", key: "theme", value: "dark" });
+    await run({ action: "storage", operation: "set", key: "theme", value: "dark" });
     const bundlePath = join(cwd, "state.json");
-    const exported = await run({ action: "state", op: "export", path: bundlePath });
+    const exported = await run({ action: "state", operation: "export", path: bundlePath });
     expect(exported.isError, text(exported)).toBeUndefined();
     expect(existsSync(bundlePath)).toBe(true);
-    await run({ action: "cookies", op: "clear" });
-    await run({ action: "storage", op: "clear" });
-    const imported = await run({ action: "state", op: "import", path: bundlePath });
+    await run({ action: "cookies", operation: "clear" });
+    await run({ action: "storage", operation: "clear" });
+    const imported = await run({ action: "state", operation: "import", path: bundlePath });
     expect(imported.isError, text(imported)).toBeUndefined();
-    const importedCookies = await run({ action: "cookies", op: "list" });
+    const importedCookies = await run({ action: "cookies", operation: "list" });
     expect(text(importedCookies)).toContain("pilot_state=yes");
-    const importedStorage = await run({ action: "storage", op: "get", key: "theme" });
+    const importedStorage = await run({ action: "storage", operation: "get", key: "theme" });
     expect(text(importedStorage)).toContain("dark");
 
     const permissions = await run({
@@ -620,11 +625,11 @@ describe("browser-pilot live", () => {
 
     const clipboardWrite = await run({
       action: "clipboard",
-      op: "write",
+      operation: "write",
       text: "pilot-clipboard",
     });
     expect(clipboardWrite.isError, text(clipboardWrite)).toBeUndefined();
-    const clipboardRead = await run({ action: "clipboard", op: "read" });
+    const clipboardRead = await run({ action: "clipboard", operation: "read" });
     expect(clipboardRead.isError, text(clipboardRead)).toBeUndefined();
     expect(text(clipboardRead)).toContain("pilot-clipboard");
 
@@ -760,7 +765,10 @@ describe("browser-pilot profiles and tabs live", () => {
       ctx(idB),
     );
     expect(attached.isError).toBeUndefined();
-    const tabs = await executeBrowserPilot({ action: "tabs", params: { op: "list" } }, ctx(idB));
+    const tabs = await executeBrowserPilot(
+      { action: "tabs", params: { operation: "list" } },
+      ctx(idB),
+    );
     expect(tabs.isError).toBeUndefined();
 
     await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx(idB));
@@ -800,7 +808,7 @@ describe("browser-pilot profiles and tabs live", () => {
     );
     expect(opened.isError).toBeUndefined();
     const second = await executeBrowserPilot(
-      { action: "tabs", params: { op: "new", url: `${server.origin}/` } },
+      { action: "tabs", params: { operation: "new", url: `${server.origin}/` } },
       ctx(id),
     );
     expect(second.isError).toBe(true);

@@ -33,9 +33,9 @@ function firstText(result: RenderResultLike): string {
 /** The arguments worth showing next to the action name, most specific first. */
 function callDetail(args: BrowserPilotParams): string | undefined {
   const parts: string[] = [];
-  if (args.op !== undefined) parts.push(String(args.op));
+  if (args.operation !== undefined) parts.push(String(args.operation));
   if (args.check !== undefined) parts.push(String(args.check));
-  if (args.for !== undefined) parts.push(`for ${args.for}`);
+  if (args.until !== undefined) parts.push(`until ${args.until}`);
   if (args.target !== undefined) parts.push(String(args.target));
   if (args.direction !== undefined) parts.push(String(args.direction));
   if (args.ref) parts.push(String(args.ref));
@@ -55,7 +55,8 @@ function callDetail(args: BrowserPilotParams): string | undefined {
   if (args.help_action) parts.push(String(args.help_action));
   if (args.path) parts.push(previewText(String(args.path), 60));
   if (args.name) parts.push(String(args.name));
-  if (args.id) parts.push(String(args.id));
+  if (args.request_id) parts.push(String(args.request_id));
+  if (args.rule_id) parts.push(String(args.rule_id));
   if (args.filter) parts.push(previewText(String(args.filter), 40));
   if (parts.length === 0) return undefined;
   return previewText(parts.join(" · "), CALL_DETAIL_CHARS);

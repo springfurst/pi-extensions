@@ -279,13 +279,13 @@ export async function screenshotResult(
     .filter((line): line is string => !!line)
     .join("\n");
   const content: BrowserPilotToolResult["content"] = [{ type: "text", text }];
-  if (params.inline && bytes <= MAX_INLINE_IMAGE_BYTES) {
+  if (params.inline_image && bytes <= MAX_INLINE_IMAGE_BYTES) {
     content.push({
       type: "image",
       data: readFileSync(path).toString("base64"),
       mimeType: `image/${format}`,
     });
-  } else if (params.inline) {
+  } else if (params.inline_image) {
     content[0] = {
       type: "text",
       text: `${text}\n\n[Image is ${bytes} bytes, above the ${MAX_INLINE_IMAGE_BYTES} byte inline cap.]`,
@@ -350,7 +350,7 @@ export async function consoleResult(
   session: BrowserPilotSession,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  if (params.op === "clear") {
+  if (params.operation === "clear") {
     const count = tab.console.length;
     tab.console.length = 0;
     return finalize(`Cleared ${count} console entries.`, {
@@ -380,7 +380,9 @@ export async function consoleResult(
               : "";
             const suffix = count > 1 ? ` ×${count}` : "";
             const line = `[${entry.level}] ${entry.text}${location}${suffix}`;
-            return params.detail && entry.stack ? `${line}\n${indentText(entry.stack)}` : line;
+            return params.stack_traces && entry.stack
+              ? `${line}\n${indentText(entry.stack)}`
+              : line;
           })
           .join("\n")
       : "No console entries.";
@@ -446,7 +448,7 @@ export async function harResult(
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
   const tab = await session.ensureTab(params.tab);
-  if (params.op === "start") {
+  if (params.operation === "start") {
     session.startHar();
     return finalize(
       [
@@ -456,7 +458,7 @@ export async function harResult(
       { action: "har", op: "start", tab: tab.handle, url: tab.page.url() },
     );
   }
-  if (params.op === "clear") {
+  if (params.operation === "clear") {
     const count = session.clearHar();
     return finalize(`Cleared ${count} HAR network entries.`, {
       action: "har",
@@ -497,7 +499,7 @@ export async function traceResult(
   _config: BrowserPilotConfig,
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
-  if (params.op === "start") {
+  if (params.operation === "start") {
     const info = await session.startTrace(params.tab);
     return finalize(`Trace started on tab ${info.handle}.`, {
       action: "trace",

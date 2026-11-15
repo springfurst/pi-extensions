@@ -82,20 +82,20 @@ describe("validateAction", () => {
   });
 
   it("requires the payload for a specific wait", () => {
-    expect(() => validateAction("wait", { for: "selector" })).toThrow(/requires selector/);
-    expect(() => validateAction("wait", { for: "selector", selector: "main" })).not.toThrow();
-    expect(() => validateAction("wait", { for: "human" })).not.toThrow();
+    expect(() => validateAction("wait", { until: "selector" })).toThrow(/requires selector/);
+    expect(() => validateAction("wait", { until: "selector", selector: "main" })).not.toThrow();
+    expect(() => validateAction("wait", { until: "human" })).not.toThrow();
   });
 
   it("requires a tab for tabs select and close", () => {
-    expect(() => validateAction("tabs", { op: "close" })).toThrow(/requires tab/);
-    expect(() => validateAction("tabs", { op: "close", tab: 1 })).not.toThrow();
-    expect(() => validateAction("tabs", { op: "list" })).not.toThrow();
+    expect(() => validateAction("tabs", { operation: "close" })).toThrow(/requires tab/);
+    expect(() => validateAction("tabs", { operation: "close", tab: 1 })).not.toThrow();
+    expect(() => validateAction("tabs", { operation: "list" })).not.toThrow();
   });
 
   it("requires a policy for dialog policy", () => {
-    expect(() => validateAction("dialog", { op: "policy" })).toThrow(/requires policy/);
-    expect(() => validateAction("dialog", { op: "policy", policy: "manual" })).not.toThrow();
+    expect(() => validateAction("dialog", { operation: "policy" })).toThrow(/requires policy/);
+    expect(() => validateAction("dialog", { operation: "policy", policy: "manual" })).not.toThrow();
   });
 
   it("validates connect and upload", () => {
@@ -107,28 +107,32 @@ describe("validateAction", () => {
   });
 
   it("validates cookie and storage operations", () => {
-    expect(() => validateAction("cookies", { op: "set", name: "a" })).toThrow(/name and value/);
-    expect(() => validateAction("cookies", { op: "set", name: "a", value: "b" })).toThrow(
+    expect(() => validateAction("cookies", { operation: "set", name: "a" })).toThrow(
+      /name and value/,
+    );
+    expect(() => validateAction("cookies", { operation: "set", name: "a", value: "b" })).toThrow(
       /url or domain/,
     );
     expect(() =>
       validateAction("cookies", {
-        op: "set",
+        operation: "set",
         name: "a",
         value: "b",
         url: "https://example.com",
       }),
     ).not.toThrow();
-    expect(() => validateAction("storage", { op: "get" })).toThrow(/requires key/);
-    expect(() => validateAction("storage", { op: "set", key: "a" })).toThrow(/key and value/);
-    expect(() => validateAction("storage", { op: "clear" })).not.toThrow();
+    expect(() => validateAction("storage", { operation: "get" })).toThrow(/requires key/);
+    expect(() => validateAction("storage", { operation: "set", key: "a" })).toThrow(
+      /key and value/,
+    );
+    expect(() => validateAction("storage", { operation: "clear" })).not.toThrow();
   });
 
   it("validates route and expect operations", () => {
-    expect(() => validateAction("route", { op: "add" })).toThrow(/route_action/);
-    expect(() => validateAction("route", { op: "remove" })).toThrow(/requires id/);
+    expect(() => validateAction("route", { operation: "add" })).toThrow(/route_action/);
+    expect(() => validateAction("route", { operation: "remove" })).toThrow(/requires rule_id/);
     expect(() =>
-      validateAction("route", { op: "add", route_action: "abort", url_pattern: "*" }),
+      validateAction("route", { operation: "add", route_action: "abort", url_pattern: "*" }),
     ).not.toThrow();
     expect(() => validateAction("expect", {})).toThrow(/requires check/);
     expect(() => validateAction("expect", { check: "text", expected: "hi" })).not.toThrow();
@@ -160,8 +164,8 @@ describe("validateAction", () => {
       /Nested steps/,
     );
     expect(() =>
-      validateAction("steps", { steps: [{ action: "wait", params: { for: "bogus" } }] }),
-    ).toThrow(/wait for must be one of/);
+      validateAction("steps", { steps: [{ action: "wait", params: { until: "bogus" } }] }),
+    ).toThrow(/wait until must be one of/);
     expect(() =>
       validateAction("steps", {
         steps: [{ action: "click", params: { ref: "e1", button: "sideways" } }],
@@ -169,7 +173,7 @@ describe("validateAction", () => {
     ).toThrow(/click button must be one of/);
     expect(() =>
       validateAction("steps", {
-        steps: [{ action: "dialog", params: { op: "policy", policy: "ask" } }],
+        steps: [{ action: "dialog", params: { operation: "policy", policy: "ask" } }],
       }),
     ).toThrow(/dialog policy must be one of/);
   });

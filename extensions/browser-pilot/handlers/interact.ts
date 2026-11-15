@@ -267,7 +267,7 @@ export async function scrollResult(
           params.direction === "up" || params.direction === "top" || params.direction === "bottom"
             ? params.direction
             : "down",
-        amount: params.amount ?? 500,
+        amount: params.pixels ?? 500,
       },
     );
   }
