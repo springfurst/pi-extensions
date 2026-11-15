@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the repository's tag-based release policy.
 
+## [Unreleased]
+
+### Changed
+
+- `browser-pilot`: the terminal view shows every call argument in a compact form, even when collapsed, and expanding a call reveals the full arguments. Expanded results show the full returned body under an `Output` heading instead of stopping at 24 lines. JavaScript expressions, structured arguments, eval results, HTML reads, Markdown reads, snapshots, network requests, console messages, steps, tabs, and help output use syntax highlighting or semantic colors. Expanded errors include the full message, arguments, and details.
+
 ## [0.3.0] - 2026-11-15
 
 ### Changed

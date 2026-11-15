@@ -64,8 +64,9 @@ Groups: lifecycle, navigation, tabs, inspect, interact, wait, state, batch. Call
       });
     },
 
-    renderCall: (args, theme) => renderPilotCall(args as BrowserPilotCall, theme),
-    renderResult: (result, options, theme) => renderPilotResult(result, options, theme),
+    renderCall: (args, theme, context) => renderPilotCall(args as BrowserPilotCall, theme, context),
+    renderResult: (result, options, theme, context) =>
+      renderPilotResult(result, options, theme, context),
   });
 
   pi.registerTool(tool);

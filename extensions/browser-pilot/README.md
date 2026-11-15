@@ -154,16 +154,23 @@ Most action results start with the current tab, URL, and title, followed by the 
 
 URLs in results are shortened for display: the origin and the start of the path stay readable, and a long query string or fragment collapses to `?…` or `#…`. The full URL is still available from `{action:"eval", params:{expression:"location.href"}}`.
 
-The terminal view of a call shows the action with the arguments that identify it, such as `browser-pilot type · e3 · "ada@example.com"`. The result view adds a one-line summary of what the action touched and what it produced, then the shortened URL and title:
+The terminal view keeps the call and its result separate. The call line always shows the action and a compact form of every argument, such as `browser-pilot click · ref=e5 · tab=2` or `browser-pilot eval · expression="document.title"`. Long values are shortened, `text_env` shows the variable name instead of its value, and the whole argument list is truncated to fit the terminal width.
+
+The result line shows the outcome, then the shortened URL and title:
 
 ```text
-browser-pilot click · e5
+browser-pilot click · ref=e5
 button "Sign in"
+selected US
 https://example.com/login
 "Sign in · Example"
 ```
 
-That summary is `subject` (the element, named the way snapshots name it) and `preview` (typed text, evaluated script, read content, selected options, pressed keys, or the awaited condition) in the structured details. Element subjects never include a password value. Typed text that came from `text_env` or `text_file` is reduced to a length and its source. When an action has neither, the first body line stands in. Expanding the result shows the full body without repeating the header or the summary line.
+That summary is `subject` (the element, named the way snapshots name it) and `preview` (typed text, read content, selected options, pressed keys, the awaited condition, or an action-specific result). Element subjects never include a password value. Typed text that came from `text_env` or `text_file` is reduced to a length and its source. When an action has neither, the first body line stands in. For `eval`, the result line previews the returned value rather than repeating the expression.
+
+Expanding a call shows the full arguments, including values that were shortened or omitted from the compact line. JavaScript expressions are syntax-highlighted, and structured argument values are shown as highlighted JSON. Expanding a result shows the full body under an `Output` heading. Readable page Markdown is rendered as Markdown, HTML is highlighted as HTML, and `eval` results are highlighted as JSON or HTML when their shape is recognizable. Snapshot refs, network status codes, console levels, steps, tabs, and help output use semantic colors. Expanded errors include the full message, arguments, and details.
+
+The expanded view has no fixed line cap. Output remains bounded by the model-safe limit and by the action-specific limits described below, so very large results can still be truncated. The expand key is pi's configured tool-expansion keybinding, `Ctrl+O` by default.
 
 A snapshot looks like this:
 
