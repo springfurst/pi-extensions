@@ -5,6 +5,7 @@ export const batchSpecs: Record<string, ActionSpec> = {
     name: "steps",
     group: "batch",
     summary: "Run several actions in order and return each step's result.",
+    when: "Use to run a short multi-step flow in one call and reduce round trips.",
     params: [
       {
         name: "steps",
@@ -20,7 +21,7 @@ export const batchSpecs: Record<string, ActionSpec> = {
       },
     ],
     examples: [
-      '{action:"steps", steps:[{action:"navigate", url:"https://example.com"},{action:"snapshot"}]}',
+      '{action:"steps",params:{steps:[{action:"navigate",params:{url:"https://example.com"}},{action:"snapshot"}]}}',
     ],
     related: ["help", "open"],
   },

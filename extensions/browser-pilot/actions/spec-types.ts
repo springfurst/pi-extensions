@@ -56,7 +56,16 @@ export interface ActionSpec {
   name: ActionName;
   group: ActionGroup;
   summary: string;
+  /** When to reach for this action, in one or two sentences. */
+  when: string;
   params: ParamSpec[];
   examples: string[];
   related?: string[];
+}
+
+export interface GroupSpec {
+  label: string;
+  summary: string;
+  description: string;
+  related?: ActionGroup[];
 }

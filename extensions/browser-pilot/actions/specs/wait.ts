@@ -7,6 +7,7 @@ export const waitSpecs: Record<string, ActionSpec> = {
     group: "wait",
     summary:
       "Wait for a selector, text, URL, network idle, a response, a JavaScript condition, or a human.",
+    when: "Use to wait for a selector, text, URL, network response, JavaScript condition, or a human to clear a challenge.",
     params: [
       {
         name: "for",
@@ -46,9 +47,9 @@ export const waitSpecs: Record<string, ActionSpec> = {
       timeout,
     ],
     examples: [
-      '{action:"wait", for:"selector", selector:"main"}',
-      '{action:"wait", for:"response", url_pattern:"/api/items"}',
-      '{action:"wait", for:"human", timeout_ms:300000}',
+      '{action:"wait",params:{for:"selector",selector:"main"}}',
+      '{action:"wait",params:{for:"response",url_pattern:"/api/items"}}',
+      '{action:"wait",params:{for:"human",timeout_ms:300000}}',
     ],
     related: ["navigate", "read", "network", "status"],
   },
@@ -57,6 +58,7 @@ export const waitSpecs: Record<string, ActionSpec> = {
     name: "expect",
     group: "wait",
     summary: "Assert page text, URL, title, values, attributes, visibility, or element counts.",
+    when: "Use to assert that the page reached the expected state, with polling until the timeout.",
     params: [
       {
         name: "check",
@@ -99,8 +101,8 @@ export const waitSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"expect", check:"text", expected:"Welcome"}',
-      '{action:"expect", check:"count", selector:".row", expected:"3"}',
+      '{action:"expect",params:{check:"text",expected:"Welcome"}}',
+      '{action:"expect",params:{check:"count",selector:".row",expected:"3"}}',
     ],
     related: ["wait", "snapshot"],
   },

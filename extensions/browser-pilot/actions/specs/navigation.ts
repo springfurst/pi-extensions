@@ -6,6 +6,7 @@ export const navigationSpecs: Record<string, ActionSpec> = {
     name: "navigate",
     group: "navigation",
     summary: "Navigate the current tab, or go back, forward, or reload.",
+    when: "Use to move the current tab to a URL, or to go back, forward, or reload.",
     params: [
       {
         name: "url",
@@ -30,8 +31,8 @@ export const navigationSpecs: Record<string, ActionSpec> = {
       timeout,
     ],
     examples: [
-      '{action:"navigate", url:"https://example.com"}',
-      '{action:"navigate", direction:"back"}',
+      '{action:"navigate",params:{url:"https://example.com"}}',
+      '{action:"navigate",params:{direction:"back"}}',
     ],
     related: ["snapshot", "read", "wait"],
   },

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { USAGE_SCHEMA_VERSION, createFileUsageLogger, type UsageRecord } from "../../lib/logging";
 import { PI_VERSION, TOOL_VERSION } from "../../lib/version";
 import { ACTION_NAMES, renderHelp, validateAction, type ActionName } from "./actions";
+import { flattenCall, stringParam } from "./call";
 import { loadBrowserPilotConfig } from "./config";
 import { shouldRunHeadless } from "./launcher";
 import { capForModel, capText, finalize, hint, pageHeader } from "./output";
@@ -45,6 +46,7 @@ import {
   storageResult,
 } from "./handlers/state";
 import type {
+  BrowserPilotCall,
   BrowserPilotConfig,
   BrowserPilotContext,
   BrowserPilotDetails,
@@ -112,10 +114,12 @@ const SAFE_OUTPUT_ACTIONS = new Set<ActionName>(["help", "metrics"]);
 
 /** Run one browser-pilot action, including validation, logging, and output caps. */
 export async function executeBrowserPilot(
-  params: BrowserPilotParams,
+  call: BrowserPilotCall,
   ctx: BrowserPilotContext,
 ): Promise<BrowserPilotToolResult> {
   const startedAt = Date.now();
+  const rawParams = call.params ?? {};
+  const params = flattenCall(call);
   const config = loadBrowserPilotConfig(ctx.cwd, {
     agentDir: ctx.agentDir,
     projectTrusted: ctx.trusted,
@@ -130,17 +134,21 @@ export async function executeBrowserPilot(
       })
     : undefined;
   let session: BrowserPilotSession | undefined;
-  let details: BrowserPilotDetails = { action: params.action };
+  let details: BrowserPilotDetails = { action: call.action };
   let outputText = "";
 
   try {
-    if (params.action === "help") {
-      outputText = renderHelp(params.topic);
+    if (call.action === "help") {
+      validateAction("help", rawParams);
+      outputText = renderHelp({
+        group: stringParam(rawParams, "group"),
+        action: stringParam(rawParams, "action"),
+      });
       details = { action: "help" };
       return finalize(outputText, details);
     }
 
-    validateAction(params.action, params as unknown as Record<string, unknown>);
+    validateAction(call.action, rawParams);
     session = getBrowserPilotSession({
       sessionId,
       agentDir: ctx.agentDir,
@@ -314,7 +322,7 @@ async function stepsResult(
   const lines: string[] = [];
   let failed = false;
   for (let index = 0; index < steps.length; index++) {
-    const step = steps[index] as unknown as BrowserPilotParams;
+    const step = steps[index] as BrowserPilotCall;
     const action = step.action;
     const label = `Step ${index + 1}: ${String(action)}`;
     if (!action || !ACTION_NAMES.includes(action)) {
@@ -326,15 +334,22 @@ async function stepsResult(
       continue;
     }
     try {
-      validateAction(action, step as unknown as Record<string, unknown>);
+      const stepParams = step.params ?? {};
+      validateAction(action, stepParams);
       let result: BrowserPilotToolResult;
       if (action === "help") {
-        result = finalize(renderHelp(step.topic), { action: "help" });
+        result = finalize(
+          renderHelp({
+            group: stringParam(stepParams, "group"),
+            action: stringParam(stepParams, "action"),
+          }),
+          { action: "help" },
+        );
       } else if (action === "status") {
         const status = await statusResult(session, config);
         result = finalize(status.text, status.details);
       } else {
-        result = await dispatch(step, session, config, ctx);
+        result = await dispatch(flattenCall(step), session, config, ctx);
       }
       const stepText = result.content
         .filter((block): block is { type: "text"; text: string } => block.type === "text")
@@ -454,7 +469,8 @@ export function safeParams(
   const out: Record<string, unknown> = {};
   const safeKeys = [
     "action",
-    "topic",
+    "group",
+    "help_action",
     "op",
     "target",
     "tab",
@@ -587,9 +603,7 @@ export function safeParams(
     }
   }
   if (params.steps !== undefined) {
-    out.steps = params.steps.map((step) =>
-      safeParams(step as unknown as BrowserPilotParams, config),
-    );
+    out.steps = params.steps.map((step) => safeParams(flattenCall(step), config));
   }
   return out;
 }

@@ -6,6 +6,7 @@ export const tabsSpecs: Record<string, ActionSpec> = {
     name: "tabs",
     group: "tabs",
     summary: "List, create, select, close, or clean up tabs.",
+    when: "Use to list, create, select, close, or clean up pages.",
     params: [
       {
         name: "op",
@@ -22,9 +23,9 @@ export const tabsSpecs: Record<string, ActionSpec> = {
       },
     ],
     examples: [
-      '{action:"tabs", op:"list"}',
-      '{action:"tabs", op:"new", url:"https://example.com"}',
-      '{action:"tabs", op:"select", tab:2}',
+      '{action:"tabs",params:{op:"list"}}',
+      '{action:"tabs",params:{op:"new",url:"https://example.com"}}',
+      '{action:"tabs",params:{op:"select",tab:2}}',
     ],
     related: ["open", "close"],
   },
@@ -33,6 +34,7 @@ export const tabsSpecs: Record<string, ActionSpec> = {
     name: "frames",
     group: "tabs",
     summary: "List frames, select a frame for read/eval/screenshot, or return to the main frame.",
+    when: "Use when content lives in an iframe and read, eval, or element screenshots need to target it.",
     params: [
       {
         name: "op",
@@ -49,9 +51,9 @@ export const tabsSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"frames", op:"list"}',
-      '{action:"frames", op:"select", frame:1}',
-      '{action:"frames", op:"main"}',
+      '{action:"frames",params:{op:"list"}}',
+      '{action:"frames",params:{op:"select",frame:1}}',
+      '{action:"frames",params:{op:"main"}}',
     ],
     related: ["snapshot", "read", "eval"],
   },

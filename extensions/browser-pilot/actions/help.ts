@@ -1,10 +1,24 @@
 import { BrowserPilotError } from "../types";
-import { ACTIONS, ACTION_NAMES, GROUP_LABELS } from "./registry";
+import { ACTIONS, ACTION_NAMES, GROUPS } from "./registry";
 import type { ActionGroup, ActionName } from "./spec-types";
 
-/** Validate required parameters and action-specific alternatives. */
+/** Validate required parameters, unknown fields, and action-specific alternatives. */
 export function validateAction(action: ActionName, params: Record<string, unknown>): void {
   const spec = ACTIONS[action];
+  const allowed = new Set(spec.params.map((param) => param.name));
+  for (const key of Object.keys(params)) {
+    if (allowed.has(key)) continue;
+    throw new BrowserPilotError(
+      `Unknown ${action} parameter "${key}".`,
+      `Valid params: ${spec.params.map((param) => param.name).join(", ") || "(none)"}\n${formatUsage(action)}`,
+    );
+  }
+
+  if (action === "help") {
+    validateHelpTarget(params);
+    return;
+  }
+
   for (const param of spec.params) {
     if (!param.required) continue;
     if (isMissing(params[param.name])) {
@@ -18,7 +32,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
   if (action === "navigate" && isMissing(params.url) && isMissing(params.direction)) {
     throw new BrowserPilotError(
       "navigate requires url, or direction back/forward/reload.",
-      'Example: {action:"navigate", url:"https://example.com"}',
+      'Example: {action:"navigate",params:{url:"https://example.com"}}',
     );
   }
   if (
@@ -58,14 +72,14 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (sources.length !== 1) {
       throw new BrowserPilotError(
         "type requires exactly one of text, text_file, or text_env.",
-        'Example: {action:"type", ref:"e3", text:"hello"}',
+        'Example: {action:"type",params:{ref:"e3",text:"hello"}}',
       );
     }
   }
   if (action === "select" && isMissing(params.ref) && isMissing(params.selector)) {
     throw new BrowserPilotError(
       "select requires ref or selector.",
-      'Example: {action:"select", ref:"e7", values:["US"]}',
+      'Example: {action:"select",params:{ref:"e7",values:["US"]}}',
     );
   }
   if (action === "eval") {
@@ -73,7 +87,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (sources.length !== 1) {
       throw new BrowserPilotError(
         "eval requires exactly one of expression or script_path.",
-        'Example: {action:"eval", expression:"document.title"}',
+        'Example: {action:"eval",params:{expression:"document.title"}}',
       );
     }
   }
@@ -82,7 +96,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (kind === "selector" && isMissing(params.selector) && isMissing(params.ref)) {
       throw new BrowserPilotError(
         "wait for:selector requires selector or ref.",
-        'Example: {action:"wait", for:"selector", selector:"main"}',
+        'Example: {action:"wait",params:{for:"selector",selector:"main"}}',
       );
     }
     const needs: Record<string, string> = {
@@ -95,7 +109,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (required && isMissing(params[required])) {
       throw new BrowserPilotError(
         `wait for:${kind} requires ${required}.`,
-        `Example: {action:"wait", for:"${kind}", ${required}:"..."}`,
+        `Example: {action:"wait",params:{for:"${kind}",${required}:"..."}}`,
       );
     }
   }
@@ -106,13 +120,13 @@ export function validateAction(action: ActionName, params: Record<string, unknow
   ) {
     throw new BrowserPilotError(
       `tabs op:${String(params.op)} requires tab.`,
-      'Example: {action:"tabs", op:"close", tab:2}',
+      'Example: {action:"tabs",params:{op:"close",tab:2}}',
     );
   }
   if (action === "frames" && params.op === "select" && isMissing(params.frame)) {
     throw new BrowserPilotError(
       "frames op:select requires frame.",
-      'Run {action:"frames", op:"list"} to see frame indices.',
+      'Run {action:"frames",params:{op:"list"}} to see frame indices.',
     );
   }
   if (action === "clipboard" && params.op === "write") {
@@ -122,26 +136,26 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (sources.length !== 1) {
       throw new BrowserPilotError(
         "clipboard op:write requires exactly one of text, text_file, or text_env.",
-        'Example: {action:"clipboard", op:"write", text:"hello"}',
+        'Example: {action:"clipboard",params:{op:"write",text:"hello"}}',
       );
     }
   }
   if (action === "network" && params.op === "get" && isMissing(params.id)) {
     throw new BrowserPilotError(
       "network op:get requires id.",
-      'Run {action:"network", op:"read"} to see request ids such as r12.',
+      'Run {action:"network",params:{op:"read"}} to see request ids such as r12.',
     );
   }
   if (action === "dialog" && params.op === "policy" && isMissing(params.policy)) {
     throw new BrowserPilotError(
       "dialog op:policy requires policy dismiss/accept/manual.",
-      'Example: {action:"dialog", op:"policy", policy:"manual"}',
+      'Example: {action:"dialog",params:{op:"policy",policy:"manual"}}',
     );
   }
   if (action === "connect" && isMissing(params.endpoint)) {
     throw new BrowserPilotError(
       "connect requires endpoint.",
-      'Example: {action:"connect", endpoint:"http://127.0.0.1:9222"}',
+      'Example: {action:"connect",params:{endpoint:"http://127.0.0.1:9222"}}',
     );
   }
   if (action === "upload") {
@@ -154,7 +168,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (!Array.isArray(params.files) || params.files.length === 0) {
       throw new BrowserPilotError(
         "upload requires a non-empty files array.",
-        'Example: {action:"upload", ref:"e4", files:["./resume.pdf"]}',
+        'Example: {action:"upload",params:{ref:"e4",files:["./resume.pdf"]}}',
       );
     }
   }
@@ -163,19 +177,19 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (op === "set" && (isMissing(params.name) || isMissing(params.value))) {
       throw new BrowserPilotError(
         "cookies op:set requires name and value.",
-        'Example: {action:"cookies", op:"set", name:"theme", value:"dark", url:"https://example.com"}',
+        'Example: {action:"cookies",params:{op:"set",name:"theme",value:"dark",url:"https://example.com"}}',
       );
     }
     if ((op === "set" || op === "delete") && isMissing(params.url) && isMissing(params.domain)) {
       throw new BrowserPilotError(
         `cookies op:${op} requires url or domain.`,
-        'Example: {action:"cookies", op:"delete", name:"theme", domain:"example.com"}',
+        'Example: {action:"cookies",params:{op:"delete",name:"theme",domain:"example.com"}}',
       );
     }
     if (op === "delete" && isMissing(params.name)) {
       throw new BrowserPilotError(
         "cookies op:delete requires name.",
-        'Example: {action:"cookies", op:"delete", name:"theme", domain:"example.com"}',
+        'Example: {action:"cookies",params:{op:"delete",name:"theme",domain:"example.com"}}',
       );
     }
   }
@@ -184,13 +198,13 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if ((op === "get" || op === "remove") && isMissing(params.key)) {
       throw new BrowserPilotError(
         `storage op:${op} requires key.`,
-        'Example: {action:"storage", op:"get", key:"token"}',
+        'Example: {action:"storage",params:{op:"get",key:"token"}}',
       );
     }
     if (op === "set" && (isMissing(params.key) || isMissing(params.value))) {
       throw new BrowserPilotError(
         "storage op:set requires key and value.",
-        'Example: {action:"storage", op:"set", key:"theme", value:"dark"}',
+        'Example: {action:"storage",params:{op:"set",key:"theme",value:"dark"}}',
       );
     }
   }
@@ -199,13 +213,13 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (op === "remove" && isMissing(params.id)) {
       throw new BrowserPilotError(
         "route op:remove requires id.",
-        'Example: {action:"route", op:"remove", id:"rt1"}',
+        'Example: {action:"route",params:{op:"remove",id:"rt1"}}',
       );
     }
     if (op === "add" && isMissing(params.route_action)) {
       throw new BrowserPilotError(
         "route op:add requires route_action.",
-        'Example: {action:"route", op:"add", url_pattern:"*://*/*.png", route_action:"abort"}',
+        'Example: {action:"route",params:{op:"add",url_pattern:"*://*/*.png",route_action:"abort"}}',
       );
     }
   }
@@ -213,7 +227,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (isMissing(params.check)) {
       throw new BrowserPilotError(
         "expect requires check.",
-        'Example: {action:"expect", check:"text", expected:"Welcome"}',
+        'Example: {action:"expect",params:{check:"text",expected:"Welcome"}}',
       );
     }
     if (
@@ -222,7 +236,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     ) {
       throw new BrowserPilotError(
         `expect check:${String(params.check)} requires expected.`,
-        'Example: {action:"expect", check:"count", selector:".row", expected:"3"}',
+        'Example: {action:"expect",params:{check:"count",selector:".row",expected:"3"}}',
       );
     }
     const needsTarget = ["value", "attribute", "visible", "hidden", "count"];
@@ -239,7 +253,7 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (params.check === "attribute" && isMissing(params.attribute)) {
       throw new BrowserPilotError(
         "expect check:attribute requires attribute.",
-        'Example: {action:"expect", check:"attribute", ref:"e4", attribute:"href", expected:"/docs"}',
+        'Example: {action:"expect",params:{check:"attribute",ref:"e4",attribute:"href",expected:"/docs"}}',
       );
     }
   }
@@ -247,10 +261,24 @@ export function validateAction(action: ActionName, params: Record<string, unknow
     if (!Array.isArray(params.steps) || params.steps.length === 0) {
       throw new BrowserPilotError(
         "steps requires a non-empty steps array.",
-        'Example: {action:"steps", steps:[{action:"navigate", url:"https://example.com"},{action:"snapshot"}]}',
+        'Example: {action:"steps",params:{steps:[{action:"navigate",params:{url:"https://example.com"}},{action:"snapshot"}]}}',
       );
     }
-    for (const step of params.steps as Array<Record<string, unknown>>) {
+    for (const rawStep of params.steps) {
+      if (typeof rawStep !== "object" || rawStep === null || Array.isArray(rawStep)) {
+        throw new BrowserPilotError(
+          "Each step must be an object with action and optional params.",
+          'Example: {action:"steps",params:{steps:[{action:"snapshot"}]}}',
+        );
+      }
+      const step = rawStep as Record<string, unknown>;
+      const extra = Object.keys(step).filter((key) => key !== "action" && key !== "params");
+      if (extra.length > 0) {
+        throw new BrowserPilotError(
+          `Each step must use {action, params?}; unexpected ${extra.map((key) => `"${key}"`).join(", ")}.`,
+          'Example: {action:"steps",params:{steps:[{action:"navigate",params:{url:"https://example.com"}},{action:"snapshot"}]}}',
+        );
+      }
       const stepAction = step.action;
       if (typeof stepAction !== "string" || !ACTION_NAMES.includes(stepAction as ActionName)) {
         throw new BrowserPilotError(`Unknown step action "${String(stepAction)}".`);
@@ -258,7 +286,14 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       if (stepAction === "steps") {
         throw new BrowserPilotError("Nested steps are not allowed.");
       }
-      validateAction(stepAction as ActionName, step);
+      const stepParams = step.params;
+      if (
+        stepParams !== undefined &&
+        (typeof stepParams !== "object" || stepParams === null || Array.isArray(stepParams))
+      ) {
+        throw new BrowserPilotError(`Step ${stepAction} params must be an object.`);
+      }
+      validateAction(stepAction as ActionName, (stepParams ?? {}) as Record<string, unknown>);
     }
   }
 
@@ -278,8 +313,8 @@ export function validateAction(action: ActionName, params: Record<string, unknow
       action === "tabs" ? params.op : undefined,
       ["list", "new", "select", "close", "close_others", "cleanup"],
     ],
-    ["console op", action === "console" ? params.op : undefined, ["read", "clear"]],
-    ["network op", action === "network" ? params.op : undefined, ["read", "get", "clear"]],
+    ["console op", action === "console" ? params.op : undefined, ["read", "list", "clear"]],
+    ["network op", action === "network" ? params.op : undefined, ["read", "list", "get", "clear"]],
     ["frames op", action === "frames" ? params.op : undefined, ["list", "select", "main"]],
     ["state op", action === "state" ? params.op : undefined, ["export", "import"]],
     ["clipboard op", action === "clipboard" ? params.op : undefined, ["read", "write"]],
@@ -399,50 +434,73 @@ export function validateAction(action: ActionName, params: Record<string, unknow
   }
 }
 
+function validateHelpTarget(params: Record<string, unknown>): void {
+  const group = params.group;
+  const action = params.action;
+  if (group !== undefined && action !== undefined) {
+    throw new BrowserPilotError(
+      "help takes group or action, not both.",
+      'Examples: {action:"help",params:{group:"inspect"}} or {action:"help",params:{action:"snapshot"}}',
+    );
+  }
+  if (group !== undefined && !(String(group).toLowerCase() in GROUPS)) {
+    throw new BrowserPilotError(
+      `Unknown help group "${String(group)}".`,
+      `Groups: ${Object.keys(GROUPS).join(", ")}`,
+    );
+  }
+  if (action !== undefined && !ACTION_NAMES.includes(String(action).toLowerCase() as ActionName)) {
+    throw new BrowserPilotError(
+      `Unknown help action "${String(action)}".`,
+      `Groups: ${Object.keys(GROUPS).join(", ")}\nCall {action:"help"} to start from the catalog.`,
+    );
+  }
+}
+
 /** Render help for the catalog, a group, or one action. */
-export function renderHelp(topic?: string): string {
-  if (!topic || topic === "all") return renderCatalog();
-  const action = topic.toLowerCase() as ActionName;
-  if (action in ACTIONS) {
-    return formatUsage(action);
+export function renderHelp(target: { group?: string; action?: string } = {}): string {
+  if (target.group && target.action) {
+    throw new BrowserPilotError("help takes group or action, not both.");
   }
-  const group = topic.toLowerCase() as ActionGroup;
-  if (group in GROUP_LABELS) {
-    return renderGroup(group);
+  if (target.action) {
+    const action = target.action.toLowerCase() as ActionName;
+    if (action in ACTIONS) return formatUsage(action);
+    throw new BrowserPilotError(
+      `Unknown help action "${target.action}".`,
+      `Groups: ${Object.keys(GROUPS).join(", ")}\nCall {action:"help"} to start from the catalog.`,
+    );
   }
-  throw new BrowserPilotError(
-    `Unknown help topic "${topic}".`,
-    `Topics: ${[...Object.keys(GROUP_LABELS), ...ACTION_NAMES].join(", ")}`,
-  );
+  if (target.group) {
+    const group = target.group.toLowerCase() as ActionGroup;
+    if (group in GROUPS) return renderGroup(group);
+    throw new BrowserPilotError(
+      `Unknown help group "${target.group}".`,
+      `Groups: ${Object.keys(GROUPS).join(", ")}`,
+    );
+  }
+  return renderCatalog();
 }
 
 function renderCatalog(): string {
-  const rows: Array<[string, string]> = [];
-  for (const group of Object.keys(GROUP_LABELS) as ActionGroup[]) {
-    const actions = ACTION_NAMES.filter((name) => ACTIONS[name].group === group);
-    rows.push([GROUP_LABELS[group], actions.map((name) => actionLabel(name)).join(", ")]);
-  }
+  const rows = (Object.keys(GROUPS) as ActionGroup[]).map((group) => {
+    const spec = GROUPS[group];
+    return [spec.label, spec.summary];
+  });
   const width = Math.max(...rows.map(([label]) => label.length));
   const lines = [
-    "browser-pilot actions",
+    "browser-pilot topics",
     "",
-    "Each row is a group. The right column lists the actions in that group.",
+    'Call shape: {action:"<action>", params:{...}}. Omit params when the action takes none.',
+    "Discover the tool in three steps:",
+    '  {action:"help"}                               list topic groups',
+    '  {action:"help", params:{group:"inspect"}}     actions in a group',
+    '  {action:"help", params:{action:"snapshot"}}   parameters and examples',
     "",
-    `${"Group".padEnd(width)}  Actions`,
+    `${"Group".padEnd(width)}  What it covers`,
     `${"-".repeat(width)}  ${"-".repeat(58)}`,
-    ...rows.map(([label, actions]) => `${label.padEnd(width)}  ${actions}`),
+    ...rows.map(([label, summary]) => `${label.padEnd(width)}  ${summary}`),
     "",
-    "Common workflows:",
-    "  Read a page:        open → snapshot → read",
-    "  Fill a form:        snapshot → type → click",
-    "  Debug an SPA:       console → network",
-    '  Handle a challenge: wait {for:"human"}',
-    '  Record traffic:     har {op:"start"} → browse → har {op:"stop"}',
-    "  Batch actions:      steps {steps:[...]}",
-    '  Clean up:           tabs {op:"list"} → tabs {op:"close", tab:N}',
-    "",
-    'Call {action:"help", topic:"<action>"} for one action, or',
-    'topic:"<group>" for lifecycle, tabs, navigation, inspect, interact, wait, state, or batch.',
+    "Call help with a group or an action for the next level.",
     "",
     "Hints and suggested next steps in results are optional suggestions.",
   ];
@@ -450,35 +508,25 @@ function renderCatalog(): string {
 }
 
 function renderGroup(group: ActionGroup): string {
+  const spec = GROUPS[group];
   const actions = ACTION_NAMES.filter((name) => ACTIONS[name].group === group);
-  const lines = [`${GROUP_LABELS[group]} actions`, ""];
+  const lines = [`${spec.label} — ${spec.summary}`, "", spec.description, "", "Actions:"];
   for (const name of actions) {
     lines.push(`  ${name.padEnd(12)} ${ACTIONS[name].summary}`);
   }
-  lines.push("");
-  lines.push(`Call {action:"help", topic:"<action>"} for parameters and examples.`);
-  return lines.join("\n");
-}
-
-function actionLabel(name: ActionName): string {
-  if (name === "tabs") return "tabs (op: list | new | select | close | close_others | cleanup)";
-  if (name === "wait") {
-    return "wait (for: selector | text | url | network_idle | function | human)";
+  if (spec.related && spec.related.length > 0) {
+    lines.push("");
+    lines.push(`Related groups: ${spec.related.map((name) => GROUPS[name].label).join(", ")}`);
   }
-  if (name === "navigate") return "navigate (url, or direction: back | forward | reload)";
-  if (name === "cookies") return "cookies (op: list | set | delete | clear)";
-  if (name === "storage") return "storage (op: get | set | remove | clear | keys)";
-  if (name === "download") return "download (op: list | wait | clear)";
-  if (name === "har") return "har (op: start | stop | clear)";
-  if (name === "trace") return "trace (op: start | stop)";
-  if (name === "route") return "route (op: add | remove | clear | list)";
-  return name;
+  lines.push("");
+  lines.push(`Next: {action:"help", params:{action:"${actions[0]}"}} for parameters and examples.`);
+  return lines.join("\n");
 }
 
 /** Full usage block for one action. */
 export function formatUsage(action: ActionName): string {
   const spec = ACTIONS[action];
-  const lines = [`${action} — ${spec.summary}`, "", "Params:"];
+  const lines = [`${action} — ${spec.summary}`, "", `Use when: ${spec.when}`, "", "Params:"];
   if (spec.params.length === 0) {
     lines.push("  (none)");
   } else {
@@ -493,8 +541,12 @@ export function formatUsage(action: ActionName): string {
     }
   }
   lines.push("");
-  lines.push(`Example: ${spec.examples[0]}`);
+  lines.push("Examples:");
+  for (const example of spec.examples) {
+    lines.push(`  ${example}`);
+  }
   if (spec.related && spec.related.length > 0) {
+    lines.push("");
     lines.push(`Related: ${spec.related.join(", ")}`);
   }
   return lines.join("\n");

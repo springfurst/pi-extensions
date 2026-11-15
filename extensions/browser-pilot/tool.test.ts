@@ -11,7 +11,7 @@ import {
   summarizeOutput,
   type BrowserPilotToolResult,
 } from "./tool";
-import type { BrowserPilotConfig, BrowserPilotContext, BrowserPilotParams } from "./types";
+import type { BrowserPilotCall, BrowserPilotConfig, BrowserPilotContext } from "./types";
 
 const dirs: string[] = [];
 
@@ -42,20 +42,23 @@ function text(result: BrowserPilotToolResult): string {
     .join("\n");
 }
 
-async function run(params: BrowserPilotParams, ctx: BrowserPilotContext) {
-  return executeBrowserPilot(params, ctx);
+async function run(call: BrowserPilotCall, ctx: BrowserPilotContext) {
+  return executeBrowserPilot(call, ctx);
 }
 
 describe("executeBrowserPilot", () => {
   it("serves help without a browser", async () => {
     const result = await run({ action: "help" }, context(tempDir(), "help-1"));
     expect(result.isError).toBeUndefined();
-    expect(text(result)).toContain("Each row is a group");
+    expect(text(result)).toContain("browser-pilot topics");
     expect(text(result)).toContain("snapshot");
   });
 
   it("serves per-action help", async () => {
-    const result = await run({ action: "help", topic: "click" }, context(tempDir(), "help-2"));
+    const result = await run(
+      { action: "help", params: { action: "click" } },
+      context(tempDir(), "help-2"),
+    );
     expect(text(result)).toContain("click —");
     expect(text(result)).toContain("ref");
   });
@@ -67,7 +70,10 @@ describe("executeBrowserPilot", () => {
   });
 
   it("does not launch Chrome for a tab list", async () => {
-    const result = await run({ action: "tabs", op: "list" }, context(tempDir(), "tabs-1"));
+    const result = await run(
+      { action: "tabs", params: { op: "list" } },
+      context(tempDir(), "tabs-1"),
+    );
     expect(result.isError).toBeUndefined();
     expect(text(result)).toContain("No browser is running");
   });
@@ -156,7 +162,7 @@ describe("safeParams", () => {
     const steps = safeParams(
       {
         action: "steps",
-        steps: [{ action: "type", ref: "e1", text: "secret" }],
+        steps: [{ action: "type", params: { ref: "e1", text: "secret" } }],
       },
       config,
     );

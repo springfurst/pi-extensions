@@ -11,30 +11,43 @@ describe("action registry", () => {
     }
   });
 
-  it("renders an explicit group/action catalog", () => {
+  it("renders a group-first catalog", () => {
     const help = renderHelp();
-    expect(help).toContain("Each row is a group");
+    expect(help).toContain("browser-pilot topics");
+    expect(help).toContain("Discover the tool in three steps");
     expect(help).toContain("Group");
-    expect(help).toContain("Actions");
-    for (const name of ACTION_NAMES) {
-      expect(help).toContain(name);
+    for (const group of [
+      "Lifecycle",
+      "Navigation",
+      "Tabs",
+      "Inspect",
+      "Interact",
+      "Wait",
+      "State",
+      "Batch",
+    ]) {
+      expect(help).toContain(group);
     }
-    expect(help).toContain("Common workflows");
+    expect(help).not.toContain("Common workflows");
     expect(help).toContain("optional suggestions");
   });
 
   it("renders a group and one action", () => {
-    expect(renderHelp("interact")).toContain("click");
-    expect(renderHelp("interact")).toContain("type");
-    const click = renderHelp("click");
+    const group = renderHelp({ group: "interact" });
+    expect(group).toContain("click");
+    expect(group).toContain("type");
+    expect(group).toContain("Related groups:");
+    const click = renderHelp({ action: "click" });
     expect(click).toContain("ref");
     expect(click).toContain("selector");
-    expect(click).toContain("Example:");
+    expect(click).toContain("Use when:");
+    expect(click).toContain("Examples:");
     expect(click).toContain("Related:");
   });
 
-  it("rejects an unknown topic", () => {
-    expect(() => renderHelp("nope")).toThrow(BrowserPilotError);
+  it("rejects an unknown group or action", () => {
+    expect(() => renderHelp({ group: "nope" })).toThrow(BrowserPilotError);
+    expect(() => renderHelp({ action: "nope" })).toThrow(BrowserPilotError);
   });
 });
 
@@ -139,26 +152,53 @@ describe("validateAction", () => {
     expect(() => validateAction("steps", {})).toThrow(/steps/);
     expect(() => validateAction("steps", { steps: [] })).toThrow(/steps/);
     expect(() =>
-      validateAction("steps", { steps: [{ action: "navigate", url: "https://example.com" }] }),
+      validateAction("steps", {
+        steps: [{ action: "navigate", params: { url: "https://example.com" } }],
+      }),
     ).not.toThrow();
-    expect(() => validateAction("steps", { steps: [{ action: "steps", steps: [] }] })).toThrow(
+    expect(() => validateAction("steps", { steps: [{ action: "steps", params: {} }] })).toThrow(
       /Nested steps/,
     );
-    expect(() => validateAction("steps", { steps: [{ action: "wait", for: "bogus" }] })).toThrow(
-      /wait for must be one of/,
-    );
     expect(() =>
-      validateAction("steps", { steps: [{ action: "click", ref: "e1", button: "sideways" }] }),
+      validateAction("steps", { steps: [{ action: "wait", params: { for: "bogus" } }] }),
+    ).toThrow(/wait for must be one of/);
+    expect(() =>
+      validateAction("steps", {
+        steps: [{ action: "click", params: { ref: "e1", button: "sideways" } }],
+      }),
     ).toThrow(/click button must be one of/);
     expect(() =>
-      validateAction("steps", { steps: [{ action: "dialog", op: "policy", policy: "ask" }] }),
+      validateAction("steps", {
+        steps: [{ action: "dialog", params: { op: "policy", policy: "ask" } }],
+      }),
     ).toThrow(/dialog policy must be one of/);
+  });
+
+  it("rejects unknown parameters with the valid list", () => {
+    expect(() => validateAction("read", { urls: "https://example.com" })).toThrow(
+      /Unknown read parameter "urls"/,
+    );
+    try {
+      validateAction("read", { urls: "https://example.com" });
+    } catch (error) {
+      expect(error).toBeInstanceOf(BrowserPilotError);
+      expect((error as BrowserPilotError).hint).toContain("Valid params:");
+    }
+  });
+
+  it("validates help group and action targets", () => {
+    expect(() => validateAction("help", { group: "inspect" })).not.toThrow();
+    expect(() => validateAction("help", { action: "click" })).not.toThrow();
+    expect(() => validateAction("help", { group: "inspect", action: "click" })).toThrow(/not both/);
+    expect(() => validateAction("help", { group: "nope" })).toThrow(/Unknown help group/);
+    expect(() => validateAction("help", { action: "nope" })).toThrow(/Unknown help action/);
   });
 
   it("formats a usage block", () => {
     const usage = formatUsage("click");
     expect(usage).toContain("click —");
+    expect(usage).toContain("Use when:");
     expect(usage).toContain("Params:");
-    expect(usage).toContain("Example:");
+    expect(usage).toContain("Examples:");
   });
 });

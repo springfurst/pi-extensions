@@ -22,7 +22,7 @@ function render(details: BrowserPilotDetails, body: string, expanded = false): s
 
 describe("browser-pilot renderers", () => {
   it("shows the action with its target and arguments in the call line", () => {
-    const line = renderPilotCall({ action: "click", ref: "e5", tab: 2 } as never, theme)
+    const line = renderPilotCall({ action: "click", params: { ref: "e5", tab: 2 } } as never, theme)
       .render(200)
       .join("\n")
       .trimEnd();
@@ -33,12 +33,12 @@ describe("browser-pilot renderers", () => {
 
   it("shows typed text and a text_env source without its value", () => {
     expect(
-      renderPilotCall({ action: "type", ref: "e3", text: "hello" } as never, theme)
+      renderPilotCall({ action: "type", params: { ref: "e3", text: "hello" } } as never, theme)
         .render(200)
         .join("\n"),
     ).toContain('"hello"');
     const envLine = renderPilotCall(
-      { action: "type", ref: "e3", text_env: "SITE_PASSWORD" } as never,
+      { action: "type", params: { ref: "e3", text_env: "SITE_PASSWORD" } } as never,
       theme,
     )
       .render(200)
@@ -48,7 +48,7 @@ describe("browser-pilot renderers", () => {
 
   it("shortens a long URL in the call line", () => {
     const long = `https://www.google.com/search?q=${"x".repeat(200)}`;
-    const line = renderPilotCall({ action: "open", url: long } as never, theme)
+    const line = renderPilotCall({ action: "open", params: { url: long } } as never, theme)
       .render(200)
       .join("\n");
     expect(line).not.toContain("x".repeat(50));

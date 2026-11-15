@@ -228,10 +228,17 @@ export interface BrowserPilotLoggingConfig extends LoggingConfig {
   includeSensitiveArgs: boolean;
 }
 
-/** The flat tool input shared by every action. */
+/** The tool input: one action plus its action-specific parameters. */
+export interface BrowserPilotCall {
+  action: ActionName;
+  params?: Record<string, unknown>;
+}
+
+/** The flat internal shape shared by every action handler. */
 export interface BrowserPilotParams {
   action: ActionName;
-  topic?: string;
+  group?: string;
+  help_action?: string;
   profile?: string;
   url?: string;
   direction?: "back" | "forward" | "reload" | "up" | "down" | "top" | "bottom";
@@ -328,7 +335,7 @@ export interface BrowserPilotParams {
   expected?: string;
   operator?: string;
   attribute?: string;
-  steps?: Array<Record<string, unknown>>;
+  steps?: BrowserPilotCall[];
   stop_on_error?: boolean;
 }
 

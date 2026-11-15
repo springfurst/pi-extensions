@@ -6,6 +6,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "dialog",
     group: "state",
     summary: "Accept or dismiss a pending dialog, or change the automatic dialog policy.",
+    when: "Use to accept or dismiss a native dialog, or to switch to manual dialog handling.",
     params: [
       {
         name: "op",
@@ -26,7 +27,10 @@ export const stateSpecs: Record<string, ActionSpec> = {
         description: "Automatic policy when op:policy.",
       },
     ],
-    examples: ['{action:"dialog", op:"accept"}', '{action:"dialog", op:"policy", policy:"manual"}'],
+    examples: [
+      '{action:"dialog",params:{op:"accept"}}',
+      '{action:"dialog",params:{op:"policy",policy:"manual"}}',
+    ],
     related: ["status"],
   },
 
@@ -34,6 +38,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "download",
     group: "state",
     summary: "List, wait for, or clear files downloaded by the browser.",
+    when: "Use to list, wait for, or clear files downloaded by the browser.",
     params: [
       {
         name: "op",
@@ -50,8 +55,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       timeout,
     ],
     examples: [
-      '{action:"download", op:"list"}',
-      '{action:"download", op:"wait", timeout_ms:30000}',
+      '{action:"download",params:{op:"list"}}',
+      '{action:"download",params:{op:"wait",timeout_ms:30000}}',
     ],
     related: ["click", "status"],
   },
@@ -60,6 +65,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "cookies",
     group: "state",
     summary: "List, set, delete, or clear browser cookies.",
+    when: "Use to inspect or change cookies for the current browser.",
     params: [
       {
         name: "op",
@@ -93,8 +99,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"cookies", op:"list"}',
-      '{action:"cookies", op:"set", name:"theme", value:"dark", url:"https://example.com"}',
+      '{action:"cookies",params:{op:"list"}}',
+      '{action:"cookies",params:{op:"set",name:"theme",value:"dark",url:"https://example.com"}}',
     ],
     related: ["storage", "status"],
   },
@@ -103,6 +109,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "storage",
     group: "state",
     summary: "Read or mutate localStorage and sessionStorage.",
+    when: "Use to inspect or change localStorage or sessionStorage for the current tab.",
     params: [
       {
         name: "op",
@@ -123,8 +130,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"storage", op:"get", key:"token"}',
-      '{action:"storage", op:"set", key:"theme", value:"dark"}',
+      '{action:"storage",params:{op:"get",key:"token"}}',
+      '{action:"storage",params:{op:"set",key:"theme",value:"dark"}}',
     ],
     related: ["cookies", "eval"],
   },
@@ -133,6 +140,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "state",
     group: "state",
     summary: "Export or import cookies and per-origin storage as a versioned JSON bundle.",
+    when: "Use to export or import cookies and per-origin storage for reuse in another session.",
     params: [
       {
         name: "op",
@@ -150,8 +158,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"state", op:"export", path:"./auth.json"}',
-      '{action:"state", op:"import", path:"./auth.json"}',
+      '{action:"state",params:{op:"export",path:"./auth.json"}}',
+      '{action:"state",params:{op:"import",path:"./auth.json"}}',
     ],
     related: ["cookies", "storage", "open"],
   },
@@ -160,6 +168,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "clipboard",
     group: "state",
     summary: "Read from or write to the system clipboard.",
+    when: "Use to read or write the system clipboard from a secure page.",
     params: [
       {
         name: "op",
@@ -185,7 +194,10 @@ export const stateSpecs: Record<string, ActionSpec> = {
       },
       tab,
     ],
-    examples: ['{action:"clipboard", op:"read"}', '{action:"clipboard", op:"write", text:"hello"}'],
+    examples: [
+      '{action:"clipboard",params:{op:"read"}}',
+      '{action:"clipboard",params:{op:"write",text:"hello"}}',
+    ],
     related: ["type", "eval"],
   },
 
@@ -193,6 +205,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "emulate",
     group: "state",
     summary: "Apply or reset viewport, media, network, CPU, locale, and geolocation emulation.",
+    when: "Use to test a viewport, user agent, locale, timezone, network, CPU, geolocation, or permission state.",
     params: [
       { name: "width", type: "number", description: "Viewport width." },
       { name: "height", type: "number", description: "Viewport height." },
@@ -246,8 +259,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"emulate", width:390, height:844, is_mobile:true, has_touch:true}',
-      '{action:"emulate", reset:true}',
+      '{action:"emulate",params:{width:390,height:844,is_mobile:true,has_touch:true}}',
+      '{action:"emulate",params:{reset:true}}',
     ],
     related: ["status", "screenshot"],
   },
@@ -256,6 +269,7 @@ export const stateSpecs: Record<string, ActionSpec> = {
     name: "route",
     group: "state",
     summary: "Add, remove, list, or clear request interception rules.",
+    when: "Use to intercept, block, delay, or fulfill requests for the pages this session manages.",
     params: [
       {
         name: "op",
@@ -289,8 +303,8 @@ export const stateSpecs: Record<string, ActionSpec> = {
       { name: "delay_ms", type: "number", description: "Delay before continuing." },
     ],
     examples: [
-      '{action:"route", op:"add", url_pattern:"*://*/*.png", route_action:"abort"}',
-      '{action:"route", op:"list"}',
+      '{action:"route",params:{op:"add",url_pattern:"*://*/*.png",route_action:"abort"}}',
+      '{action:"route",params:{op:"list"}}',
     ],
     related: ["network", "wait"],
   },

@@ -2,7 +2,8 @@ import type { Component } from "@earendil-works/pi-tui";
 import { Text } from "@earendil-works/pi-tui";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { previewText, shortenUrl } from "./output";
-import type { BrowserPilotDetails, BrowserPilotParams } from "./types";
+import { flattenCall } from "./call";
+import type { BrowserPilotCall, BrowserPilotDetails, BrowserPilotParams } from "./types";
 
 interface RenderResultLike {
   details?: unknown;
@@ -50,7 +51,8 @@ function callDetail(args: BrowserPilotParams): string | undefined {
   if (args.format !== undefined) parts.push(String(args.format));
   if (args.level !== undefined) parts.push(String(args.level));
   if (args.policy !== undefined) parts.push(String(args.policy));
-  if (args.topic) parts.push(String(args.topic));
+  if (args.group) parts.push(`group ${String(args.group)}`);
+  if (args.help_action) parts.push(String(args.help_action));
   if (args.path) parts.push(previewText(String(args.path), 60));
   if (args.name) parts.push(String(args.name));
   if (args.id) parts.push(String(args.id));
@@ -59,7 +61,8 @@ function callDetail(args: BrowserPilotParams): string | undefined {
   return previewText(parts.join(" · "), CALL_DETAIL_CHARS);
 }
 
-export function renderPilotCall(args: BrowserPilotParams, theme: Theme): Component {
+export function renderPilotCall(call: BrowserPilotCall, theme: Theme): Component {
+  const args = flattenCall(call);
   const action = typeof args.action === "string" ? args.action : "browser-pilot";
   let text = theme.fg("toolTitle", theme.bold("browser-pilot "));
   text += theme.fg("accent", action);

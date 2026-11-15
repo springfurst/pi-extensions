@@ -6,6 +6,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "snapshot",
     group: "inspect",
     summary: "Return a compact accessibility-style tree with stable refs for interaction.",
+    when: "Use before clicking, typing, selecting, or inspecting the interactive structure; refs expire after navigation or a new snapshot.",
     params: [
       {
         name: "interactive",
@@ -21,7 +22,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       selector,
       tab,
     ],
-    examples: ['{action:"snapshot"}', '{action:"snapshot", selector:"main"}'],
+    examples: ['{action:"snapshot"}', '{action:"snapshot",params:{selector:"main"}}'],
     related: ["click", "type", "read"],
   },
 
@@ -29,6 +30,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "read",
     group: "inspect",
     summary: "Read the page as markdown, text, raw HTML, or a structural outline.",
+    when: "Use to get page content as markdown, text, HTML, or an outline.",
     params: [
       {
         name: "format",
@@ -51,7 +53,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       },
       tab,
     ],
-    examples: ['{action:"read"}', '{action:"read", format:"text", selector:"main"}'],
+    examples: ['{action:"read"}', '{action:"read",params:{format:"text",selector:"main"}}'],
     related: ["snapshot", "eval"],
   },
 
@@ -59,6 +61,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "eval",
     group: "inspect",
     summary: "Evaluate JavaScript in the page and return a JSON-safe result.",
+    when: "Use for computed values, DOM work, or data that read cannot express.",
     params: [
       {
         name: "expression",
@@ -90,8 +93,8 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       timeout,
     ],
     examples: [
-      '{action:"eval", expression:"document.title"}',
-      '{action:"eval", script_path:"scripts/scrape.js"}',
+      '{action:"eval",params:{expression:"document.title"}}',
+      '{action:"eval",params:{script_path:"scripts/scrape.js"}}',
     ],
     related: ["read", "console"],
   },
@@ -100,6 +103,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "screenshot",
     group: "inspect",
     summary: "Save a screenshot of the viewport, full page, or one element.",
+    when: "Use for visual checks or when an image is easier to inspect than the DOM.",
     params: [
       {
         name: "path",
@@ -142,8 +146,8 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     ],
     examples: [
       '{action:"screenshot"}',
-      '{action:"screenshot", full_page:true}',
-      '{action:"screenshot", annotate:true}',
+      '{action:"screenshot",params:{full_page:true}}',
+      '{action:"screenshot",params:{annotate:true}}',
     ],
     related: ["snapshot", "read"],
   },
@@ -152,6 +156,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "metrics",
     group: "inspect",
     summary: "Show JavaScript heap, DOM, navigation timing, and resource metrics.",
+    when: "Use to check memory, DOM size, navigation timing, or resource totals.",
     params: [tab],
     examples: ['{action:"metrics"}'],
     related: ["trace", "network", "har"],
@@ -161,6 +166,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "console",
     group: "inspect",
     summary: "Read or clear captured console messages and page errors.",
+    when: "Use to see page logs and errors, especially when a page misbehaves without a visible failure.",
     params: [
       {
         name: "op",
@@ -188,8 +194,8 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"console", op:"read"}',
-      '{action:"console", op:"read", level:"error", detail:true}',
+      '{action:"console",params:{op:"read"}}',
+      '{action:"console",params:{op:"read",level:"error",detail:true}}',
     ],
     related: ["network", "eval"],
   },
@@ -199,6 +205,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     group: "inspect",
     summary:
       "Read a compact request overview, inspect one request by id, or clear captured activity.",
+    when: "Use to inspect requests, responses, status codes, and bodies.",
     params: [
       {
         name: "op",
@@ -236,8 +243,8 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       tab,
     ],
     examples: [
-      '{action:"network", op:"read", filter:"/api/"}',
-      '{action:"network", op:"get", id:"r12"}',
+      '{action:"network",params:{op:"read",filter:"/api/"}}',
+      '{action:"network",params:{op:"get",id:"r12"}}',
     ],
     related: ["console", "wait", "har"],
   },
@@ -246,6 +253,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "pdf",
     group: "inspect",
     summary: "Print the current page to a PDF file.",
+    when: "Use to print the current page to a PDF.",
     params: [
       {
         name: "path",
@@ -262,7 +270,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     ],
     examples: [
       '{action:"pdf"}',
-      '{action:"pdf", path:"./page.pdf", paper_format:"A4", print_background:true}',
+      '{action:"pdf",params:{path:"./page.pdf",paper_format:"A4",print_background:true}}',
     ],
     related: ["screenshot", "read"],
   },
@@ -271,6 +279,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "har",
     group: "inspect",
     summary: "Record network activity and export a HAR 1.2 file.",
+    when: "Use when you need a full network capture rather than the bounded network buffer.",
     params: [
       {
         name: "op",
@@ -282,7 +291,10 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       { name: "path", type: "string", description: "Output path for op:stop." },
       tab,
     ],
-    examples: ['{action:"har", op:"start"}', '{action:"har", op:"stop", path:"./network.har"}'],
+    examples: [
+      '{action:"har",params:{op:"start"}}',
+      '{action:"har",params:{op:"stop",path:"./network.har"}}',
+    ],
     related: ["network", "trace"],
   },
 
@@ -290,6 +302,7 @@ export const inspectSpecs: Record<string, ActionSpec> = {
     name: "trace",
     group: "inspect",
     summary: "Record a Chrome trace and write it as JSON.",
+    when: "Use for detailed performance tracing when metrics are not enough.",
     params: [
       {
         name: "op",
@@ -301,7 +314,10 @@ export const inspectSpecs: Record<string, ActionSpec> = {
       { name: "path", type: "string", description: "Output path for op:stop." },
       tab,
     ],
-    examples: ['{action:"trace", op:"start"}', '{action:"trace", op:"stop", path:"./trace.json"}'],
+    examples: [
+      '{action:"trace",params:{op:"start"}}',
+      '{action:"trace",params:{op:"stop",path:"./trace.json"}}',
+    ],
     related: ["har", "network"],
   },
 };

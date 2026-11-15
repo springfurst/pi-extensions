@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startServer, type TestServer } from "../web_fetch/__fixtures__/test-server";
 import { disposeAllSessions, disposeAllSessionsSync } from "./session";
 import { executeBrowserPilot, type BrowserPilotToolResult } from "./tool";
-import type { BrowserPilotContext, BrowserPilotParams } from "./types";
+import type { BrowserPilotCall, BrowserPilotContext, BrowserPilotParams } from "./types";
 
 const PAGE = `<!doctype html><html><head><title>Pilot Test</title></head><body>
 <h1>Pilot Test</h1>
@@ -149,8 +149,14 @@ describe("browser-pilot live", () => {
     };
   }
 
-  async function run(params: BrowserPilotParams): Promise<BrowserPilotToolResult> {
-    return executeBrowserPilot(params, ctx());
+  async function run(
+    input: BrowserPilotParams | BrowserPilotCall,
+  ): Promise<BrowserPilotToolResult> {
+    if ("params" in input && input.params !== undefined) {
+      return executeBrowserPilot(input as BrowserPilotCall, ctx());
+    }
+    const { action, ...rest } = input as BrowserPilotParams;
+    return executeBrowserPilot({ action, params: rest }, ctx());
   }
 
   function text(result: BrowserPilotToolResult): string {
@@ -167,7 +173,7 @@ describe("browser-pilot live", () => {
   }
 
   it("opens, snapshots, clicks, types, selects, reads, evaluates, screenshots, and closes", async () => {
-    const opened = await run({ action: "open", url: `${server.origin}/` });
+    const opened = await run({ action: "open", params: { url: `${server.origin}/` } });
     expect(opened.isError).toBeUndefined();
     expect(text(opened)).toContain("Pilot Test");
 
@@ -289,10 +295,10 @@ describe("browser-pilot live", () => {
     expect(shot.isError).toBeUndefined();
     expect(existsSync(shotPath)).toBe(true);
 
-    const tabs = await run({ action: "tabs", op: "list" });
+    const tabs = await run({ action: "tabs", params: { op: "list" } });
     expect(text(tabs)).toContain("Tabs: 1/3");
 
-    const closed = await run({ action: "close", target: "browser" });
+    const closed = await run({ action: "close", params: { target: "browser" } });
     expect(closed.isError).toBeUndefined();
   });
 
@@ -308,7 +314,7 @@ describe("browser-pilot live", () => {
 
     const read = await run({ action: "read", format: "text" });
     expect(text(read)).not.toContain("Checking your browser");
-    await run({ action: "close", target: "browser" });
+    await run({ action: "close", params: { target: "browser" } });
   });
 
   it("handles hidden assertions, blank-tab reuse, and noopener popups", async () => {
@@ -347,7 +353,7 @@ describe("browser-pilot live", () => {
     const popupRef = refFor(snapshot, /\[(e\d+)\] button "Open"/);
     await run({ action: "click", ref: popupRef });
     await new Promise((resolve) => setTimeout(resolve, 500));
-    const tabs = text(await run({ action: "tabs", op: "list" }));
+    const tabs = text(await run({ action: "tabs", params: { op: "list" } }));
     expect(tabs).toContain("/result");
   });
 
@@ -460,8 +466,8 @@ describe("browser-pilot live", () => {
     const steps = await run({
       action: "steps",
       steps: [
-        { action: "navigate", url: `${server.origin}/result` },
-        { action: "expect", check: "title", expected: "Result" },
+        { action: "navigate", params: { url: `${server.origin}/result` } },
+        { action: "expect", params: { check: "title", expected: "Result" } },
       ],
     });
     expect(steps.isError, text(steps)).toBeUndefined();
@@ -496,7 +502,7 @@ describe("browser-pilot live", () => {
     expect(existsSync(pdfPath)).toBe(true);
     expect(statSync(pdfPath).size).toBeGreaterThan(0);
 
-    await run({ action: "close", target: "browser" });
+    await run({ action: "close", params: { target: "browser" } });
   });
 
   it("supports selector snapshots, ref reads, frames, network ids, doctor, metrics, state, and annotations", async () => {
@@ -622,7 +628,7 @@ describe("browser-pilot live", () => {
     expect(clipboardRead.isError, text(clipboardRead)).toBeUndefined();
     expect(text(clipboardRead)).toContain("pilot-clipboard");
 
-    await run({ action: "close", target: "browser" });
+    await run({ action: "close", params: { target: "browser" } });
   });
 
   it("opens local files that match the configured globs", async () => {
@@ -649,11 +655,11 @@ describe("browser-pilot live", () => {
     expect(blocked.isError).toBe(true);
     expect(text(blocked)).toContain("does not match localFileGlobs");
 
-    await run({ action: "close", target: "browser" });
+    await run({ action: "close", params: { target: "browser" } });
   });
 
   it("follows same-document history without claiming the entry is missing", async () => {
-    await run({ action: "open", url: `${server.origin}/` });
+    await run({ action: "open", params: { url: `${server.origin}/` } });
     await run({ action: "eval", expression: "history.pushState({}, '', '/same-document')" });
 
     const back = await run({ action: "navigate", direction: "back" });
@@ -668,7 +674,7 @@ describe("browser-pilot live", () => {
     const forwardPath = await run({ action: "eval", expression: "location.pathname" });
     expect(text(forwardPath)).toContain("/same-document");
 
-    await run({ action: "close", target: "browser" });
+    await run({ action: "close", params: { target: "browser" } });
   });
 });
 
@@ -712,7 +718,7 @@ describe("browser-pilot profiles and tabs live", () => {
 
   it("fails a second session on the shared profile, then succeeds after close", async () => {
     const first = await executeBrowserPilot(
-      { action: "open", url: `${server.origin}/` },
+      { action: "open", params: { url: `${server.origin}/` } },
       ctx("profile-a"),
     );
     expect(first.isError).toBeUndefined();
@@ -727,21 +733,21 @@ describe("browser-pilot profiles and tabs live", () => {
     ).toContain("already in use");
 
     const closed = await executeBrowserPilot(
-      { action: "close", target: "browser" },
+      { action: "close", params: { target: "browser" } },
       ctx("profile-a"),
     );
     expect(closed.isError).toBeUndefined();
 
     const retry = await executeBrowserPilot({ action: "open" }, ctx("profile-b"));
     expect(retry.isError).toBeUndefined();
-    await executeBrowserPilot({ action: "close", target: "browser" }, ctx("profile-b"));
+    await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx("profile-b"));
   });
 
   it("attaches to an existing DevTools endpoint and disconnects without closing it", async () => {
     const idA = "external-a";
     const idB = "external-b";
     const opened = await executeBrowserPilot(
-      { action: "open", url: `${server.origin}/` },
+      { action: "open", params: { url: `${server.origin}/` } },
       ctx(idA),
     );
     expect(opened.isError).toBeUndefined();
@@ -750,14 +756,14 @@ describe("browser-pilot profiles and tabs live", () => {
     expect(port).toBeGreaterThan(0);
 
     const attached = await executeBrowserPilot(
-      { action: "connect", endpoint: `http://127.0.0.1:${port}` },
+      { action: "connect", params: { endpoint: `http://127.0.0.1:${port}` } },
       ctx(idB),
     );
     expect(attached.isError).toBeUndefined();
-    const tabs = await executeBrowserPilot({ action: "tabs", op: "list" }, ctx(idB));
+    const tabs = await executeBrowserPilot({ action: "tabs", params: { op: "list" } }, ctx(idB));
     expect(tabs.isError).toBeUndefined();
 
-    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(idB));
+    await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx(idB));
     const statusA2 = await executeBrowserPilot({ action: "status" }, ctx(idA));
     expect(
       statusA2.content
@@ -765,12 +771,15 @@ describe("browser-pilot profiles and tabs live", () => {
         .map((block) => block.text)
         .join("\n"),
     ).toContain("Browser: running");
-    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(idA));
+    await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx(idA));
   });
 
   it("recovers from a stale instance record after a crash", async () => {
     const id = "stale";
-    const first = await executeBrowserPilot({ action: "open", url: `${server.origin}/` }, ctx(id));
+    const first = await executeBrowserPilot(
+      { action: "open", params: { url: `${server.origin}/` } },
+      ctx(id),
+    );
     expect(first.isError).toBeUndefined();
     const status = await executeBrowserPilot({ action: "status" }, ctx(id));
     expect(status.details.pid).toBeTypeOf("number");
@@ -780,15 +789,18 @@ describe("browser-pilot profiles and tabs live", () => {
 
     const second = await executeBrowserPilot({ action: "open" }, ctx(id));
     expect(second.isError).toBeUndefined();
-    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(id));
+    await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx(id));
   });
 
   it("nudges when the tab limit is reached", async () => {
     const id = "tabs-limit";
-    const opened = await executeBrowserPilot({ action: "open", url: `${server.origin}/` }, ctx(id));
+    const opened = await executeBrowserPilot(
+      { action: "open", params: { url: `${server.origin}/` } },
+      ctx(id),
+    );
     expect(opened.isError).toBeUndefined();
     const second = await executeBrowserPilot(
-      { action: "tabs", op: "new", url: `${server.origin}/` },
+      { action: "tabs", params: { op: "new", url: `${server.origin}/` } },
       ctx(id),
     );
     expect(second.isError).toBe(true);
@@ -798,6 +810,6 @@ describe("browser-pilot profiles and tabs live", () => {
         .map((block) => block.text)
         .join("\n"),
     ).toContain("Tab limit reached");
-    await executeBrowserPilot({ action: "close", target: "browser" }, ctx(id));
+    await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx(id));
   });
 });

@@ -6,6 +6,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "click",
     group: "interact",
     summary: "Click an element by ref or selector.",
+    when: "Use to activate a button, link, checkbox, or other element; run snapshot first and use a ref.",
     params: [
       ref,
       selector,
@@ -36,7 +37,10 @@ export const interactSpecs: Record<string, ActionSpec> = {
       tab,
       timeout,
     ],
-    examples: ['{action:"click", ref:"e12"}', '{action:"click", selector:"button.primary"}'],
+    examples: [
+      '{action:"click",params:{ref:"e12"}}',
+      '{action:"click",params:{selector:"button.primary"}}',
+    ],
     related: ["snapshot", "type", "wait"],
   },
 
@@ -44,6 +48,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "type",
     group: "interact",
     summary: "Fill or type text into an input, textarea, or contenteditable element.",
+    when: "Use to fill an input, textarea, or contenteditable element; run snapshot first and use a ref.",
     params: [
       ref,
       selector,
@@ -89,8 +94,8 @@ export const interactSpecs: Record<string, ActionSpec> = {
       timeout,
     ],
     examples: [
-      '{action:"type", ref:"e3", text:"hello@example.com"}',
-      '{action:"type", selector:"input[name=password]", text_env:"SITE_PASSWORD", submit:true}',
+      '{action:"type",params:{ref:"e3",text:"hello@example.com"}}',
+      '{action:"type",params:{selector:"input[name=password]",text_env:"SITE_PASSWORD",submit:true}}',
     ],
     related: ["snapshot", "click", "press"],
   },
@@ -99,6 +104,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "press",
     group: "interact",
     summary: "Press a key or key combination, optionally after focusing an element.",
+    when: "Use to send a key or key combination, optionally after focusing an element.",
     params: [
       {
         name: "key",
@@ -111,7 +117,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
       tab,
       timeout,
     ],
-    examples: ['{action:"press", key:"Enter"}', '{action:"press", key:"Escape"}'],
+    examples: ['{action:"press",params:{key:"Enter"}}', '{action:"press",params:{key:"Escape"}}'],
     related: ["type", "click"],
   },
 
@@ -119,6 +125,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "select",
     group: "interact",
     summary: "Select one or more options in a select element.",
+    when: "Use to choose one or more options in a select element.",
     params: [
       ref,
       selector,
@@ -131,7 +138,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
       tab,
       timeout,
     ],
-    examples: ['{action:"select", ref:"e7", values:["US"]}'],
+    examples: ['{action:"select",params:{ref:"e7",values:["US"]}}'],
     related: ["snapshot", "click"],
   },
 
@@ -139,6 +146,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "scroll",
     group: "interact",
     summary: "Scroll an element into view, or scroll the page up, down, to top, or to bottom.",
+    when: "Use to bring an element into view or move the page.",
     params: [
       ref,
       selector,
@@ -157,7 +165,10 @@ export const interactSpecs: Record<string, ActionSpec> = {
       },
       tab,
     ],
-    examples: ['{action:"scroll", direction:"bottom"}', '{action:"scroll", ref:"e20"}'],
+    examples: [
+      '{action:"scroll",params:{direction:"bottom"}}',
+      '{action:"scroll",params:{ref:"e20"}}',
+    ],
     related: ["snapshot", "wait"],
   },
 
@@ -165,8 +176,9 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "hover",
     group: "interact",
     summary: "Move the mouse over an element.",
+    when: "Use to reveal menus or tooltips that appear on hover.",
     params: [ref, selector, tab, timeout],
-    examples: ['{action:"hover", ref:"e4"}'],
+    examples: ['{action:"hover",params:{ref:"e4"}}'],
     related: ["click", "snapshot"],
   },
 
@@ -174,6 +186,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "highlight",
     group: "interact",
     summary: "Flash an element outline for human handoff.",
+    when: "Use to point a human at an element in the visible window.",
     params: [
       ref,
       selector,
@@ -191,7 +204,10 @@ export const interactSpecs: Record<string, ActionSpec> = {
       },
       tab,
     ],
-    examples: ['{action:"highlight", ref:"e5"}', '{action:"highlight", selector:"#submit"}'],
+    examples: [
+      '{action:"highlight",params:{ref:"e5"}}',
+      '{action:"highlight",params:{selector:"#submit"}}',
+    ],
     related: ["snapshot", "screenshot"],
   },
 
@@ -199,6 +215,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
     name: "upload",
     group: "interact",
     summary: "Set the files of a file input element.",
+    when: "Use to set files on a file input.",
     params: [
       ref,
       selector,
@@ -211,7 +228,7 @@ export const interactSpecs: Record<string, ActionSpec> = {
       tab,
       timeout,
     ],
-    examples: ['{action:"upload", ref:"e4", files:["./resume.pdf"]}'],
+    examples: ['{action:"upload",params:{ref:"e4",files:["./resume.pdf"]}}'],
     related: ["snapshot", "click"],
   },
 };
