@@ -177,6 +177,8 @@ export interface BrowserPilotDetails {
   challenge?: ChallengeInfo;
   truncated?: boolean;
   savedPath?: string;
+  /** True when the result contains page-derived text. */
+  pageText?: boolean;
   tabs?: TabInfo[];
   notes?: string[];
   durationMs?: number;

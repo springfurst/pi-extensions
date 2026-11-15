@@ -5,7 +5,7 @@ import { ACTION_NAMES, renderHelp, validateAction, type ActionName } from "./act
 import { flattenCall, stringParam } from "./call";
 import { loadBrowserPilotConfig } from "./config";
 import { shouldRunHeadless } from "./launcher";
-import { capForModel, capText, finalize, hint, pageHeader } from "./output";
+import { appendPageTextReminder, capForModel, capText, finalize, hint, pageHeader } from "./output";
 import { stripPageHeader } from "./tool-helpers";
 import { networkResult } from "./network";
 import { getBrowserPilotSession, type BrowserPilotSession } from "./session";
@@ -95,6 +95,17 @@ const TINY_ACTIONS = new Set<ActionName>([
 
 const MAX_STEP_CHARS = 4_000;
 
+/** Actions whose result can contain page-derived text. */
+const PAGE_TEXT_ACTIONS = new Set<ActionName>([
+  "console",
+  "eval",
+  "expect",
+  "network",
+  "read",
+  "snapshot",
+  "steps",
+]);
+
 /** Actions whose output contains values that must never reach usage logs. */
 const REDACTED_OUTPUT_ACTIONS = new Set<ActionName>(["clipboard", "cookies", "storage"]);
 
@@ -163,7 +174,10 @@ export async function executeBrowserPilot(
       return finalize(outputText, details);
     }
 
-    const result = await dispatch(params, session, config, ctx);
+    let result = await dispatch(params, session, config, ctx);
+    if (!result.isError && returnsPageText(call.action, params)) {
+      result = appendPageTextReminder(result);
+    }
     outputText = result.content
       .filter((block): block is { type: "text"; text: string } => block.type === "text")
       .map((block) => block.text)
@@ -386,6 +400,13 @@ async function stepsResult(
   });
   if (failed) result.isError = true;
   return result;
+}
+
+/** Whether an action result can contain page-derived text. */
+function returnsPageText(action: ActionName, params: BrowserPilotParams): boolean {
+  if (action === "wait") return params.until === "response" && params.include_body === true;
+  if (action === "console" || action === "network") return params.operation !== "clear";
+  return PAGE_TEXT_ACTIONS.has(action);
 }
 
 function currentPageLine(session: BrowserPilotSession): string | undefined {

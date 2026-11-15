@@ -52,6 +52,7 @@ describe("executeBrowserPilot", () => {
     expect(result.isError).toBeUndefined();
     expect(text(result)).toContain("browser-pilot topics");
     expect(text(result)).toContain("snapshot");
+    expect(text(result)).not.toContain("untrusted data");
   });
 
   it("serves per-action help", async () => {
@@ -67,6 +68,7 @@ describe("executeBrowserPilot", () => {
     const result = await run({ action: "status" }, context(tempDir(), "status-1"));
     expect(result.isError).toBeUndefined();
     expect(text(result)).toContain("Browser: not running");
+    expect(text(result)).not.toContain("untrusted data");
   });
 
   it("does not launch Chrome for a tab list", async () => {

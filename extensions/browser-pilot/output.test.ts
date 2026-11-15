@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendPageTextReminder,
   capText,
   formatChallenge,
   formatTabs,
   hint,
+  PAGE_TEXT_REMINDER,
   pageHeader,
   previewText,
   shortenUrl,
@@ -96,6 +98,20 @@ describe("output helpers", () => {
     expect(previewText("  a\n  b\t c  ")).toBe("a b c");
     expect(previewText("abcdef", 4)).toBe("abc…");
     expect(previewText("abcdef", 10)).toBe("abcdef");
+  });
+
+  it("appends the page-text reminder to content results", () => {
+    const result = appendPageTextReminder({
+      content: [{ type: "text", text: "page body" }],
+      details: { action: "read" },
+    });
+    expect(result.content[0]).toMatchObject({
+      type: "text",
+      text: `page body
+
+${PAGE_TEXT_REMINDER}`,
+    });
+    expect(result.details.pageText).toBe(true);
   });
 
   it("explains truncation and the escape hatch", () => {
