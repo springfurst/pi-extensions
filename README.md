@@ -5,18 +5,18 @@ A collection of tools and extensions for [pi](https://pi.dev), the coding agent.
 ## Install
 
 ```sh
-pi install git:github.com/springfurst/pi-extensions@v0.2.2
+pi install git:github.com/springfurst/pi-extensions@v0.3.0
 ```
 
 The named ref pins the install. Use `--local` to write the declaration to a project's `.pi/settings.json` instead of global settings.
 
 ## Tools
 
-| Tool            | Description                                                                                                                                   |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `web_fetch`     | Read a URL as markdown or text, with site-specific handlers, line selectors, and browser rendering for JavaScript pages.                      |
-| `web_search`    | Search keyless web engines — including browser-backed Google, Ecosia, and Mojeek — and return ranked, deduplicated sources.                   |
-| `browser-pilot` | Pilot a visible Chrome window: navigate, inspect, click, type, run JavaScript, record traffic, emulate devices, and hand CAPTCHAs to a human. |
+| Tool            | Description                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web_fetch`     | Read a URL as markdown or text, with site-specific handlers, line selectors, and browser rendering for JavaScript pages.                          |
+| `web_search`    | Search keyless web engines — including browser-backed Google, Ecosia, and Mojeek — and return ranked, deduplicated sources.                       |
+| `browser-pilot` | Browse the web in a real Chrome window: read pages, inspect and interact with them, run JavaScript, record traffic, and hand CAPTCHAs to a human. |
 
 Each tool ships its own README under `extensions/<tool>/`, covering parameters, output, configuration, behavior, and limitations.
 
@@ -74,7 +74,7 @@ A package entry in pi's settings can narrow which resources load from this repos
 {
   "packages": [
     {
-      "source": "git:github.com/springfurst/pi-extensions@v0.2.2",
+      "source": "git:github.com/springfurst/pi-extensions@v0.3.0",
       "extensions": ["extensions/<tool>/**"]
     }
   ]
