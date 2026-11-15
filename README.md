@@ -5,7 +5,7 @@ A collection of tools and extensions for [pi](https://pi.dev), the coding agent.
 ## Install
 
 ```sh
-pi install git:github.com/springfurst/pi-extensions@v0.3.0
+pi install git:github.com/springfurst/pi-extensions@v0.4.0
 ```
 
 The named ref pins the install. Use `--local` to write the declaration to a project's `.pi/settings.json` instead of global settings.
@@ -74,7 +74,7 @@ A package entry in pi's settings can narrow which resources load from this repos
 {
   "packages": [
     {
-      "source": "git:github.com/springfurst/pi-extensions@v0.3.0",
+      "source": "git:github.com/springfurst/pi-extensions@v0.4.0",
       "extensions": ["extensions/<tool>/**"]
     }
   ]
