@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startServer, type TestServer } from "../web_fetch/__fixtures__/test-server";
+import { startServer, type TestServer } from "../../lib/web/__fixtures__/server";
 import { disposeAllSessions, disposeAllSessionsSync } from "./session";
 import { executeBrowserPilot, type BrowserPilotToolResult } from "./tool";
 import type { BrowserPilotCall, BrowserPilotContext, BrowserPilotParams } from "./types";

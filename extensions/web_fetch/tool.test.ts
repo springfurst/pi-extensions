@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { UsageLogger, UsageRecord } from "../../lib/logging";
 import { TOOL_VERSION } from "../../lib/version";
-import { startServer, type RequestHandler } from "./__fixtures__/test-server";
+import { startServer, type RequestHandler } from "../../lib/web/__fixtures__/server";
 import { executeWebFetch, type WebFetchParams } from "./tool";
 
 let dir: string;

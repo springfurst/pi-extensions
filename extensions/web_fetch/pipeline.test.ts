@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BrowserRenderer } from "../../lib/browser";
 import { DEFAULT_CONFIG } from "../../lib/config";
-import { startServer, type RequestHandler } from "./__fixtures__/test-server";
+import { startServer, type RequestHandler } from "../../lib/web/__fixtures__/server";
 import { createFetchContext } from "./context";
 import { renderUrl } from "./pipeline";
 

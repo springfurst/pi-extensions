@@ -12,7 +12,7 @@ import {
   resolveBrowserExecutable,
 } from "../../lib/browser";
 import { DEFAULT_CONFIG } from "../../lib/config";
-import { startServer } from "./__fixtures__/test-server";
+import { startServer } from "../../lib/web/__fixtures__/server";
 import { executeWebFetch } from "./tool";
 
 let dir: string;

@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_POLITENESS_CONFIG,
-  type HostPolicy,
-  type PolitenessConfig,
-} from "../../lib/web/config";
-import { RequestLimiter } from "../../lib/web/limiter";
-import { HostStateStore, type Politeness } from "../../lib/web/politeness";
-import { RobotsCache } from "../../lib/web/robots";
-import { DEFAULT_USER_AGENT } from "../../lib/web/user-agent";
-import { startServer } from "./__fixtures__/test-server";
-import { loadPage } from "./fetch";
+import { DEFAULT_POLITENESS_CONFIG, type HostPolicy, type PolitenessConfig } from "./config";
+import { RequestLimiter } from "./limiter";
+import { HostStateStore, type Politeness } from "./politeness";
+import { RobotsCache } from "./robots";
+import { DEFAULT_USER_AGENT } from "./user-agent";
+import { startServer } from "./__fixtures__/server";
+import { transfer } from "./transfer";
 
 function politeness(
   overrides: Partial<PolitenessConfig> = {},
@@ -43,14 +39,14 @@ async function robotsServer(body: string) {
   return { server, seen };
 }
 
-describe("loadPage", () => {
+describe("transfer", () => {
   it("fetches a body and content type", async () => {
     const server = await startServer((_req, res) => {
       res.setHeader("Content-Type", "text/plain");
       res.end("hello");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      const result = await transfer(`${server.origin}/`, { allowPrivateHosts: true });
       expect(result.ok).toBe(true);
       expect(result.content).toBe("hello");
       expect(result.contentType).toBe("text/plain");
@@ -66,7 +62,7 @@ describe("loadPage", () => {
       res.end(Buffer.from("café", "latin1"));
     });
     try {
-      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      const result = await transfer(`${server.origin}/`, { allowPrivateHosts: true });
       expect(result.content).toBe("café");
     } finally {
       await server.close();
@@ -83,7 +79,7 @@ describe("loadPage", () => {
       res.end("arrived");
     });
     try {
-      const result = await loadPage(`${server.origin}/start`, { allowPrivateHosts: true });
+      const result = await transfer(`${server.origin}/start`, { allowPrivateHosts: true });
       expect(result.ok).toBe(true);
       expect(result.content).toBe("arrived");
       expect(result.finalUrl).toBe(`${server.origin}/end`);
@@ -98,7 +94,7 @@ describe("loadPage", () => {
       res.end();
     });
     try {
-      const result = await loadPage(`${server.origin}/loop`, { allowPrivateHosts: true });
+      const result = await transfer(`${server.origin}/loop`, { allowPrivateHosts: true });
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/redirect/i);
     } finally {
@@ -118,7 +114,7 @@ describe("loadPage", () => {
       res.end("ok");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      const result = await transfer(`${server.origin}/`, { allowPrivateHosts: true });
       expect(result.ok).toBe(true);
       expect(result.content).toBe("ok");
       expect(requests).toBe(2);
@@ -135,7 +131,7 @@ describe("loadPage", () => {
       res.end("blocked");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      const result = await transfer(`${server.origin}/`, { allowPrivateHosts: true });
       expect(result.ok).toBe(false);
       expect(result.status).toBe(403);
       expect(seen).toEqual([DEFAULT_USER_AGENT]);
@@ -153,7 +149,7 @@ describe("loadPage", () => {
       res.end("ok");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, {
+      const result = await transfer(`${server.origin}/`, {
         allowPrivateHosts: true,
         politeness: politeness({ userAgent: "my-bot/2.0", contact: "ops@example.org" }),
       });
@@ -168,7 +164,7 @@ describe("loadPage", () => {
   it("refuses a disallowed path under robots strict", async () => {
     const { server, seen } = await robotsServer("User-agent: *\nDisallow: /private\n");
     try {
-      const result = await loadPage(`${server.origin}/private/secret`, {
+      const result = await transfer(`${server.origin}/private/secret`, {
         allowPrivateHosts: true,
         politeness: politeness({ robots: "strict" }),
       });
@@ -184,7 +180,7 @@ describe("loadPage", () => {
     const { server } = await robotsServer("User-agent: *\nDisallow: /private\n");
     try {
       const policy = politeness({ robots: "warn" });
-      const first = await loadPage(`${server.origin}/private/secret`, {
+      const first = await transfer(`${server.origin}/private/secret`, {
         allowPrivateHosts: true,
         politeness: policy,
       });
@@ -192,7 +188,7 @@ describe("loadPage", () => {
       expect(first.content).toBe("page");
       expect(first.notes?.join("\n")).toMatch(/robots\.txt disallows/);
 
-      const second = await loadPage(`${server.origin}/private/other`, {
+      const second = await transfer(`${server.origin}/private/other`, {
         allowPrivateHosts: true,
         politeness: policy,
       });
@@ -216,7 +212,7 @@ describe("loadPage", () => {
     });
     try {
       const started = Date.now();
-      const result = await loadPage(`${server.origin}/`, {
+      const result = await transfer(`${server.origin}/`, {
         allowPrivateHosts: true,
         politeness: politeness({ maxRetryWaitSeconds: 30 }),
       });
@@ -247,7 +243,7 @@ describe("loadPage", () => {
       res.end("ok");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, {
+      const result = await transfer(`${server.origin}/`, {
         allowPrivateHosts: true,
         politeness: politeness({}, {}),
       });
@@ -271,7 +267,7 @@ describe("loadPage", () => {
       res.end("<html><title>Just a moment...</title><div id='challenge-platform'></div></html>");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, {
+      const result = await transfer(`${server.origin}/`, {
         allowPrivateHosts: true,
         politeness: politeness(),
       });
@@ -297,9 +293,9 @@ describe("loadPage", () => {
     });
     try {
       const policy = politeness({}, { [new URL(server.origin).host]: { minIntervalMs: 120 } });
-      await loadPage(`${server.origin}/`, { allowPrivateHosts: true, politeness: policy });
+      await transfer(`${server.origin}/`, { allowPrivateHosts: true, politeness: policy });
       const first = arrivals[0]!;
-      await loadPage(`${server.origin}/`, { allowPrivateHosts: true, politeness: policy });
+      await transfer(`${server.origin}/`, { allowPrivateHosts: true, politeness: policy });
       expect(arrivals.length).toBe(2);
       expect(arrivals[1]! - first).toBeGreaterThanOrEqual(100);
     } finally {
@@ -312,7 +308,7 @@ describe("loadPage", () => {
       res.end("0123456789");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true, maxBytes: 4 });
+      const result = await transfer(`${server.origin}/`, { allowPrivateHosts: true, maxBytes: 4 });
       expect(result.ok).toBe(true);
       expect(result.content).toBe("0123");
       expect(result.truncated).toBe(true);
@@ -332,7 +328,7 @@ describe("loadPage", () => {
       res.end();
     });
     try {
-      const result = await loadPage(`${source.origin}/`, {
+      const result = await transfer(`${source.origin}/`, {
         allowPrivateHosts: true,
         headers: { Authorization: "Bearer secret" },
       });
@@ -356,7 +352,7 @@ describe("loadPage", () => {
       res.end("ok");
     });
     try {
-      const result = await loadPage(`${server.origin}/start`, {
+      const result = await transfer(`${server.origin}/start`, {
         allowPrivateHosts: true,
         headers: { Authorization: "Bearer secret" },
       });
@@ -372,7 +368,7 @@ describe("loadPage", () => {
       res.end("secret");
     });
     try {
-      const blocked = await loadPage(`${server.origin}/`);
+      const blocked = await transfer(`${server.origin}/`);
       expect(blocked.ok).toBe(false);
       expect(blocked.error).toMatch(/Blocked private address/);
     } finally {

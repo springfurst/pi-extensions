@@ -4,10 +4,10 @@
 import type { BrowserRenderer } from "../../lib/browser";
 import type { FetchConfig } from "../../lib/config";
 import type { ResolveHost } from "../../lib/security";
-import type { Politeness } from "../../lib/web/politeness";
-import type { ChallengeSummary, Outcome } from "../../lib/web/types";
+import type { FetchImpl, TransferOptions, TransferResult } from "../../lib/web/transfer";
 
-export type { ResolveHost };
+export type { FetchImpl, ResolveHost, TransferOptions, TransferResult };
+export type { TransferOptions as LoadPageOptions, TransferResult as LoadPageResult };
 
 /** One rendered URL read, after the pipeline has shaped the response. */
 export interface RenderResult {
@@ -27,42 +27,7 @@ export interface RenderResult {
   notes: string[];
 }
 
-export interface LoadPageOptions {
-  timeoutSeconds?: number;
-  headers?: Record<string, string>;
-  method?: string;
-  body?: string;
-  maxBytes?: number;
-  signal?: AbortSignal;
-  fetch?: FetchImpl;
-  allowPrivateHosts?: boolean;
-  resolve?: ResolveHost;
-  /** Pacing, robots, and identity policy; absent skips all of it. */
-  politeness?: Politeness;
-}
-
-export interface LoadPageResult {
-  content: string;
-  contentType: string;
-  finalUrl: string;
-  ok: boolean;
-  status?: number;
-  /** True when the body was cut at the byte cap. */
-  truncated?: boolean;
-  /** Last transport-level error when `ok` is false. */
-  error?: string;
-  /** Notes worth surfacing to the caller, such as a robots warning. */
-  notes?: string[];
-  /** Delay the host asked for, in milliseconds. */
-  retryAfterMs?: number;
-  /** Classification of the response. */
-  outcome?: Outcome;
-  /** Classifier output when the outcome is `challenge`. */
-  challenge?: ChallengeSummary;
-}
-
-export type FetchImpl = typeof fetch;
-export type LoadPage = (url: string, options?: LoadPageOptions) => Promise<LoadPageResult>;
+export type LoadPage = (url: string, options?: TransferOptions) => Promise<TransferResult>;
 
 export interface ExecResultLike {
   stdout: string;
