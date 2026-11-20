@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLITENESS_CONFIG, type HostPolicy, type PolitenessConfig } from "./config";
 import { RequestLimiter } from "./limiter";
-import { HostStateStore, type Politeness } from "./politeness";
+import { EscalationBudget, HostStateStore, type Politeness } from "./politeness";
 import { RobotsCache } from "./robots";
 import { DEFAULT_USER_AGENT } from "./user-agent";
 import { HttpCache } from "./cache";
@@ -26,6 +26,7 @@ function politeness(
       jitterFraction: 0,
     }),
     robots: new RobotsCache(),
+    budget: new EscalationBudget(),
   };
 }
 

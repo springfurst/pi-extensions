@@ -129,7 +129,7 @@ A CAPTCHA or interstitial is detected before the body is shaped and reported as 
 
 Every request starts on the honest HTTP tier and climbs only when the outcome calls for it. A JavaScript shell or a failed quality gate may climb to a real browser; a hard 401/403/451 block climbs to the evasive tier only when `politeness.tier` is `evasive` and `politeness.evasion` is `on-block`. A host may escalate at most once per ten minutes, and a per-call ceiling cannot exceed the configured one. A `robots.txt` refusal is never overridden by a higher tier.
 
-A detected challenge is not a routing problem, because escalation cannot clear it. `politeness.human` decides what happens: `hint` (the default) returns the challenge with its family and the page is not shaped, `transparent` waits for a human and retries once the challenge clears, and `disabled` fails cleanly with the reason. A challenge is never sent to the evasive tier. Consent walls are reported and never accepted automatically.
+A detected challenge is not a routing problem, because escalation cannot clear it. `politeness.human` decides what happens: `hint` (the default) returns the challenge with its family and the page is not shaped, `transparent` waits for a human and retries once the challenge clears, and `disabled` fails cleanly with the reason. A call with no way to reach a human, such as `web_fetch`, reports instead of waiting when `transparent` is configured. A challenge is never sent to the evasive tier. Consent walls are reported and never accepted automatically.
 
 ### Caching and alternative representations
 

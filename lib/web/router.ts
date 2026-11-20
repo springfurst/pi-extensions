@@ -7,8 +7,8 @@
  * solve, and a `robots.txt` refusal is never overridden by a higher tier.
  */
 
-import { systemClock, type Clock } from "./clock";
 import { findHostPolicy } from "./politeness";
+export { EscalationBudget } from "./politeness";
 import type { EvasionMode, HostPolicy, HumanMode, PolitenessConfig, TierCeiling } from "./config";
 import type { Outcome, Tier } from "./types";
 
@@ -97,34 +97,6 @@ export function planRoute(input: RoutingInput): RoutingPlan {
   }
 
   return { action: "accept" };
-}
-
-/** How often a host may escalate, so a block does not turn into a loop. */
-export class EscalationBudget {
-  private readonly windowMs: number;
-  private readonly clock: Clock;
-  private readonly last = new Map<string, number>();
-
-  constructor(options: { windowMs?: number; clock?: Clock } = {}) {
-    this.windowMs = options.windowMs ?? 10 * 60_000;
-    this.clock = options.clock ?? systemClock;
-  }
-
-  /** True when the host may escalate now. */
-  available(host: string): boolean {
-    const last = this.last.get(host);
-    return last === undefined || this.clock.now() - last >= this.windowMs;
-  }
-
-  /** Record an escalation for the host. */
-  take(host: string): void {
-    this.last.set(host, this.clock.now());
-  }
-
-  /** Forget every host; tests call this between cases. */
-  reset(): void {
-    this.last.clear();
-  }
 }
 
 /** Resolve the routing policy for one host. */

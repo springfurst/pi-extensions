@@ -8,9 +8,15 @@
  */
 
 import type { HttpCache } from "./cache";
-import { systemClock, type Clock } from "./clock";
+import type { Clock } from "./clock";
 import type { Politeness } from "./politeness";
-import { EscalationBudget, clampTier, planRoute, routingPolicyFor, tierCeiling } from "./router";
+import {
+  clampTier,
+  planRoute,
+  routingPolicyFor,
+  tierCeiling,
+  type EscalationBudget,
+} from "./router";
 import { transfer, type FetchImpl } from "./transfer";
 import type { ResolveHost } from "../security";
 import type {
@@ -63,10 +69,8 @@ export class WebRuntime implements WebRuntimeApi {
 
   constructor(private readonly options: WebRuntimeOptions) {
     this.politeness = options.politeness;
-    this.budget = new EscalationBudget({
-      windowMs: options.escalationWindowMs,
-      clock: options.clock ?? systemClock,
-    });
+    // Share the host's escalation allowance with every other caller.
+    this.budget = options.politeness.budget;
   }
 
   /** Open a browser session through the injected factory. */

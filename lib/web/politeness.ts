@@ -103,6 +103,8 @@ export interface Politeness {
   readonly store: HostStateStore;
   readonly limiter: RequestLimiter;
   readonly robots: RobotsCache;
+  /** One escalation allowance per host, shared by every caller. */
+  readonly budget: EscalationBudget;
 }
 
 const shared = new Map<string, Politeness>();
@@ -132,6 +134,7 @@ export function sharedPoliteness(options: {
     config: options.politeness,
     hosts: options.hosts ?? {},
     robots: new RobotsCache({ clock }),
+    budget: new EscalationBudget({ clock }),
     store: new HostStateStore({
       path: options.dir ? `${options.dir}/host-state.json` : undefined,
       clock,
@@ -432,4 +435,32 @@ function asHostState(value: unknown): HostState | undefined {
 
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** How often a host may escalate, so a block does not turn into a loop. */
+export class EscalationBudget {
+  private readonly windowMs: number;
+  private readonly clock: Clock;
+  private readonly last = new Map<string, number>();
+
+  constructor(options: { windowMs?: number; clock?: Clock } = {}) {
+    this.windowMs = options.windowMs ?? 10 * 60_000;
+    this.clock = options.clock ?? systemClock;
+  }
+
+  /** True when the host may escalate now. */
+  available(host: string): boolean {
+    const last = this.last.get(host);
+    return last === undefined || this.clock.now() - last >= this.windowMs;
+  }
+
+  /** Record an escalation for the host. */
+  take(host: string): void {
+    this.last.set(host, this.clock.now());
+  }
+
+  /** Forget every host; tests call this between cases. */
+  reset(): void {
+    this.last.clear();
+  }
 }

@@ -1,10 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { FakeClock } from "./__fixtures__/clock";
 import type { PolitenessConfig } from "./config";
-import { sharedPoliteness } from "./politeness";
+import { resetSharedPoliteness, sharedPoliteness } from "./politeness";
 import { WebRuntime, type BrowserTransport } from "./runtime";
 import type { TransferResult } from "./transfer";
 import type { WebRequest, WebResult } from "./types";
+
+beforeEach(() => {
+  resetSharedPoliteness();
+});
 
 const politeness: PolitenessConfig = {
   robots: "warn",
