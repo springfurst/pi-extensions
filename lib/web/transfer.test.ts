@@ -1,11 +1,15 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_POLITENESS_CONFIG, type HostPolicy, type PolitenessConfig } from "./config";
 import { RequestLimiter } from "./limiter";
 import { HostStateStore, type Politeness } from "./politeness";
 import { RobotsCache } from "./robots";
 import { DEFAULT_USER_AGENT } from "./user-agent";
+import { HttpCache } from "./cache";
 import { startServer } from "./__fixtures__/server";
-import { transfer } from "./transfer";
+import { acceptEncodingFor, transfer } from "./transfer";
 
 function politeness(
   overrides: Partial<PolitenessConfig> = {},
@@ -361,6 +365,160 @@ describe("transfer", () => {
     } finally {
       await server.close();
     }
+  });
+
+  it("revalidates a cached body without transferring it again", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "web-transfer-cache-"));
+    const cache = new HttpCache({ dir });
+    let requests = 0;
+    let bodies = 0;
+    const server = await startServer((req, res) => {
+      requests++;
+      if (req.headers["if-none-match"] === '"v1"') {
+        res.writeHead(304, { ETag: '"v1"' });
+        res.end();
+        return;
+      }
+      bodies++;
+      res.writeHead(200, { ETag: '"v1"', "Content-Type": "text/plain" });
+      res.end("hello");
+    });
+    try {
+      const first = await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      expect(first.ok).toBe(true);
+      expect(first.content).toBe("hello");
+      expect(first.cache).toBe("miss");
+
+      const second = await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      expect(second.ok).toBe(true);
+      expect(second.content).toBe("hello");
+      expect(second.cache).toBe("hit");
+      expect(second.status).toBe(200);
+      expect(requests).toBe(2);
+      expect(bodies).toBe(1);
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("revalidates with Last-Modified", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "web-transfer-cache-"));
+    const cache = new HttpCache({ dir });
+    const modified = "Wed, 19 Nov 2025 10:00:00 GMT";
+    let requests = 0;
+    const server = await startServer((req, res) => {
+      requests++;
+      if (req.headers["if-modified-since"] === modified) {
+        res.writeHead(304);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Last-Modified": modified, "Content-Type": "text/plain" });
+      res.end("cached");
+    });
+    try {
+      await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      const second = await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      expect(second.cache).toBe("hit");
+      expect(second.content).toBe("cached");
+      expect(requests).toBe(2);
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not cache a response without a validator", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "web-transfer-cache-"));
+    const cache = new HttpCache({ dir });
+    let bodies = 0;
+    const server = await startServer((_req, res) => {
+      bodies++;
+      res.setHeader("Content-Type", "text/plain");
+      res.end("fresh");
+    });
+    try {
+      await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      const second = await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      expect(second.cache).toBe("miss");
+      expect(bodies).toBe(2);
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("bypasses the cache when cookies are sent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "web-transfer-cache-"));
+    const cache = new HttpCache({ dir });
+    let bodies = 0;
+    const server = await startServer((_req, res) => {
+      bodies++;
+      res.writeHead(200, { ETag: '"v1"', "Content-Type": "text/plain" });
+      res.end("personal");
+    });
+    try {
+      await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      const second = await transfer(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        cache,
+        cookies: "session=abc",
+      });
+      expect(second.cache).toBe("bypass");
+      expect(bodies).toBe(2);
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps cache variants apart when the Accept header changes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "web-transfer-cache-"));
+    const cache = new HttpCache({ dir });
+    const server = await startServer((req, res) => {
+      const accept = req.headers["accept"] ?? "";
+      const markdown = accept.includes("text/markdown");
+      res.writeHead(200, {
+        ETag: markdown ? '"md"' : '"html"',
+        "Content-Type": markdown ? "text/markdown" : "text/html",
+      });
+      res.end(markdown ? "# markdown" : "<html>html</html>");
+    });
+    try {
+      const html = await transfer(`${server.origin}/`, { allowPrivateHosts: true, cache });
+      const markdown = await transfer(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        cache,
+        headers: { Accept: "text/markdown" },
+      });
+      expect(html.content).toBe("<html>html</html>");
+      expect(markdown.content).toBe("# markdown");
+      expect(html.cache).toBe("miss");
+      expect(markdown.cache).toBe("miss");
+    } finally {
+      await server.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("negotiates compression for ordinary origins", async () => {
+    let encoding: string | undefined;
+    const server = await startServer((req, res) => {
+      encoding = req.headers["accept-encoding"];
+      res.end("ok");
+    });
+    try {
+      await transfer(`${server.origin}/`, { allowPrivateHosts: true });
+      expect(encoding).not.toBe("identity");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("forces identity encoding only for quirk origins", () => {
+    expect(acceptEncodingFor("https://developers.cloudflare.com/pages/")).toBe("identity");
+    expect(acceptEncodingFor("https://example.com/")).toBeUndefined();
   });
 
   it("blocks loopback unless private hosts are allowed", async () => {

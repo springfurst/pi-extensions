@@ -1,5 +1,6 @@
 import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
 import type { BrowserConfig, FetchConfig } from "../../lib/config";
+import { HttpCache } from "../../lib/web/cache";
 import { sharedPoliteness, type Politeness } from "../../lib/web/politeness";
 import type { HostPolicy, PolitenessConfig } from "../../lib/web/config";
 import { loadPage } from "./fetch";
@@ -56,6 +57,9 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
         hosts: options.hosts,
       })
     : undefined;
+  // Conditional GETs keep a repeat fetch cheap; entries are revalidated, so a
+  // stale body is never served as fresh.
+  const cache = options.cacheDir ? new HttpCache({ dir: options.cacheDir }) : undefined;
   const loadPageBound: LoadPage = (url: string, loadOptions: LoadPageOptions = {}) =>
     loadPage(url, {
       timeoutSeconds: options.config.timeoutSeconds,
@@ -64,6 +68,7 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
       fetch: fetchImpl,
       resolve: options.resolve,
       politeness,
+      cache,
       ...loadOptions,
       signal: loadOptions.signal ?? signal,
     });

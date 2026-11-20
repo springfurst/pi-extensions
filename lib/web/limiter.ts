@@ -21,12 +21,21 @@ export interface RequestLimiterOptions {
   random?: () => number;
 }
 
+/** What one request spent waiting for budget. */
+export interface LimiterStats {
+  waitedMs: number;
+  /** The host gap that applied, in milliseconds. */
+  minIntervalMs: number;
+}
+
 export interface LimiterRequest {
   /** Host or origin that owns the per-host gap. */
   host: string;
   /** Minimum gap since the previous request to the same host, in milliseconds. */
   minIntervalMs?: number;
   signal?: AbortSignal;
+  /** Filled in with the wait spent on budget, for usage reporting. */
+  stats?: LimiterStats;
 }
 
 interface SlotWaiter {
@@ -120,6 +129,7 @@ export class RequestLimiter {
   private async reserve(request: LimiterRequest): Promise<void> {
     const host = request.host;
     const interval = Math.max(0, request.minIntervalMs ?? 0);
+    if (request.stats) request.stats.minIntervalMs = interval;
     for (;;) {
       request.signal?.throwIfAborted();
       const now = this.clock.now();
@@ -134,6 +144,7 @@ export class RequestLimiter {
         this.hostNextAt.set(host, now + interval + jitter);
         return;
       }
+      if (request.stats) request.stats.waitedMs += wait;
       await this.clock.sleep(wait, request.signal);
     }
   }

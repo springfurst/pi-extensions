@@ -13,7 +13,9 @@
 import { DEFAULT_MAX_BYTES } from "../config";
 import { normalizeMime, readLimitedBytes, readLimitedText, withHardTimeout } from "../http";
 import { checkUrlAllowed, type ResolveHost } from "../security";
+import type { CacheEntry, HttpCache } from "./cache";
 import { systemClock } from "./clock";
+import type { LimiterStats } from "./limiter";
 import { classifyResponse, formatDelay, planRetry } from "./outcome";
 import type { Politeness } from "./politeness";
 import { robotsAllows, robotsIntervalMs, robotsTxtUrl } from "./robots";
@@ -36,6 +38,8 @@ export interface TransferOptions {
   politeness?: Politeness;
   /** `Cookie` header supplied by a warm profile, when one is available. */
   cookies?: string;
+  /** Conditional-GET cache; absent means every request transfers a body. */
+  cache?: HttpCache;
 }
 
 export interface TransferResult {
@@ -56,12 +60,36 @@ export interface TransferResult {
   outcome?: Outcome;
   /** Classifier output when the outcome is `challenge`. */
   challenge?: ChallengeSummary;
+  /** How the HTTP cache behaved for the main request. */
+  cache?: "hit" | "miss" | "bypass";
+  /** What the pacing budget cost, for usage reporting. */
+  limiter?: LimiterStats;
 }
 
 const MAX_REDIRECTS = 10;
 const ROBOTS_MAX_BYTES = 512 * 1024;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"]);
+const DEFAULT_ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8";
+
+/**
+ * Origins whose compressed bodies are known to arrive corrupt when a
+ * compressed representation is negotiated. Everything else negotiates normally.
+ */
+export const IDENTITY_ENCODING_ORIGINS: ReadonlySet<string> = new Set([
+  "https://developers.cloudflare.com",
+]);
+
+/** The `Accept-Encoding` an origin needs, or undefined to negotiate normally. */
+export function acceptEncodingFor(url: string): string | undefined {
+  const origin = originOf(url);
+  return origin && IDENTITY_ENCODING_ORIGINS.has(origin) ? "identity" : undefined;
+}
+
+/** Cache variant key: the request URL plus the representation that was asked for. */
+export function cacheKeyFor(url: string, accept: string): string {
+  return `${url}\n${accept}`;
+}
 
 /** Drop credential-bearing headers, matching the Fetch standard for cross-origin redirects. */
 function dropCredentialHeaders(headers: Record<string, string>): Record<string, string> {
@@ -117,9 +145,17 @@ interface AttemptArgs {
   allowPrivateHosts: boolean;
   resolve?: ResolveHost;
   politeness?: Politeness;
+  cache?: HttpCache;
+  /** Filled in with cache and limiter facts for usage reporting. */
+  telemetry: AttemptTelemetry;
   /** False once the single throttle retry has been spent. */
   allowRetry: boolean;
   notes: string[];
+}
+
+interface AttemptTelemetry {
+  cache?: TransferResult["cache"];
+  stats: LimiterStats;
 }
 
 type AttemptOutcome =
@@ -147,6 +183,13 @@ export async function transfer(
   };
   const maxRetryWaitMs = (politeness?.config.maxRetryWaitSeconds ?? 30) * 1000;
   const notes: string[] = [];
+  const telemetry: AttemptTelemetry = { stats: { waitedMs: 0, minIntervalMs: 0 } };
+
+  const finish = (result: TransferResult): TransferResult => ({
+    ...result,
+    cache: telemetry.cache,
+    limiter: telemetry.stats,
+  });
 
   for (let attempt = 0; ; attempt++) {
     signal?.throwIfAborted();
@@ -166,6 +209,8 @@ export async function transfer(
         allowPrivateHosts,
         resolve,
         politeness,
+        cache: options.cache,
+        telemetry,
         allowRetry: attempt === 0,
         notes,
       });
@@ -173,11 +218,11 @@ export async function transfer(
         await systemClock.sleep(outcome.delayMs, signal);
         continue;
       }
-      return outcome.result;
+      return finish(outcome.result);
     } catch (error) {
       if (signal?.aborted) signal.throwIfAborted();
       const message = error instanceof Error ? error.message : String(error);
-      return failure(url, "", undefined, message, notes);
+      return finish(failure(url, "", undefined, message, notes));
     }
   }
 }
@@ -258,6 +303,22 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
     }
 
     const latencyStarted = Date.now();
+    const accept = headerValue(headers, "accept") ?? DEFAULT_ACCEPT;
+    let cachedEntry: CacheEntry | undefined;
+    let cacheKey: string | undefined;
+    if (args.cache && method === "GET" && !args.cookies) {
+      cacheKey = cacheKeyFor(currentUrl, accept);
+      cachedEntry = args.cache.lookup(cacheKey);
+      args.telemetry.cache ??= "miss";
+    } else if (args.cache) {
+      args.telemetry.cache ??= "bypass";
+    }
+
+    const conditional: Record<string, string> = {};
+    if (cachedEntry?.etag) conditional["If-None-Match"] = cachedEntry.etag;
+    if (cachedEntry?.lastModified) conditional["If-Modified-Since"] = cachedEntry.lastModified;
+    const encoding = acceptEncodingFor(currentUrl);
+
     const send = () =>
       args.fetchImpl(currentUrl, {
         signal: withHardTimeout(args.signal, args.timeoutSeconds * 1000),
@@ -265,17 +326,20 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
         headers: {
           ...identityHeaders(args.identity),
           ...(args.cookies ? { Cookie: args.cookies } : {}),
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          Accept: accept,
           "Accept-Language": "en-US,en;q=0.5",
-          // Cloudflare's Markdown-for-Agents returns corrupted bytes with compression.
-          "Accept-Encoding": "identity",
+          ...(encoding ? { "Accept-Encoding": encoding } : {}),
           ...headers,
+          ...conditional,
         },
         redirect: "manual",
         body,
       });
     const response = args.politeness
-      ? await args.politeness.limiter.schedule({ host, minIntervalMs, signal: args.signal }, send)
+      ? await args.politeness.limiter.schedule(
+          { host, minIntervalMs, signal: args.signal, stats: args.telemetry.stats },
+          send,
+        )
       : await send();
     const latencyMs = Date.now() - latencyStarted;
 
@@ -328,6 +392,24 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
 
     const { bytes, truncated } = await readLimitedBytes(response, args.maxBytes);
     const content = decodeBody(bytes, rawContentType);
+
+    if (response.status === 304 && cachedEntry) {
+      // Revalidated: report the stored entity as current rather than a bare 304.
+      args.telemetry.cache = "hit";
+      return {
+        kind: "response",
+        result: {
+          content: cachedEntry.body,
+          contentType: cachedEntry.contentType,
+          finalUrl,
+          ok: true,
+          status: 200,
+          outcome: "ok",
+          notes: args.notes.length > 0 ? [...args.notes] : undefined,
+        },
+      };
+    }
+
     const classification = classifyResponse({
       status: response.status,
       headers: response.headers,
@@ -388,6 +470,16 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
       }
     }
 
+    if (args.cache && cacheKey && !truncated) {
+      args.cache.store(cacheKey, {
+        url: currentUrl,
+        etag: response.headers.get("etag") ?? undefined,
+        lastModified: response.headers.get("last-modified") ?? undefined,
+        contentType,
+        body: content,
+      });
+    }
+
     return {
       kind: "response",
       result: {
@@ -436,6 +528,11 @@ async function fetchRobots(origin: string, args: AttemptArgs): Promise<string | 
   }
   const { text } = await readLimitedText(response, ROBOTS_MAX_BYTES);
   return text;
+}
+
+function headerValue(headers: Record<string, string>, name: string): string | undefined {
+  const key = Object.keys(headers).find((candidate) => candidate.toLowerCase() === name);
+  return key === undefined ? undefined : headers[key];
 }
 
 function failure(
