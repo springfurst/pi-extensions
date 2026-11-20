@@ -155,17 +155,29 @@ export function tryExtractEmbeddedUrlSelector(
     const candidate = basePath.slice(lastColonIndex + 1);
     const remainder = basePath.slice(0, lastColonIndex);
     if (!isReadableUrlPath(remainder)) break;
-    if (colonIsInAuthority(basePath, lastColonIndex)) break;
+    // `:raw` cannot be a port, so it is safe to peel even at the authority end
+    // (for example `https://example.com:raw`). A range or tail may precede it
+    // there too (`https://example.com:raw:1-2`). Numeric tokens still stay ports.
+    const rawsHostRemainder = /^https?:\/\/[^/?#]+:raw$/i.test(remainder);
+    if (
+      colonIsInAuthority(basePath, lastColonIndex) &&
+      candidate.toLowerCase() !== "raw" &&
+      !rawsHostRemainder
+    ) {
+      break;
+    }
     if (!isUrlSelectorToken(candidate)) break;
 
-    try {
-      new URL(
-        remainder.startsWith("http://") || remainder.startsWith("https://")
-          ? remainder
-          : `https://${remainder}`,
-      );
-    } catch {
-      break;
+    if (!rawsHostRemainder) {
+      try {
+        new URL(
+          remainder.startsWith("http://") || remainder.startsWith("https://")
+            ? remainder
+            : `https://${remainder}`,
+        );
+      } catch {
+        break;
+      }
     }
 
     sels.unshift(candidate);

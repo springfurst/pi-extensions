@@ -25,6 +25,16 @@ export class EmulationController {
   /** Apply the session's emulation overrides to one page. */
   async apply(page: Page): Promise<void> {
     const state = this.state;
+    const applyNetwork = async (): Promise<void> => {
+      if (state.network === undefined) return;
+      await page.emulateNetworkConditions(state.network).catch(() => undefined);
+    };
+    // Clearing or raising a throttle must happen before a viewport change that
+    // reloads the page. Going offline must happen after it, or that same reload
+    // fails with a network error.
+    if (state.network !== undefined && state.network?.offline !== true) {
+      await applyNetwork();
+    }
     const viewport = state.viewport ?? {
       width: this.session.config.viewport.width,
       height: this.session.config.viewport.height,
@@ -81,8 +91,8 @@ export class EmulationController {
     } finally {
       await client.detach().catch(() => undefined);
     }
-    if (state.network !== undefined) {
-      await page.emulateNetworkConditions(state.network).catch(() => undefined);
+    if (state.network?.offline === true) {
+      await applyNetwork();
     }
     if (state.geolocation) {
       await page.setGeolocation(state.geolocation).catch(() => undefined);

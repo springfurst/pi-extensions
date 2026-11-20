@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- `web_fetch`: a challenge is reported only when the page is actually blocked. CAPTCHA markers that appear alongside usable content, including prose mentions of ReCAPTCHA or hCaptcha, no longer fail the read; provider shells remain blocking.
+- `web_fetch`: usage records now carry the transport's `cache` and `limiter` facts on every shaped response, and a binary body is reported as method `binary` instead of being returned as garbled text.
+- `web_fetch`: `:raw` now works at a bare host (`https://example.com:raw`) and with a range before raw (`https://example.com:raw:1-2`).
+- `web_search`: browser-backed engines are not started while an HTTP engine has results, so a successful HTTP search no longer opens browser pages. They start when the HTTP engines fail or miss the soft deadline.
+- `web_search`: the browser-contribution note is added only when a browser engine actually contributed a unique result, and a cache hit reports the engines that ran instead of every configured engine.
+- `browser-pilot`: `expect` accepts boolean and numeric `expected` values, `emulate {reset:true}` clears network conditions before a viewport reload, a bad `connect` endpoint reports the underlying message, and `about:blank` is allowed as the internal blank page.
+- `browser-pilot`: closing a browser whose external process already exited removes its stale instance record.
+- The runtime no longer writes its routing plan to stdout, so tool output and test output stay clean.
+
 ### Changed
 
 - `web_fetch`: requests no longer rotate through `curl`, bot, and browser user agents. One honest, configurable user agent is sent (`politeness.userAgent`, default `pi-web-tools/1.0 (+https://github.com/springfurst/pi-extensions)`), with an optional `From` contact (`politeness.contact`). A blocked response is reported instead of retried with a different identity.

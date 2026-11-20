@@ -272,8 +272,20 @@ export async function executeWebSearch(
     const key = cacheKey(engineIds, params.query, params.recency, limit);
     const cached = searchCache.get(key);
     if (cached) {
-      for (const outcome of outcomes.values()) outcome.status = "cached";
-      const cacheEngines = cached.provider === "public" ? engineIds : [cached.provider];
+      const metadata = searchCache.getMetadata(key);
+      const cacheEngines =
+        metadata?.enginesUsed ?? (cached.provider === "public" ? engineIds : [cached.provider]);
+      for (const outcome of outcomes.values()) {
+        const previous = metadata?.outcomes.find((entry) => entry.id === outcome.id);
+        if (previous && cacheEngines.includes(outcome.id)) {
+          outcome.status = "cached";
+          outcome.returned = previous.returned;
+          outcome.contributed = previous.contributed;
+          outcome.durationMs = previous.durationMs;
+        } else {
+          outcome.status = "skipped";
+        }
+      }
       logUsage({
         provider: cached.provider,
         enginesRequested: requested,
@@ -405,7 +417,11 @@ export async function executeWebSearch(
         engineCooldown.succeeded(outcome.id);
       }
     }
-    if (enginesUsed.some((id) => isEngineId(id) && engineRequiresBrowser(id))) {
+    const browserContributed = [...outcomes.values()].some(
+      (outcome) =>
+        outcome.contributed > 0 && isEngineId(outcome.id) && engineRequiresBrowser(outcome.id),
+    );
+    if (browserContributed) {
       notes.push("A JavaScript-rendered search page (browser) contributed results.");
     }
 
@@ -421,7 +437,10 @@ export async function executeWebSearch(
       }
     }
 
-    searchCache.set(key, response, config.search.cacheTtlSeconds);
+    searchCache.set(key, response, config.search.cacheTtlSeconds, {
+      enginesUsed,
+      outcomes: [...outcomes.values()],
+    });
     logUsage({
       provider: response.provider,
       enginesRequested: requested,

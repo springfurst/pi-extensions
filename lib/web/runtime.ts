@@ -98,11 +98,9 @@ export class WebRuntime implements WebRuntimeApi {
         tier,
         policy,
         escalatedRecently: !this.budget.available(host),
-        /* debug */
         humanAvailable: Boolean(this.options.humanWaiter),
       });
 
-      console.log("PLAN", host, result.outcome, tier, JSON.stringify(policy), JSON.stringify(plan));
       if (plan.action === "accept") break;
 
       if (plan.action === "refuse") {

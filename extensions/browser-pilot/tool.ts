@@ -609,10 +609,11 @@ export function safeParams(
     }
   }
   if (params.expected !== undefined) {
+    const expected = String(params.expected);
     if (config.logging.includeSensitiveArgs) {
-      out.expected = params.expected.slice(0, config.logging.maxOutputChars);
+      out.expected = expected.slice(0, config.logging.maxOutputChars);
     } else {
-      out.expected = { length: params.expected.length, sha256: sha256(params.expected) };
+      out.expected = { length: expected.length, sha256: sha256(expected) };
     }
   }
   for (const key of ["value", "response_body"] as const) {

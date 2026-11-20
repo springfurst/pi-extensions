@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from "../../lib/config";
 import { startServer, type RequestHandler } from "../../lib/web/__fixtures__/server";
 import { createFetchContext } from "./context";
 import { rawHint, renderUrl } from "./pipeline";
+import type { FetchContext, LoadPageResult } from "./types";
 
 const ARTICLE = `<!doctype html><html><head><title>Test Article</title></head><body>
 <article><h1>Widgets</h1>
@@ -289,6 +290,59 @@ describe("rawHint", () => {
     const note = "robots.txt disallows /private on example.com (rule: /private)";
     expect(rawHint("failed", [note])).toMatch(/:raw/);
     expect(rawHint("readability", [])).not.toMatch(/policy/i);
+  });
+});
+
+function stubContext(result: Partial<LoadPageResult>): FetchContext {
+  return {
+    timeoutMs: 1_000,
+    config: {
+      ...DEFAULT_CONFIG.fetch,
+      allowPrivateHosts: true,
+      externalReaders: false,
+      remoteFallbacks: false,
+    },
+    fetch,
+    loadPage: async () => ({
+      content: "",
+      contentType: "text/plain",
+      finalUrl: "https://example.com/",
+      ok: true,
+      status: 200,
+      ...result,
+    }),
+  };
+}
+
+describe("renderUrl transport facts", () => {
+  it("keeps cache and limiter facts from the main response", async () => {
+    const result = await renderUrl("https://example.com/", {
+      raw: false,
+      maxChars: 100,
+      ctx: stubContext({
+        content: "hello",
+        cache: "hit",
+        limiter: { waitedMs: 250, minIntervalMs: 500 },
+      }),
+    });
+    expect(result.method).toBe("text");
+    expect(result.cache).toBe("hit");
+    expect(result.limiter).toEqual({ waitedMs: 250, minIntervalMs: 500 });
+  });
+
+  it("does not return binary bodies as text", async () => {
+    const result = await renderUrl("https://example.com/image.png", {
+      raw: false,
+      maxChars: 100,
+      ctx: stubContext({
+        content: "\u0089PNG\r\n\u001a\n",
+        contentType: "image/png",
+        finalUrl: "https://example.com/image.png",
+      }),
+    });
+    expect(result.method).toBe("binary");
+    expect(result.content).toBe("");
+    expect(result.notes.join(" ")).toMatch(/Binary content \(image\/png\)/);
   });
 });
 

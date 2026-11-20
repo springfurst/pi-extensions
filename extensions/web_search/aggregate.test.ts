@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { engineParams, fakeEngine } from "./__fixtures__/search";
 import { AggregateFailureError, aggregateSearch, dedupKey } from "./aggregate";
-import type { SearchResponse } from "./types";
+import type { SearchEngine, SearchResponse } from "./types";
+
+function browserEngine(
+  id: string,
+  result:
+    | SearchResponse
+    | Error
+    | ((params: Parameters<SearchEngine["search"]>[0]) => Promise<SearchResponse>),
+): SearchEngine {
+  return { ...fakeEngine(id, result), requiresBrowser: true };
+}
 
 function response(
   provider: SearchResponse["provider"],
@@ -91,6 +101,67 @@ describe("aggregateSearch", () => {
       "error",
       "error",
     ]);
+  });
+
+  it("defers browser engines while an HTTP engine produces results", async () => {
+    let browserCalls = 0;
+    const duckduckgo = fakeEngine(
+      "duckduckgo",
+      response("duckduckgo", [{ title: "HTTP", url: "https://http.example" }]),
+    );
+    const google = browserEngine("google", async () => {
+      browserCalls += 1;
+      return response("google", [{ title: "Browser", url: "https://browser.example" }]);
+    });
+    const result = await aggregateSearch({
+      engines: [duckduckgo, google],
+      params: engineParams({ query: "x" }),
+      softMs: 20,
+      hardMs: 200,
+    });
+    expect(browserCalls).toBe(0);
+    expect(result.response.sources[0]?.url).toBe("https://http.example");
+    expect(result.outcomes.find((outcome) => outcome.id === "google")?.status).toBe("skipped");
+  });
+
+  it("starts browser engines when every HTTP engine fails", async () => {
+    const duckduckgo = fakeEngine("duckduckgo", new Error("blocked"));
+    const google = browserEngine(
+      "google",
+      response("google", [{ title: "Browser", url: "https://browser.example" }]),
+    );
+    const result = await aggregateSearch({
+      engines: [duckduckgo, google],
+      params: engineParams({ query: "x" }),
+      softMs: 20,
+      hardMs: 200,
+    });
+    expect(result.response.sources[0]?.url).toBe("https://browser.example");
+    expect(result.outcomes.find((outcome) => outcome.id === "google")?.status).toBe("ok");
+    expect(result.failures).toHaveLength(1);
+  });
+
+  it("starts browser engines when HTTP engines are still pending at the soft deadline", async () => {
+    const slow = fakeEngine(
+      "duckduckgo",
+      (params) =>
+        new Promise<SearchResponse>((_resolve, reject) => {
+          params.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const google = browserEngine(
+      "google",
+      response("google", [{ title: "Browser", url: "https://browser.example" }]),
+    );
+    const started = Date.now();
+    const result = await aggregateSearch({
+      engines: [slow, google],
+      params: engineParams({ query: "x" }),
+      softMs: 20,
+      hardMs: 200,
+    });
+    expect(result.response.sources[0]?.url).toBe("https://browser.example");
+    expect(Date.now() - started).toBeLessThan(150);
   });
 
   it("returns once a fast engine succeeds despite a slow peer", async () => {

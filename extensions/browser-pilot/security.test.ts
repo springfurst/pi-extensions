@@ -44,6 +44,13 @@ describe("checkNavigationAllowed", () => {
     }
   });
 
+  it("allows the internal blank page", async () => {
+    await expect(checkNavigationAllowed("about:blank", privateHosts)).resolves.toEqual({
+      allowed: true,
+      url: "about:blank",
+    });
+  });
+
   it("rejects other schemes", async () => {
     await expect(
       checkNavigationAllowed("javascript:alert(1)", privateHosts),

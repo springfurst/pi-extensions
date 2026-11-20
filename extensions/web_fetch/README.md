@@ -43,7 +43,7 @@ Notes: <semicolon-joined notes, omitted when empty>
 <rendered content>
 ```
 
-`Method` names the stage that produced the content, such as `readability`, `json`, `feed`, `md-suffix`, `github-repo`, `browser`, or `raw-html`.
+`Method` names the stage that produced the content, such as `readability`, `json`, `feed`, `md-suffix`, `github-repo`, `browser`, `raw-html`, or `binary`.
 
 When the body was reshaped — by a site handler, a reader backend, or an alternate representation — or a policy limited the read, the result notes say that `:raw` returns the verbatim response body. A body that is already verbatim, such as JSON, text, raw HTML, or a `:raw` read, carries no such note.
 
@@ -135,7 +135,7 @@ Requests are paced by three budgets: the per-host gap, a global concurrency cap,
 
 `Retry-After` is parsed in full, both delay-seconds and HTTP-date. A delay within `politeness.maxRetryWaitSeconds` is waited out and the request retried once. A longer delay fails immediately with the retry time named, so the caller can use a different source instead of stalling.
 
-A CAPTCHA or interstitial is detected before the body is shaped and reported as a challenge with its family (Cloudflare, Anubis, reCAPTCHA, hCaptcha, PerimeterX, DataDome); it is never treated as something another user agent can get past.
+A blocking CAPTCHA or interstitial is detected before the body is shaped and reported as a challenge with its family (Cloudflare, Anubis, reCAPTCHA, hCaptcha, PerimeterX, DataDome); it is never treated as something another user agent can get past. A CAPTCHA widget embedded in otherwise usable content is not treated as a block.
 
 ### Routing and challenges
 
@@ -155,7 +155,7 @@ Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's mode
 
 ## Limitations
 
-- No binary or document conversion (PDF, DOCX, XLSX, PPTX, EPUB), no images, archives, SQLite, or notebooks.
+- No document conversion (PDF, DOCX, XLSX, PPTX, EPUB), images, archives, SQLite, or notebooks. A binary response is reported with method `binary` and an empty body; add `:raw` to read the bytes verbatim.
 - Browser rendering needs an installed Chrome, Chromium, or Edge; without one, JavaScript-rendered pages fall back to raw HTML.
 - The browser blocks non-`http(s)` schemes and literal private, loopback, link-local, and metadata hosts, and resolves the DNS for every navigation so a public hostname that redirects or is scripted to a private address is blocked. Subresources are checked literally only, so a public hostname that resolves to a private address in a subresource (an image or script) is not blocked; subresource DNS-rebinding hardening is best-effort.
 - Browser launches are slow and memory-heavy. The shared browser is capped by `runtime.maxPages` across tools and by `browser.maxPages` for this tool, and it stays warm until `browser.idleCloseSeconds` passes with no session using it.

@@ -124,6 +124,17 @@ describe("parseReadUrlTarget", () => {
     });
   });
 
+  it("peels :raw from a bare host because it cannot be a port", () => {
+    expect(parseReadUrlTarget("https://example.com:raw")).toEqual({
+      path: "https://example.com",
+      sel: { kind: "raw" },
+    });
+    expect(parseReadUrlTarget("https://example.com:raw:1-2")).toEqual({
+      path: "https://example.com",
+      sel: { kind: "lines", ranges: [{ startLine: 1, endLine: 2 }], raw: true },
+    });
+  });
+
   it("repairs a collapsed scheme while still peeling selectors", () => {
     expect(parseReadUrlTarget("https:/example.com/foo:50-100")).toEqual({
       path: "https://example.com/foo",

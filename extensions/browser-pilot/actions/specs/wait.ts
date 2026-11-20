@@ -93,7 +93,11 @@ export const waitSpecs: Record<string, ActionSpec> = {
         ],
         description: "Comparison operator; defaults to contains for text and equals for others.",
       },
-      { name: "expected", type: "string", description: "Expected value or pattern." },
+      {
+        name: "expected",
+        type: "mixed",
+        description: "Expected value or pattern; booleans are compared as strings.",
+      },
       ref,
       selector,
       { name: "attribute", type: "string", description: "Attribute name for check:attribute." },

@@ -29,6 +29,25 @@ describe("SearchCache", () => {
     cache.clear();
     expect(cache.get("k")).toBeUndefined();
   });
+
+  it("keeps the engine accounting for a cached response", () => {
+    const cache = new SearchCache();
+    const metadata = {
+      enginesUsed: ["duckduckgo"],
+      outcomes: [
+        {
+          id: "duckduckgo",
+          label: "DuckDuckGo",
+          status: "ok" as const,
+          returned: 2,
+          contributed: 2,
+          durationMs: 12,
+        },
+      ],
+    };
+    cache.set("k", sample, 60, metadata);
+    expect(cache.getMetadata("k")).toEqual(metadata);
+  });
 });
 
 describe("EngineCooldown", () => {

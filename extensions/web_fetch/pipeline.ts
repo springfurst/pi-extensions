@@ -33,6 +33,15 @@ const SHAPED_METHODS = new Set([
 const POLICY_NOTE =
   /robots\.txt disallows|Consent wall|Challenge detected|browser escalation failed/i;
 
+/** Content types that carry bytes no text reader can render. */
+const BINARY_MIME = /^(?:image|audio|video|font)\//i;
+const BINARY_APPLICATION_MIME =
+  /^application\/(?:pdf|zip|gzip|x-gzip|x-tar|x-7z-compressed|x-rar-compressed|octet-stream|wasm|epub\+zip|msword|vnd\.ms-excel|vnd\.ms-powerpoint|vnd\.openxmlformats-officedocument)/i;
+
+function isBinaryContentType(mime: string): boolean {
+  return BINARY_MIME.test(mime) || BINARY_APPLICATION_MIME.test(mime);
+}
+
 /**
  * Note telling the model how to get the verbatim body, added when the content
  * was reshaped or a policy limited the read. Undefined when the body is already
@@ -124,6 +133,8 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
 
   const response = await ctx.loadPage(normalized, { signal: ctx.signal });
   ctx.signal?.throwIfAborted();
+  transportFacts.cache = response.cache;
+  transportFacts.limiter = response.limiter;
   if (response.notes) notes.push(...response.notes);
 
   if (!response.ok) {
@@ -149,6 +160,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       fetchedAt,
       truncated: false,
       notes,
+      ...transportFacts,
     };
   }
 
@@ -165,6 +177,10 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
   }
 
   if (raw) return finish(rawContent, "raw", mime, url, finalUrl, response.status);
+  if (isBinaryContentType(mime)) {
+    notes.push(`Binary content (${mime}) is not supported; no text was extracted`);
+    return finish("", "binary", mime, url, finalUrl, response.status);
+  }
   if (mime.includes("json"))
     return finish(formatJson(rawContent), "json", mime, url, finalUrl, response.status);
 

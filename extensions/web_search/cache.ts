@@ -1,4 +1,4 @@
-import type { Recency, SearchResponse } from "./types";
+import type { EngineOutcome, Recency, SearchResponse } from "./types";
 
 /** Build the cache key for one search request. */
 export function cacheKey(
@@ -10,8 +10,14 @@ export function cacheKey(
   return JSON.stringify([engines, query, recency ?? null, limit]);
 }
 
+export interface SearchCacheMetadata {
+  enginesUsed: string[];
+  outcomes: EngineOutcome[];
+}
+
 interface CacheEntry {
   response: SearchResponse;
+  metadata?: SearchCacheMetadata;
   expiresAt: number;
 }
 
@@ -22,22 +28,40 @@ export class SearchCache {
   constructor(private readonly now: () => number = Date.now) {}
 
   get(key: string): SearchResponse | undefined {
+    return this.entry(key)?.response;
+  }
+
+  /** Original engine accounting for a cached response. */
+  getMetadata(key: string): SearchCacheMetadata | undefined {
+    return this.entry(key)?.metadata;
+  }
+
+  set(
+    key: string,
+    response: SearchResponse,
+    ttlSeconds: number,
+    metadata?: SearchCacheMetadata,
+  ): void {
+    if (ttlSeconds <= 0) return;
+    this.entries.set(key, {
+      response,
+      metadata,
+      expiresAt: this.now() + ttlSeconds * 1000,
+    });
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+
+  private entry(key: string): CacheEntry | undefined {
     const entry = this.entries.get(key);
     if (!entry) return undefined;
     if (entry.expiresAt <= this.now()) {
       this.entries.delete(key);
       return undefined;
     }
-    return entry.response;
-  }
-
-  set(key: string, response: SearchResponse, ttlSeconds: number): void {
-    if (ttlSeconds <= 0) return;
-    this.entries.set(key, { response, expiresAt: this.now() + ttlSeconds * 1000 });
-  }
-
-  clear(): void {
-    this.entries.clear();
+    return entry;
   }
 }
 

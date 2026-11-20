@@ -312,7 +312,7 @@ export interface BrowserPilotParams {
   request_id?: string;
   rule_id?: string;
   check?: string;
-  expected?: string;
+  expected?: string | number | boolean;
   operator?: string;
   attribute?: string;
   steps?: BrowserPilotCall[];

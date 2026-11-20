@@ -172,7 +172,24 @@ describe("executeWebSearch", () => {
     expect(result.details.notes.join(" ")).toMatch(/browser/i);
   });
 
-  it("aggregates HTTP and browser engines with a fake renderer", async () => {
+  it("defers browser engines when HTTP engines answer", async () => {
+    writeConfig({ search: { engines: ["duckduckgo", "google"], aggregate: true } });
+    let browserCalls = 0;
+    const renderPage: BrowserRenderer = async (url) => {
+      browserCalls += 1;
+      return { html: BROWSER_HTML, status: 200, finalUrl: url };
+    };
+    const result = await executeWebSearch(
+      { query: "example" },
+      { ...context(htmlFetch([["duckduckgo.com", DDG_HTML]])), renderPage },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.structuredContent).toHaveLength(2);
+    expect(browserCalls).toBe(0);
+    expect(result.details.notes.join(" ")).not.toMatch(/contributed/i);
+  });
+
+  it("falls back to browser engines when HTTP engines fail", async () => {
     writeConfig({ search: { engines: ["duckduckgo", "google"], aggregate: true } });
     const renderPage: BrowserRenderer = async (url) => ({
       html: BROWSER_HTML,
@@ -181,11 +198,26 @@ describe("executeWebSearch", () => {
     });
     const result = await executeWebSearch(
       { query: "example" },
-      { ...context(htmlFetch([["duckduckgo.com", DDG_HTML]])), renderPage },
+      { ...context(htmlFetch([])), renderPage },
     );
     expect(result.isError).toBeFalsy();
-    expect(result.structuredContent).toHaveLength(3);
-    expect(result.details.notes.join(" ")).toMatch(/browser/i);
+    expect(result.structuredContent).toHaveLength(1);
+    expect(result.details.notes.join(" ")).toMatch(/browser.*contributed/i);
+  });
+
+  it("does not claim a browser contribution when its page is empty", async () => {
+    writeConfig({ search: { engines: ["google"], aggregate: false } });
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: "<html><body>no results</body></html>",
+      status: 200,
+      finalUrl: url,
+    });
+    const result = await executeWebSearch(
+      { query: "example" },
+      { ...context(htmlFetch([])), renderPage },
+    );
+    expect(result.isError).toBeFalsy();
+    expect(result.details.notes.join(" ")).not.toMatch(/contributed/i);
   });
 
   it("includes all three browser engines in the default pool", async () => {
@@ -198,20 +230,10 @@ describe("executeWebSearch", () => {
     };
     const result = await executeWebSearch(
       { query: "example" },
-      {
-        ...context(
-          htmlFetch([
-            ["duckduckgo.com", DDG_HTML],
-            ["startpage.com", STARTPAGE_HTML],
-          ]),
-        ),
-        renderPage,
-      },
+      { ...context(htmlFetch([])), renderPage },
     );
     expect(result.isError).toBeFalsy();
     const urls = (result.structuredContent as Array<{ url: string }>).map((source) => source.url);
-    expect(urls).toContain("https://example.com/one");
-    expect(urls).toContain("https://start.example/one");
     expect(urls).toContain("https://google.example/r");
     expect(urls).toContain("https://ecosia.example/r");
     expect(urls).toContain("https://mojeek.example/r");
@@ -271,6 +293,29 @@ describe("executeWebSearch usage logging", () => {
     expect(events[0]!.cacheHit).toBe(false);
     expect(events[1]!.cacheHit).toBe(true);
     expect((events[1]!.perEngine as EngineOutcome[])[0]).toMatchObject({ status: "cached" });
+  });
+
+  it("keeps deferred browsers skipped on a cache hit", async () => {
+    writeConfig({ search: { engines: ["duckduckgo", "google"], aggregate: true } });
+    const { logger, events } = capture();
+    const renderPage: BrowserRenderer = async (url) => ({
+      html: BROWSER_HTML,
+      status: 200,
+      finalUrl: url,
+    });
+    const ctx = {
+      ...context(htmlFetch([["duckduckgo.com", DDG_HTML]])),
+      logger,
+      renderPage,
+    };
+    await executeWebSearch({ query: "cache me" }, ctx);
+    await executeWebSearch({ query: "cache me" }, ctx);
+    expect(events).toHaveLength(2);
+    const first = events[0]!.perEngine as EngineOutcome[];
+    const second = events[1]!.perEngine as EngineOutcome[];
+    expect(first.find((outcome) => outcome.id === "google")).toMatchObject({ status: "skipped" });
+    expect(second.find((outcome) => outcome.id === "google")).toMatchObject({ status: "skipped" });
+    expect(events[1]!.enginesUsed).toEqual(["duckduckgo"]);
   });
 
   it("records an all-fail error with per-engine status", async () => {

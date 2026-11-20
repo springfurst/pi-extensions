@@ -24,6 +24,8 @@ import {
 import { PagePool } from "./pool";
 import {
   instanceRecordPath,
+  pidAlive,
+  removeInstanceRecord,
   resolveProfile,
   type ChromeInstance,
   type ProfileInfo,
@@ -381,7 +383,11 @@ export class BrowserRuntime {
     state.slot.leases.delete(sessionId);
     if (state.slot.leases.size === 0) {
       this.slots.delete(state.slot.profile.key);
-      if (state.slot.launchedHere) await this.closeSlot(state.slot);
+      if (state.slot.launchedHere) {
+        await this.closeSlot(state.slot);
+      } else {
+        this.dropDeadRecord(state.slot);
+      }
     }
   }
 
@@ -401,6 +407,7 @@ export class BrowserRuntime {
       slot.browser.disconnect();
       slot.closed = true;
       this.slots.delete(slot.profile.key);
+      this.dropDeadRecord(slot);
     }
     return { sharedWith: others };
   }
@@ -461,6 +468,13 @@ export class BrowserRuntime {
     });
     this.slots.set(profile.key, slot);
     return slot;
+  }
+
+  /** Remove an instance record whose external process has already exited. */
+  private dropDeadRecord(slot: Slot): void {
+    if (slot.instance.pid > 0 && !pidAlive(slot.instance.pid)) {
+      removeInstanceRecord(slot.recordPath);
+    }
   }
 
   private async closeSlot(slot: Slot): Promise<void> {

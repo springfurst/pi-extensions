@@ -199,11 +199,12 @@ export async function expectResult(
   const operator =
     params.operator ??
     (params.check === "text" || params.check === "title" ? "contains" : "equals");
-  const expected =
+  const expected = String(
     params.expected ??
-    (params.check === "selector" || params.check === "visible" || params.check === "hidden"
-      ? "true"
-      : "");
+      (params.check === "selector" || params.check === "visible" || params.check === "hidden"
+        ? "true"
+        : ""),
+  );
   const started = Date.now();
   let actual = "";
   let passed = false;
@@ -408,25 +409,26 @@ export async function readExpectationValue(
   return state.value;
 }
 
-export function compareExpectation(actual: string, expected: string, operator: string): boolean {
-  if (operator === "contains") return actual.includes(expected);
-  if (operator === "not_contains") return !actual.includes(expected);
+export function compareExpectation(actual: string, expected: unknown, operator: string): boolean {
+  const target = String(expected);
+  if (operator === "contains") return actual.includes(target);
+  if (operator === "not_contains") return !actual.includes(target);
   if (operator === "matches") {
     try {
-      return new RegExp(expected).test(actual);
+      return new RegExp(target).test(actual);
     } catch {
       return false;
     }
   }
   if (operator === "gt" || operator === "lt" || operator === "gte" || operator === "lte") {
     const left = Number(actual);
-    const right = Number(expected);
+    const right = Number(target);
     if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
     if (operator === "gt") return left > right;
     if (operator === "lt") return left < right;
     if (operator === "gte") return left >= right;
     return left <= right;
   }
-  if (operator === "not_equals") return actual !== expected;
-  return actual === expected;
+  if (operator === "not_equals") return actual !== target;
+  return actual === target;
 }

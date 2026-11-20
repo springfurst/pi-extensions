@@ -138,9 +138,7 @@ export class BrowserPilotSession {
         this.browser = await connectChrome(this.instance);
       } catch (error) {
         throw new BrowserPilotError(
-          `Could not reconnect to ${this.instance.wsEndpoint}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Could not reconnect to ${this.instance.wsEndpoint}: ${describeError(error)}`,
           "Reconnect with connect, or close the browser and launch a new one.",
         );
       }
@@ -164,7 +162,7 @@ export class BrowserPilotSession {
       });
     } catch (error) {
       throw new BrowserPilotError(
-        `Could not open a browser: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not open a browser: ${describeError(error)}`,
         "Run status to inspect the instance, or close the browser and try again.",
       );
     }
@@ -221,7 +219,7 @@ export class BrowserPilotSession {
       this.browser = await connectChrome(instance);
     } catch (error) {
       throw new BrowserPilotError(
-        `Could not attach to ${wsEndpoint}: ${error instanceof Error ? error.message : String(error)}`,
+        `Could not attach to ${wsEndpoint}: ${describeError(error)}`,
         "Check that Chrome is running with --remote-debugging-port and that the endpoint is reachable.",
       );
     }
@@ -1183,6 +1181,20 @@ export async function disposeAllSessions(force = false): Promise<void> {
 export function disposeAllSessionsSync(force = false): void {
   for (const session of sessions.values()) session.disposeSync(force);
   sessions.clear();
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) return message;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      // Fall through to String for values JSON cannot represent.
+    }
+  }
+  return String(error);
 }
 
 function registerExitHandler(): void {

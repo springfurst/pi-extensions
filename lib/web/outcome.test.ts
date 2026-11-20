@@ -77,12 +77,26 @@ describe("classifyResponse", () => {
     expect(result.challenge?.evidence).toEqual(["cf-mitigated"]);
   });
 
-  it("reports an embedded captcha as present, not blocking", () => {
+  it("reports an embedded captcha as present without blocking the content", () => {
+    const signals = html("<html><div class='g-recaptcha' data-sitekey='x'></div></html>");
+    expect(detectChallenge(signals)).toMatchObject({ type: "recaptcha", severity: "present" });
+    expect(classifyResponse(signals).outcome).toBe("ok");
+  });
+
+  it("does not treat a prose mention of a CAPTCHA as a challenge", () => {
+    const article = html(
+      "<html><body><p>This article compares ReCAPTCHA and hCaptcha as anti-bot services.</p></body></html>",
+    );
+    expect(detectChallenge(article)).toMatchObject({ severity: "present" });
+    expect(classifyResponse(article).outcome).toBe("ok");
+  });
+
+  it("treats a provider challenge shell without its text as blocking", () => {
     const result = classifyResponse(
-      html("<html><div class='g-recaptcha' data-sitekey='x'></div></html>"),
+      html("<html><body><div id='challenge-platform'></div></body></html>"),
     );
     expect(result.outcome).toBe("challenge");
-    expect(result.challenge).toMatchObject({ type: "recaptcha", severity: "present" });
+    expect(result.challenge).toMatchObject({ severity: "blocking" });
   });
 
   it("names the challenge families it knows", () => {

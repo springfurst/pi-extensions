@@ -25,7 +25,7 @@ export type ParserKind = "site" | "reader" | "format" | "raw" | "error" | "unkno
 
 /** Classify a pipeline `method` into a coarse parser family for analysis. */
 export function classifyParser(method: string): ParserKind {
-  if (method === "raw" || method === "raw-html") return "raw";
+  if (method === "raw" || method === "raw-html" || method === "binary") return "raw";
   if (method === "failed" || method === "none") return "error";
   if (SITE_METHODS.has(method)) return "site";
   if (READER_METHODS.has(method)) return "reader";

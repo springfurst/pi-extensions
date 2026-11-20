@@ -3,8 +3,10 @@
  * shell, a consent wall, a rate limit, a hard block, or a challenge.
  *
  * Every caller needs the same answer, so the markers live here and the routing
- * decision is made once. A detected CAPTCHA is reported as `challenge` and is
- * never something a client can escalate past; only a human can clear it.
+ * decision is made once. A blocking CAPTCHA or interstitial is reported as
+ * `challenge` and is never something a client can escalate past; only a human
+ * can clear it. A CAPTCHA widget embedded in otherwise usable content is
+ * reported as `present` and does not on its own fail the read.
  */
 
 import type { ChallengeSummary, Outcome } from "./types";
@@ -24,8 +26,8 @@ export const CHALLENGE_TEXT_MARKERS = [
   "press & hold",
 ];
 
-/** DOM and script markers used by challenge providers. */
-export const CHALLENGE_MARKERS = [
+/** DOM and script markers that make the page itself unusable without a human. */
+export const CHALLENGE_BLOCKING_MARKERS = [
   "challenge-form",
   "cf-challenge-running",
   "challenge-platform",
@@ -33,12 +35,19 @@ export const CHALLENGE_MARKERS = [
   "px-captcha",
   "perimeterx",
   "datadome",
+];
+
+/** CAPTCHA widget markers that may appear alongside otherwise usable content. */
+export const CHALLENGE_PRESENT_MARKERS = [
   "g-recaptcha",
   "h-captcha",
   "data-sitekey",
   "recaptcha",
   "hcaptcha",
 ];
+
+/** All DOM and script markers used by challenge providers. */
+export const CHALLENGE_MARKERS = [...CHALLENGE_BLOCKING_MARKERS, ...CHALLENGE_PRESENT_MARKERS];
 
 /** Response headers some challenge providers add. */
 export const CHALLENGE_HEADERS = ["cf-mitigated", "x-datadome", "x-px-block"];
@@ -91,16 +100,25 @@ export function detectChallenge(signals: ResponseSignals): ChallengeSummary | un
   const body = (signals.body ?? "").toLowerCase();
   const markers = headerValues(signals.headers).join("\n").toLowerCase();
   const text = CHALLENGE_TEXT_MARKERS.find((marker) => body.includes(marker));
-  const marker = CHALLENGE_MARKERS.find(
+  const blockingMarker = CHALLENGE_BLOCKING_MARKERS.find(
+    (candidate) => body.includes(candidate) || markers.includes(candidate),
+  );
+  const presentMarker = CHALLENGE_PRESENT_MARKERS.find(
     (candidate) => body.includes(candidate) || markers.includes(candidate),
   );
   const header = CHALLENGE_HEADERS.find((name) => hasHeader(signals.headers, name));
 
-  if (!text && !marker && !header) return undefined;
+  if (!text && !blockingMarker && !presentMarker && !header) return undefined;
+  const severity = text || blockingMarker || header ? "blocking" : "present";
   return {
-    type: challengeFamily(`${body}\n${markers}`, marker ?? header ?? text ?? ""),
-    severity: text || header ? "blocking" : "present",
-    evidence: [text, marker, header].filter((value): value is string => Boolean(value)),
+    type: challengeFamily(
+      `${body}\n${markers}`,
+      blockingMarker ?? presentMarker ?? header ?? text ?? "",
+    ),
+    severity,
+    evidence: [text, blockingMarker, presentMarker, header].filter((value): value is string =>
+      Boolean(value),
+    ),
   };
 }
 
@@ -122,7 +140,7 @@ export function looksLikeConsentWall(signals: ResponseSignals): boolean {
 /** Classify one response into the shared outcome vocabulary. */
 export function classifyResponse(signals: ResponseSignals): ResponseClassification {
   const challenge = detectChallenge(signals);
-  if (challenge) {
+  if (challenge?.severity === "blocking") {
     return {
       outcome: "challenge",
       reason: `challenge detected (${challenge.type})`,

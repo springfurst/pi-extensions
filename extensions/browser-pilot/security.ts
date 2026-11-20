@@ -74,6 +74,9 @@ export async function checkNavigationAllowed(
   } catch {
     return { allowed: false, reason: `Invalid URL: ${input}` };
   }
+  if (parsed.protocol === "about:" && parsed.href === "about:blank") {
+    return { allowed: true, url: "about:blank" };
+  }
   if (parsed.protocol === "file:") {
     return guardLocalFile(fileURLToPath(parsed), options);
   }

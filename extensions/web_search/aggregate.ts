@@ -103,13 +103,16 @@ function errorMessage(error: unknown): string {
  * Fan out across engines in parallel and consolidate by cross-engine consensus,
  * then best per-engine rank, then insertion order. Races a soft deadline
  * (return once at least one engine succeeded) and a hard deadline; stragglers
- * are aborted afterward. Individual engine failures are tolerated; the call
- * throws only when every engine fails.
+ * are aborted afterward. Browser-backed engines are held back while an HTTP
+ * engine has results and start only when the HTTP engines fail or the soft
+ * deadline passes without one. Individual engine failures are tolerated; the
+ * call throws only when every engine fails.
  */
 export async function aggregateSearch(options: AggregateOptions): Promise<AggregateResult> {
   const { engines, params } = options;
   const softMs = options.softMs ?? SOFT_DEADLINE_MS;
   const hardMs = options.hardMs ?? HARD_DEADLINE_MS;
+  const startedAt = Date.now();
 
   const straggler = new AbortController();
   const signal = AbortSignal.any([
@@ -120,6 +123,8 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
   const responses: Array<SearchResponse | undefined> = new Array(engines.length);
   const errors: Array<unknown> = new Array(engines.length);
   const durations: number[] = new Array(engines.length).fill(0);
+  const started: boolean[] = new Array(engines.length).fill(false);
+  const runs: Array<Promise<void>> = [];
   const failures: SearchFailure[] = [];
   const enginesUsed: string[] = [];
   let resolveFirstSuccess: () => void = () => {};
@@ -127,25 +132,53 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
     resolveFirstSuccess = resolve;
   });
 
-  const all = Promise.all(
-    engines.map(async (engine, index) => {
-      const started = Date.now();
-      try {
-        responses[index] = await engine.search({ ...params, signal });
-        enginesUsed.push(engine.id);
-        resolveFirstSuccess();
-      } catch (error) {
-        errors[index] = error;
-        failures.push({ provider: { id: engine.id, label: engine.label }, error });
-      } finally {
-        durations[index] = Date.now() - started;
-      }
-    }),
+  const start = (indexes: readonly number[]): Array<Promise<void>> => {
+    for (const index of indexes) {
+      const engine = engines[index]!;
+      started[index] = true;
+      const engineStartedAt = Date.now();
+      runs.push(
+        (async () => {
+          try {
+            const response = await engine.search({ ...params, signal });
+            responses[index] = response;
+            enginesUsed.push(engine.id);
+            if (response.sources.length > 0) resolveFirstSuccess();
+          } catch (error) {
+            errors[index] = error;
+            failures.push({ provider: { id: engine.id, label: engine.label }, error });
+          } finally {
+            durations[index] = Date.now() - engineStartedAt;
+          }
+        })(),
+      );
+    }
+    return runs;
+  };
+
+  const httpIndexes = engines.flatMap((engine, index) => (engine.requiresBrowser ? [] : [index]));
+  const browserIndexes = engines.flatMap((engine, index) =>
+    engine.requiresBrowser ? [index] : [],
   );
 
-  await Promise.race([all, delay(softMs)]);
-  if (!responses.some((response) => response !== undefined) && failures.length < engines.length) {
-    await Promise.race([all, firstSuccess, delay(Math.max(0, hardMs - softMs))]);
+  if (httpIndexes.length === 0) {
+    start(browserIndexes);
+    await Promise.race([
+      Promise.all(runs),
+      firstSuccess,
+      delay(Math.max(0, hardMs - (Date.now() - startedAt))),
+    ]);
+  } else {
+    await Promise.race([Promise.all(start(httpIndexes)), delay(softMs)]);
+    const httpSucceeded = httpIndexes.some((index) => (responses[index]?.sources.length ?? 0) > 0);
+    if (!httpSucceeded && browserIndexes.length > 0) {
+      start(browserIndexes);
+      await Promise.race([
+        Promise.all(runs),
+        firstSuccess,
+        delay(Math.max(0, hardMs - (Date.now() - startedAt))),
+      ]);
+    }
   }
   straggler.abort();
 
@@ -164,7 +197,15 @@ export async function aggregateSearch(options: AggregateOptions): Promise<Aggreg
     const outcome: EngineOutcome = {
       id: engine.id,
       label: engine.label,
-      status: response ? (response.sources.length > 0 ? "ok" : "empty") : "timeout",
+      status: response
+        ? response.sources.length > 0
+          ? "ok"
+          : "empty"
+        : errors[index] !== undefined
+          ? "error"
+          : started[index]
+            ? "timeout"
+            : "skipped",
       returned: response?.sources.length ?? 0,
       contributed: contribution[index] ?? 0,
       durationMs: durations[index] ?? 0,

@@ -87,10 +87,16 @@ export function classifyProviderHttpError(
   retryAfterMs?: number,
 ): SearchProviderError | null {
   const challenge = classifyResponse({ status, body });
-  if (challenge.outcome === "challenge") {
+  if (challenge.outcome === "challenge" || status === 429 || status === 503) {
+    const reason =
+      challenge.outcome === "challenge"
+        ? challenge.reason
+        : status === 429
+          ? "rate limited"
+          : "service unavailable";
     return new SearchProviderError(
       provider,
-      `${SEARCH_ENGINE_LABELS[provider]}: ${challenge.reason ?? "bot challenge"}`,
+      `${SEARCH_ENGINE_LABELS[provider]}: ${reason ?? "bot challenge"}`,
       status,
       { challenge: true, retryAfterMs },
     );
