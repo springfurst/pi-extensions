@@ -244,6 +244,7 @@ async function callDuckDuckGoHtml(
 ): Promise<string> {
   const page = await fetchPage(DUCKDUCKGO_HTML_URL, {
     fetch: params.fetch,
+    pace: params.pace,
     signal: params.signal,
     timeoutMs: params.timeoutMs,
     referer: "https://html.duckduckgo.com/",

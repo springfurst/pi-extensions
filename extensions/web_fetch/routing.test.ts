@@ -61,6 +61,7 @@ describe("routing outcomes in the pipeline", () => {
     expect(result.content).toBe("");
     expect(result.notes.join("\n")).toMatch(/Challenge detected/);
     expect(result.notes.join("\n")).toMatch(/challenge detected/);
+    expect(result.notes.join("\n")).toMatch(/:raw/);
   });
 
   it("reports a consent wall without accepting it", async () => {
@@ -78,6 +79,7 @@ describe("routing outcomes in the pipeline", () => {
     expect(result.method).toBe("consent");
     expect(result.content).toBe("");
     expect(result.notes.join("\n")).toMatch(/Consent wall/);
+    expect(result.notes.join("\n")).toMatch(/:raw/);
   });
 
   it("escalates a JavaScript shell to the browser tier", async () => {

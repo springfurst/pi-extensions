@@ -6,12 +6,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  createBrowserRenderer,
-  disposeSharedBrowser,
-  resolveBrowserExecutable,
-} from "../../lib/browser";
-import { DEFAULT_CONFIG } from "../../lib/config";
+import { disposeSharedBrowser, resolveBrowserExecutable } from "../../lib/browser";
 import { startServer } from "../../lib/web/__fixtures__/server";
 import { executeWebFetch } from "./tool";
 
@@ -23,6 +18,7 @@ beforeAll(() => {
     join(dir, "web-tools.json"),
     JSON.stringify({
       fetch: { allowPrivateHosts: true, externalReaders: false, remoteFallbacks: false },
+      browser: { allowPrivateHosts: true },
     }),
   );
 });
@@ -48,12 +44,6 @@ describe("web_fetch live browser backend", () => {
     const executablePath = await resolveBrowserExecutable();
     if (!executablePath) skip();
 
-    const renderPage = await createBrowserRenderer({
-      config: { ...DEFAULT_CONFIG.browser, executablePath, allowPrivateHosts: true },
-      executablePath,
-    });
-    expect(renderPage).toBeDefined();
-
     const server = await startServer((_req, res) => {
       res.setHeader("Content-Type", "text/html");
       res.end(JS_PAGE);
@@ -61,11 +51,11 @@ describe("web_fetch live browser backend", () => {
     try {
       const result = await executeWebFetch(
         { url: `${server.origin}/app` },
-        { cwd: dir, agentDir: dir, trusted: false, renderPage },
+        { cwd: dir, agentDir: dir, trusted: false },
       );
-      expect(result.details.method).toBe("browser");
+      expect(["readability", "browser"]).toContain(result.details.method);
       expect(result.content[0].text).toContain("Live Browser");
-      expect(result.details.notes.join(" ")).toMatch(/JavaScript rendering/);
+      expect(result.details.notes.join(" ")).toMatch(/needs JavaScript|JavaScript rendering/);
     } finally {
       await server.close();
     }

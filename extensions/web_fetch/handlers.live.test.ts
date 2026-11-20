@@ -150,9 +150,9 @@ describe("web_fetch live site handlers", () => {
     expect(text(result).length).toBeGreaterThan(0);
   });
 
-  it("Reddit thread or graceful fallback", async () => {
+  it("Reddit thread falls back to the generic pipeline", async () => {
     const result = await fetchUrl("https://www.reddit.com/r/rust/");
-    expect(["reddit", "raw-html"]).toContain(result.details.method);
+    expect(["raw-html", "browser", "readability"]).toContain(result.details.method);
     expect(text(result).length).toBeGreaterThan(0);
   });
 });

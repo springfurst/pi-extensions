@@ -3,7 +3,7 @@ import type { BrowserRenderer } from "../../lib/browser";
 import { DEFAULT_CONFIG } from "../../lib/config";
 import { startServer, type RequestHandler } from "../../lib/web/__fixtures__/server";
 import { createFetchContext } from "./context";
-import { renderUrl } from "./pipeline";
+import { rawHint, renderUrl } from "./pipeline";
 
 const ARTICLE = `<!doctype html><html><head><title>Test Article</title></head><body>
 <article><h1>Widgets</h1>
@@ -267,5 +267,47 @@ describe("browser backend", () => {
     } finally {
       await server.close();
     }
+  });
+});
+
+describe("rawHint", () => {
+  it("points at :raw when a handler or reader reshaped the body", () => {
+    expect(rawHint("github-repo", [])).toMatch(/:raw/);
+    expect(rawHint("readability", [])).toMatch(/:raw/);
+    expect(rawHint("browser", [])).toMatch(/:raw/);
+    expect(rawHint("content-negotiation", [])).toMatch(/:raw/);
+  });
+
+  it("stays quiet when the body is already verbatim", () => {
+    expect(rawHint("raw", [])).toBeUndefined();
+    expect(rawHint("raw-html", [])).toBeUndefined();
+    expect(rawHint("json", [])).toBeUndefined();
+    expect(rawHint("text", [])).toBeUndefined();
+  });
+
+  it("points at :raw when a policy limited the read", () => {
+    const note = "robots.txt disallows /private on example.com (rule: /private)";
+    expect(rawHint("failed", [note])).toMatch(/:raw/);
+    expect(rawHint("readability", [])).not.toMatch(/policy/i);
+  });
+});
+
+describe("renderUrl shaped-content note", () => {
+  it("tells the model how to get the verbatim body after extraction", async () => {
+    const result = await render((_req, res) => {
+      res.setHeader("Content-Type", "text/html");
+      res.end(ARTICLE);
+    }, "/article");
+    expect(result.method).toBe("readability");
+    expect(result.notes.join(" ")).toMatch(/:raw/);
+  });
+
+  it("does not add the note to a verbatim JSON read", async () => {
+    const result = await render((_req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      res.end('{"a":1}');
+    }, "/data");
+    expect(result.method).toBe("json");
+    expect(result.notes.join(" ")).not.toMatch(/:raw/);
   });
 });

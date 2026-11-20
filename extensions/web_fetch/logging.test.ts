@@ -29,7 +29,6 @@ describe("classifyParser", () => {
     ["docs.rs", "site"],
     ["mdn", "site"],
     ["hackernews", "site"],
-    ["reddit", "site"],
     ["stackexchange", "site"],
     ["readability", "reader"],
     ["trafilatura", "reader"],

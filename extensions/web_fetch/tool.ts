@@ -140,9 +140,12 @@ export async function executeWebFetch(
 
   try {
     const fetchContext = createFetchContext({
+      agentDir: toolCtx.agentDir,
+      cwd: toolCtx.cwd,
       config: config.fetch,
       politeness: config.politeness,
       hosts: config.hosts,
+      runtimeConfig: config.runtime,
       signal: toolCtx.signal,
       fetch: toolCtx.fetch,
       resolve: toolCtx.resolve,
@@ -150,6 +153,7 @@ export async function executeWebFetch(
       exec: toolCtx.exec,
       renderPage: toolCtx.renderPage,
       browserConfig: config.browser,
+      blocking: config.blocking,
     });
     const result = await renderUrl(parsed.path, { raw, maxChars, ctx: fetchContext });
     // Select and save against the full rendered body; the render cap applies only

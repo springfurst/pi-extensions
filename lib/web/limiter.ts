@@ -159,13 +159,13 @@ export class RequestLimiter {
 
 /** A fixed budget of events per sliding window, as used by tab creation caps. */
 export class SlidingWindow {
-  private readonly limit: number;
+  private readonly limitValue: number;
   private readonly windowMs: number;
   private readonly clock: Clock;
   private stamps: number[] = [];
 
   constructor(options: { limit: number; windowMs: number; clock?: Clock }) {
-    this.limit = Math.max(1, options.limit);
+    this.limitValue = Math.max(1, options.limit);
     this.windowMs = Math.max(1, options.windowMs);
     this.clock = options.clock ?? systemClock;
   }
@@ -174,9 +174,14 @@ export class SlidingWindow {
   take(): boolean {
     const now = this.clock.now();
     this.stamps = this.stamps.filter((stamp) => now - stamp < this.windowMs);
-    if (this.stamps.length >= this.limit) return false;
+    if (this.stamps.length >= this.limitValue) return false;
     this.stamps.push(now);
     return true;
+  }
+
+  /** Slots allowed per window. */
+  get limit(): number {
+    return this.limitValue;
   }
 
   /** Epoch milliseconds when the next slot frees up. */

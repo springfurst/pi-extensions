@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chromeVersionOf, fingerprintFor } from "./fingerprint";
+import { chromeVersionOf, fingerprintFor, navigationHeaders } from "./fingerprint";
 
 describe("chromeVersionOf", () => {
   it("reads a full version from a browser string", () => {
@@ -50,5 +50,25 @@ describe("fingerprintFor", () => {
     const fingerprint = fingerprintFor("");
     expect(fingerprint.major).toBe("131");
     expect(fingerprint.userAgent).toContain("Chrome/131.0.0.0");
+  });
+});
+
+describe("navigationHeaders", () => {
+  it("keeps the user agent and every client hint on one identity", () => {
+    const fingerprint = fingerprintFor("Chrome/140.0.7339.80", "win32", "x64");
+    const headers = navigationHeaders(fingerprint);
+    expect(headers["User-Agent"]).toBe(fingerprint.userAgent);
+    expect(headers["Sec-Ch-Ua"]).toContain('"Google Chrome";v="140"');
+    expect(headers["Sec-Ch-Ua"]).toContain('"Chromium";v="140"');
+    expect(headers["Sec-Ch-Ua-Platform"]).toBe('"Windows"');
+    expect(headers["Sec-Ch-Ua-Mobile"]).toBe("?0");
+    expect(headers["Sec-Fetch-Mode"]).toBe("navigate");
+  });
+
+  it("does not leak one caller's mutation into the next", () => {
+    const fingerprint = fingerprintFor("Chrome/140.0.0.0", "linux", "x64");
+    const first = navigationHeaders(fingerprint);
+    first["User-Agent"] = "mutated";
+    expect(navigationHeaders(fingerprint)["User-Agent"]).toBe(fingerprint.userAgent);
   });
 });

@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - `web_fetch`: `Retry-After` is parsed in full, as delay-seconds or an HTTP-date, and no longer clamped to ten seconds. A delay within `politeness.maxRetryWaitSeconds` (default 30) is waited out and retried once; a longer delay fails immediately and names the retry time.
 - `web_fetch`: a CAPTCHA or interstitial is reported as a challenge with its family rather than treated as a retryable bot block.
 - `browser-pilot`: the browser no longer overrides its user agent by default. The real binary's identity is kept, and a configured `userAgent` is sent with client hints derived from the same Chrome version.
+- `web_search`: page requests for the browser-backed engines no longer hardcode a macOS Chrome identity. The user agent and every `Sec-CH-UA*` hint come from one fingerprint, and the platform matches the host.
+- `browser-pilot`: sessions in one pi process share one browser per profile instead of each spawning a process, and a second pi process attaches to the live DevTools endpoint instead of failing on the profile lock. `runtime.isolation: "contexts"` gives a session its own cookie jar.
+- `web_fetch`: browser renders no longer launch a private headless Chromium or set a fixed Chrome user agent. They use the shared browser and its real identity, apply the configured `blocking` and `hosts.<host>.allow` policy, and are capped by `browser.maxPages` per tool and `runtime.maxPages` per process.
+- `web_fetch`: every request starts on the honest HTTP tier and climbs only when an outcome calls for it. A JavaScript shell or failed quality gate may use the real browser; a hard block reaches the evasive tier only with `politeness.tier: "evasive"` and `politeness.evasion: "on-block"`. A CAPTCHA routes to the human mode (`hint`, `transparent`, or `disabled`) and never to the evasive tier; `robots.txt: "strict"` is never overridden.
+- `web_search`: engine failures use the shared challenge classifier, carry `Retry-After`, and put an engine on a 2/5/15-minute cooldown that resets after a success.
 
 ### Added
 
@@ -19,6 +24,17 @@ All notable changes to this project are documented here. The format follows [Kee
 - `web_fetch`: responses with an `ETag` or `Last-Modified` are cached under `<agentDir>/web-tools/http/` and revalidated on the next fetch, so an unchanged page transfers no body. Requests carrying cookies and bodies cut at the byte cap are not stored.
 - `web_fetch`: alternate representations (`.md` variant, content negotiation, scoped `llms.txt`) share one probe chain, never repeat a candidate within a call, and inherit the configured cookie source; compression is negotiated per origin instead of being disabled everywhere.
 - `web_fetch`: usage records include `cache` (`hit`, `miss`, or `bypass`) and `limiter` (`waitedMs` and `minIntervalMs`).
+- `web_fetch`: site handling is declared in a registry. Each entry names the hosts it owns (exact, subdomain, or path-scoped), the parser methods it can emit, the transports it prefers, the environment tokens it can use, and starting gaps for the API hosts it contacts. Routing uses the registry, and usage records classify parser methods from the same declaration.
+- `web_fetch`: when a site handler, a reader backend, or an alternate representation reshapes the body, or a policy limits the read, the result notes say that `:raw` returns the verbatim response body.
+- `web_fetch` and `web_search`: browser renders started by these tools apply `blocking.<category>` and the per-host `hosts.<host>.allow` opt-out instead of a fixed third-party policy.
+- `web_fetch`, `web_search`, and `browser-pilot`: one browser process serves a profile. The two web tools lease the browser `browser-pilot` uses instead of launching a separate headless Chromium, so cookies, logins, challenge state, and identity are shared. Renditions open short-lived pages that count toward `runtime.maxPages` but not toward the tab-per-minute windows.
+- `runtime.headless`: launch mode for a browser this process opens (`auto`, `true`, or `false`). `auto` opens a real window when a display exists, so a fetch or search that needs a browser may open one; `true` keeps it headless and loses the human handoff.
+- `web_search`: HTTP engine requests spend the shared per-host and global pacing budgets, and their failures feed the same learned host state as fetch requests.
+- `web_fetch`: probes send the warm browser profile's cookies when the shared browser is already open, so HTTP representations of a logged-in site keep the same identity.
+
+### Removed
+
+- `web_fetch`: the Reddit JSON handler is removed. Reddit's public `.json` endpoints answer `403` to non-browser clients, so every Reddit URL paid an extra request before falling back to the generic path. Reddit URLs now go straight to the generic fetch and reader chain.
 
 ## [0.4.0] - 2026-11-15
 

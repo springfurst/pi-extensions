@@ -1,6 +1,8 @@
 import type { JsonValue } from "@earendil-works/pi-ai";
+import { join } from "node:path";
 import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
 import { loadConfig } from "../../lib/config";
+import { sharedPoliteness, type Politeness } from "../../lib/web/politeness";
 import { USAGE_SCHEMA_VERSION, createFileUsageLogger, type UsageLogger } from "../../lib/logging";
 import { PI_VERSION, TOOL_VERSION } from "../../lib/version";
 import { AggregateFailureError, aggregateSearch, type SearchFailure } from "./aggregate";
@@ -21,6 +23,7 @@ import {
   type EngineOutcome,
   type EngineSearchParams,
   type FetchImpl,
+  type PaceFn,
   type Recency,
   type SearchResponse,
   type SearchSource,
@@ -203,8 +206,22 @@ export async function executeWebSearch(
     const parsedQuery = parseSearchQuery(params.query);
 
     const wantsBrowser = requested.some((id) => isEngineId(id) && engineRequiresBrowser(id));
+    const politeness = sharedPoliteness({
+      dir: join(toolCtx.agentDir, "web-tools"),
+      politeness: config.politeness,
+      hosts: config.hosts,
+    });
     const renderPage = wantsBrowser
-      ? (toolCtx.renderPage ?? (await createBrowserRenderer({ config: config.browser })))
+      ? (toolCtx.renderPage ??
+        (await createBrowserRenderer({
+          agentDir: toolCtx.agentDir,
+          cwd: toolCtx.cwd,
+          config: config.browser,
+          runtimeConfig: config.runtime,
+          politeness,
+          blocking: config.blocking,
+          hosts: config.hosts,
+        })))
       : undefined;
     const engineIds = requested
       .filter((id) => isEngineId(id))
@@ -247,6 +264,7 @@ export async function executeWebSearch(
       signal: toolCtx.signal,
       timeoutMs: config.search.timeoutSeconds * 1000,
       fetch: fetchImpl,
+      pace: pacer(politeness),
       searxng: config.searxng,
       renderPage,
     };
@@ -429,4 +447,21 @@ export async function executeWebSearch(
     });
     throw error;
   }
+}
+
+/** Spend the host budget and global budgets before an engine request. */
+function pacer(politeness: Politeness): PaceFn {
+  return async (url, signal) => {
+    let host: string;
+    try {
+      host = new URL(url).host;
+    } catch {
+      return;
+    }
+    if (!host) return;
+    await politeness.limiter.schedule(
+      { host, minIntervalMs: politeness.store.intervalMs(host), signal },
+      async () => undefined,
+    );
+  };
 }

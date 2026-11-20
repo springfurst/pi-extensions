@@ -42,6 +42,8 @@ export interface RuntimeConfig {
   isolation: IsolationMode;
   /** Page pool ceiling for the shared browser. */
   maxPages: number;
+  /** Launch mode when this process starts the shared browser: real window or headless. */
+  headless: boolean | "auto";
 }
 
 /** Politeness ladder and the budgets behind it. */
@@ -96,6 +98,7 @@ export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   attach: "auto",
   isolation: "tabs",
   maxPages: 6,
+  headless: "auto",
 };
 
 export const DEFAULT_POLITENESS_CONFIG: PolitenessConfig = {
@@ -159,7 +162,15 @@ function pickRuntime(raw: Record<string, unknown> | undefined): Partial<RuntimeC
   if (isolation !== undefined) out.isolation = isolation;
   const maxPages = asPositiveInteger(raw.maxPages);
   if (maxPages !== undefined) out.maxPages = maxPages;
+  const headless = asHeadless(raw.headless);
+  if (headless !== undefined) out.headless = headless;
   return out;
+}
+
+function asHeadless(value: unknown): boolean | "auto" | undefined {
+  if (value === true || value === false) return value;
+  if (typeof value === "string" && value.trim().toLowerCase() === "auto") return "auto";
+  return undefined;
 }
 
 function pickPoliteness(raw: Record<string, unknown> | undefined): Partial<PolitenessConfig> {

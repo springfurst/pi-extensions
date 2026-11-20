@@ -738,7 +738,7 @@ describe("browser-pilot profiles and tabs live", () => {
       { action: "open", params: { url: `${server.origin}/second` } },
       ctx("profile-b"),
     );
-    expect(second.isError).toBeUndefined();
+    expect(second.isError, JSON.stringify(second.content)).toBeUndefined();
 
     const tabsA = await executeBrowserPilot(
       { action: "tabs", params: { operation: "list" } },
@@ -781,7 +781,7 @@ describe("browser-pilot profiles and tabs live", () => {
       { action: "open", params: { url: `${server.origin}/` } },
       ctx(idA),
     );
-    expect(opened.isError).toBeUndefined();
+    expect(opened.isError, JSON.stringify(opened.content)).toBeUndefined();
     const statusA = await executeBrowserPilot({ action: "status" }, ctx(idA));
     const port = statusA.details.port as number;
     expect(port).toBeGreaterThan(0);
@@ -814,7 +814,7 @@ describe("browser-pilot profiles and tabs live", () => {
       { action: "open", params: { url: `${server.origin}/` } },
       ctx(id),
     );
-    expect(first.isError).toBeUndefined();
+    expect(first.isError, JSON.stringify(first.content)).toBeUndefined();
     const status = await executeBrowserPilot({ action: "status" }, ctx(id));
     expect(status.details.pid).toBeTypeOf("number");
 
@@ -832,7 +832,7 @@ describe("browser-pilot profiles and tabs live", () => {
       { action: "open", params: { url: `${server.origin}/` } },
       ctx(id),
     );
-    expect(opened.isError).toBeUndefined();
+    expect(opened.isError, JSON.stringify(opened.content)).toBeUndefined();
     const second = await executeBrowserPilot(
       { action: "tabs", params: { operation: "new", url: `${server.origin}/` } },
       ctx(id),

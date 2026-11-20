@@ -1,12 +1,20 @@
-import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
+import {
+  browserRuntimeFor,
+  cookiesForUrl,
+  createBrowserRenderer,
+  type BrowserRenderer,
+} from "../../lib/browser";
 import type { BrowserConfig, FetchConfig } from "../../lib/config";
 import { HttpCache } from "../../lib/web/cache";
+import { DEFAULT_RUNTIME_CONFIG, type RuntimeConfig } from "../../lib/web/config";
 import { classifyResponse } from "../../lib/web/outcome";
 import { sharedPoliteness, type Politeness } from "../../lib/web/politeness";
-import type { HostPolicy, PolitenessConfig } from "../../lib/web/config";
+import type { BlockingConfig, HostPolicy, PolitenessConfig } from "../../lib/web/config";
 import { WebRuntime, type BrowserTransport } from "../../lib/web/runtime";
+import type { BrowserRuntime } from "../../lib/browser/runtime";
 import type { WebResult } from "../../lib/web/types";
 import { loadPage } from "./fetch";
+import { siteHostDefaults } from "./scrapers/registry";
 import type {
   ExecFn,
   FetchContext,
@@ -23,10 +31,18 @@ export interface CreateFetchContextOptions {
   resolve?: ResolveHost;
   cacheDir?: string;
   exec?: ExecFn;
-  /** Optional headless-browser renderer, threaded through to the reader chain. */
+  /** Agent directory, used for browser profiles and instance records. */
+  agentDir?: string;
+  /** Working directory, used to resolve a relative browser profile path. */
+  cwd?: string;
+  /** Optional browser renderer, threaded through to the reader chain. */
   renderPage?: BrowserRenderer;
   /** Browser config; when set (and enabled) a renderer is created on first use. */
   browserConfig?: BrowserConfig;
+  /** Shared runtime settings for a renderer created here. */
+  runtimeConfig?: RuntimeConfig;
+  /** Subresource blocking passed to a renderer created here. */
+  blocking?: BlockingConfig;
   /** Renderer factory override; defaults to `createBrowserRenderer`. */
   createRenderer?: BrowserRendererFactory;
   /** Politeness policy; absent leaves requests unpaced and robots-unchecked. */
@@ -37,9 +53,23 @@ export interface CreateFetchContextOptions {
   sessionId?: string;
 }
 
+/** Everything a renderer needs, so both tools build the same request shape. */
+export interface BrowserRenderRequest {
+  agentDir: string;
+  cwd: string;
+  config: BrowserConfig;
+  runtimeConfig: RuntimeConfig;
+  politeness?: Politeness;
+  blocking?: BlockingConfig;
+  hosts?: Record<string, HostPolicy>;
+  resolve?: ResolveHost;
+  /** Runtime override, primarily for tests. */
+  runtime?: BrowserRuntime;
+}
+
 /** Build a browser renderer from config; injectable so tests can observe laziness. */
 export type BrowserRendererFactory = (
-  config: BrowserConfig,
+  request: BrowserRenderRequest,
 ) => Promise<BrowserRenderer | undefined>;
 
 /**
@@ -54,20 +84,46 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
   const deadline = AbortSignal.timeout(options.config.timeoutSeconds * 1000);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
   // One limiter and host-state store per process and cache directory, so
-  // pacing and learned limits survive between tool calls.
+  // pacing and learned limits survive between tool calls. Site handlers declare
+  // starting gaps for the hosts they contact; configured values win.
+  const hosts = siteHostDefaults(options.hosts);
   const politeness: Politeness | undefined = options.politeness
     ? sharedPoliteness({
         dir: options.cacheDir ?? "",
         politeness: options.politeness,
-        hosts: options.hosts,
+        hosts,
       })
     : undefined;
   // Conditional GETs keep a repeat fetch cheap; entries are revalidated, so a
   // stale body is never served as fresh.
   const cache = options.cacheDir ? new HttpCache({ dir: options.cacheDir }) : undefined;
+  // The runtime is created without launching anything; probes use it to read
+  // the warm profile's cookies, and the renderer later leases the same browser.
+  const browserRequest: BrowserRenderRequest | undefined =
+    options.browserConfig && options.browserConfig.enabled
+      ? {
+          agentDir: options.agentDir ?? "",
+          cwd: options.cwd ?? "",
+          config: options.browserConfig,
+          runtimeConfig: options.runtimeConfig ?? DEFAULT_RUNTIME_CONFIG,
+          politeness,
+          blocking: options.blocking,
+          hosts: options.hosts,
+          resolve: options.resolve,
+        }
+      : undefined;
+  const browserRuntime = browserRequest ? browserRuntimeFor(browserRequest) : undefined;
   const renderPage =
     options.renderPage ??
-    lazyBrowserRenderer(options.browserConfig, options.createRenderer ?? defaultBrowserRenderer);
+    (browserRequest && browserRuntime
+      ? lazyBrowserRenderer(options.createRenderer ?? defaultBrowserRenderer, {
+          ...browserRequest,
+          runtime: browserRuntime,
+        })
+      : undefined);
+  const cookiesFor = browserRuntime
+    ? (url: string) => cookiesForUrl(browserRuntime, url)
+    : undefined;
   const runtime = politeness
     ? new WebRuntime({
         politeness,
@@ -106,11 +162,11 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
     cacheDir: options.cacheDir,
     exec: options.exec,
     renderPage,
+    cookiesFor,
   };
 }
 
-const defaultBrowserRenderer: BrowserRendererFactory = (config) =>
-  createBrowserRenderer({ config });
+const defaultBrowserRenderer: BrowserRendererFactory = (request) => createBrowserRenderer(request);
 
 /** Render through the shared runtime and map its result to the pipeline shape. */
 async function runtimePage(
@@ -189,13 +245,13 @@ function browserTransport(renderPage: BrowserRenderer): BrowserTransport {
  * launch entirely.
  */
 function lazyBrowserRenderer(
-  config: BrowserConfig | undefined,
   create: BrowserRendererFactory,
+  request: BrowserRenderRequest,
 ): BrowserRenderer | undefined {
-  if (!config?.enabled) return undefined;
+  if (!request.config?.enabled) return undefined;
   let pending: Promise<BrowserRenderer | undefined> | undefined;
   return async (url, renderOptions) => {
-    pending ??= create(config);
+    pending ??= create(request);
     const renderer = await pending;
     if (!renderer) throw new Error("No browser available for rendering");
     return renderer(url, renderOptions);

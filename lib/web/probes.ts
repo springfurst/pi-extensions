@@ -28,8 +28,8 @@ export interface ProbeOptions {
   signal?: AbortSignal;
   /** Wall-clock budget for one candidate, in seconds. */
   timeoutSeconds?: number;
-  /** Cookies from a warm profile; resolved once per call. */
-  cookies?: string | (() => string | undefined | Promise<string | undefined>);
+  /** Cookies from a warm profile; a function resolves them for each candidate URL. */
+  cookies?: string | ((url: string) => string | undefined | Promise<string | undefined>);
   /** Minimum characters for a candidate to count as content. */
   minChars?: number;
   /** Kinds to try, in order. Defaults to markdown, llms, then negotiation. */
@@ -67,7 +67,6 @@ export async function probe(url: string, options: ProbeOptions): Promise<ProbeHi
   const kinds = options.kinds ?? ["md", "llms", "negotiation"];
   const seen = options.seen ?? new Set<string>();
   const minChars = options.minChars ?? DEFAULT_MIN_CHARS;
-  const cookies = typeof options.cookies === "function" ? await options.cookies() : options.cookies;
 
   for (const kind of kinds) {
     for (const candidate of candidatesFor(kind, url, options.timeoutSeconds)) {
@@ -75,6 +74,10 @@ export async function probe(url: string, options: ProbeOptions): Promise<ProbeHi
       if (seen.has(key)) continue;
       seen.add(key);
       if (options.signal?.aborted) return undefined;
+      const cookies =
+        typeof options.cookies === "function"
+          ? await options.cookies(candidate.url)
+          : options.cookies;
       const result = await options.fetch(candidate.url, {
         headers: candidate.headers,
         timeoutSeconds: candidate.timeoutSeconds,

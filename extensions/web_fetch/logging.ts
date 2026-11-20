@@ -1,36 +1,9 @@
 import type { TruncationBinding } from "./output";
+import { siteMethods } from "./scrapers/registry";
 import type { RenderResult } from "./types";
 
-/** Site-specific handler methods. Update when a handler's method changes. */
-const SITE_METHODS = new Set<string>([
-  "github-raw",
-  "github-tree",
-  "github-commit",
-  "github-pr",
-  "github-issue",
-  "github-issues",
-  "github-repo",
-  "github-actions-run",
-  "github-actions-job",
-  "gitlab-raw",
-  "gitlab-tree",
-  "gitlab-issue",
-  "gitlab-mr",
-  "gitlab-repo",
-  "npm",
-  "pypi",
-  "crates.io",
-  "wikipedia",
-  "arxiv",
-  "semantic-scholar",
-  "pubmed",
-  "rfc",
-  "docs.rs",
-  "mdn",
-  "hackernews",
-  "reddit",
-  "stackexchange",
-]);
+/** Site-specific handler methods, declared by the site registry. */
+const SITE_METHODS = siteMethods();
 
 /** In-process, external, and browser reader backends. */
 const READER_METHODS = new Set<string>(["readability", "trafilatura", "lynx", "jina", "browser"]);

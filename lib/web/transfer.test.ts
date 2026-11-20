@@ -313,8 +313,11 @@ describe("transfer", () => {
       res.end("0123456789");
     });
     try {
-      const result = await transfer(`${server.origin}/`, { allowPrivateHosts: true, maxBytes: 4 });
-      expect(result.ok).toBe(true);
+      const result = await transfer(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        maxBytes: 4,
+      });
+      expect(result.ok, result.error).toBe(true);
       expect(result.content).toBe("0123");
       expect(result.truncated).toBe(true);
     } finally {
@@ -361,7 +364,7 @@ describe("transfer", () => {
         allowPrivateHosts: true,
         headers: { Authorization: "Bearer secret" },
       });
-      expect(result.ok).toBe(true);
+      expect(result.ok, result.error).toBe(true);
       expect(received).toBe("Bearer secret");
     } finally {
       await server.close();

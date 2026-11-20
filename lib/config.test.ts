@@ -14,6 +14,9 @@ beforeEach(() => {
   agentDir = join(root, "agent");
   mkdirSync(cwd, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
+  // Environment fallbacks must come from the case, never from the shell.
+  delete process.env.SEARXNG_ENDPOINT;
+  delete process.env.SEARXNG_SECRET;
 });
 
 afterEach(() => {
@@ -194,6 +197,7 @@ describe("loadConfig", () => {
       attach: "off",
       isolation: "contexts",
       maxPages: 4,
+      headless: "auto",
     });
     expect(config.politeness.robots).toBe("strict");
     expect(config.politeness.globalConcurrency).toBe(2);
@@ -202,6 +206,15 @@ describe("loadConfig", () => {
     expect(config.hosts["github.com"]).toEqual({ minIntervalMs: 750, robots: "strict" });
     expect(config.blocking.media).toBe("off");
     expect(config.blocking.images).toBe("third-party");
+  });
+
+  it("parses the shared runtime launch mode", () => {
+    writeGlobalConfig({ runtime: { headless: true } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).runtime.headless).toBe(true);
+    writeGlobalConfig({ runtime: { headless: "auto" } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).runtime.headless).toBe("auto");
+    writeGlobalConfig({ runtime: { headless: "headful" } });
+    expect(loadConfig(cwd, { agentDir, projectTrusted: true }).runtime.headless).toBe("auto");
   });
 
   it("lets the trusted project file override the shared sections", () => {

@@ -5,8 +5,9 @@ import { formatBytes } from "../../lib/format";
 import { probe, type ProbeFetch, type ProbeOptions } from "../../lib/web/probes";
 import { parseAlternateLinks, parseFeedToMarkdown } from "./digest";
 import { isLowQualityOutput, looksLikeHtml, renderHtmlToText } from "./extract";
+import { classifyParser } from "./logging";
 import { finalizeOutput } from "./output";
-import { specialHandlers } from "./scrapers";
+import { findSiteEntry } from "./scrapers/registry";
 import { repairCollapsedScheme } from "./selector";
 import type { FetchContext, RenderResult } from "./types";
 
@@ -16,6 +17,36 @@ export interface RenderUrlOptions {
   /** Render cap for this call. */
   maxChars: number;
   ctx: FetchContext;
+}
+
+/** Methods that return a transformed view of the body rather than the body itself. */
+const SHAPED_METHODS = new Set([
+  "feed",
+  "alternate-feed",
+  "alternate-markdown",
+  "md-suffix",
+  "content-negotiation",
+  "llms.txt",
+]);
+
+/** Notes that mean a policy limited the read, rather than the site being unreadable. */
+const POLICY_NOTE =
+  /robots\.txt disallows|Consent wall|Challenge detected|browser escalation failed/i;
+
+/**
+ * Note telling the model how to get the verbatim body, added when the content
+ * was reshaped or a policy limited the read. Undefined when the body is already
+ * verbatim, so a plain JSON, text, or raw read carries no extra note.
+ */
+export function rawHint(method: string, notes: readonly string[]): string | undefined {
+  const kind = classifyParser(method);
+  if (kind === "site" || kind === "reader" || SHAPED_METHODS.has(method)) {
+    return `Content was shaped by ${method}; append :raw to the URL for the verbatim response body`;
+  }
+  if (notes.some((note) => POLICY_NOTE.test(note))) {
+    return "A policy limited this read; append :raw to the URL for the verbatim response body";
+  }
+  return undefined;
 }
 
 /** Run the full `web_fetch` pipeline for one URL. */
@@ -37,6 +68,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     fetch: probeFetch,
     signal: ctx.signal,
     timeoutSeconds: ctx.timeoutMs / 1000,
+    cookies: ctx.cookiesFor,
   };
 
   // Transport facts from the main response, recorded on whatever stage wins.
@@ -51,6 +83,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     status?: number,
   ): RenderResult => {
     const output = finalizeOutput(content, maxChars);
+    const hint = rawHint(method, notes);
     return {
       url: resultUrl,
       finalUrl,
@@ -60,23 +93,27 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       content: output.content,
       fetchedAt,
       truncated: output.truncated,
-      notes,
+      notes: hint ? [...notes, hint] : notes,
       ...transportFacts,
     };
   };
 
-  // Site-specific handlers run before the generic fetch and degrade to it.
+  // One registry entry owns each site; a handler that declines falls through to
+  // the generic fetch. Adding a host to an existing parser is a registry entry.
   if (!raw) {
-    for (const handler of specialHandlers) {
+    const entry = findSiteEntry(normalized);
+    if (entry) {
       ctx.signal?.throwIfAborted();
       try {
-        const result = await handler(normalized, ctx);
+        const result = await entry.handler(normalized, ctx);
         if (result) {
           const output = finalizeOutput(result.content, maxChars);
+          const hint = rawHint(result.method, result.notes);
           return {
             ...result,
             content: output.content,
             truncated: output.truncated,
+            notes: hint ? [...result.notes, hint] : result.notes,
           };
         }
       } catch {
@@ -100,6 +137,8 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       notes.push("Failed to fetch URL");
     }
     if (response.error) notes.push(`Cause: ${response.error}`);
+    const hint = rawHint("failed", notes);
+    if (hint) notes.push(hint);
     return {
       url,
       finalUrl: response.finalUrl || normalized,

@@ -4,6 +4,8 @@ import type { ChromeInstance, ProfileInfo } from "./profile";
 import {
   BrowserRuntime,
   TabLimitError,
+  resetSharedBrowserRuntimes,
+  sharedBrowserRuntime,
   type BrowserLike,
   type ContextLike,
   type PageLike,
@@ -373,5 +375,60 @@ describe("BrowserRuntime", () => {
     await expect(test.runtime.createPage("ghost")).rejects.toThrow(/No browser session/);
     expect(() => test.runtime.claim("ghost", new FakePage())).not.toThrow();
     expect(test.runtime.claim("ghost", new FakePage())).toBe(false);
+  });
+  it("lets a session override its tab limits when it leases", async () => {
+    const test = harness({ maxTabsPerSession: 8, tabsPerMinutePerSession: 4 });
+    await test.runtime.acquire("a", { maxTabs: 1, tabsPerMinute: 1 });
+    await test.runtime.createPage("a");
+    await expect(test.runtime.createPage("a")).rejects.toBeInstanceOf(TabLimitError);
+    await test.runtime.releaseAll();
+  });
+
+  it("opens render pages without spending the tab windows", async () => {
+    const test = harness({ maxTabsPerSession: 8, tabsPerMinutePerSession: 1 });
+    await test.runtime.acquire("render");
+    const first = await test.runtime.createRenderPage("render");
+    const second = await test.runtime.createRenderPage("render");
+    expect(first).not.toBe(second);
+    // The per-minute tab window is untouched, but the render pages still count
+    // as open pages for the cap.
+    await test.runtime.createPage("render");
+    await test.runtime.closePage("render", first);
+    await test.runtime.closePage("render", second);
+    await expect(test.runtime.createPage("render")).rejects.toBeInstanceOf(TabLimitError);
+    await test.runtime.releaseAll();
+  });
+
+  it("shares one runtime per profile and page budget", async () => {
+    const test = harness();
+    const options = {
+      agentDir: "/tmp/agent",
+      cwd: "/tmp",
+      config: {
+        profile: "shared",
+        headless: true as const,
+        viewport: { width: 1280, height: 800 },
+        stealth: "basic" as const,
+        noSandbox: false,
+        args: [],
+      },
+      attach: true,
+      maxPages: 4,
+      maxTabsPerSession: 8,
+      ensure: async () => ({ instance: test.instance, profile: test.profile, attached: false }),
+      connect: async () => test.browser,
+      closeBrowser: async () => undefined,
+    };
+    try {
+      const first = sharedBrowserRuntime(options);
+      const second = sharedBrowserRuntime({ ...options });
+      const other = sharedBrowserRuntime({ ...options, maxPages: 2 });
+      expect(second).toBe(first);
+      expect(other).not.toBe(first);
+      await first.releaseAll();
+      await other.releaseAll();
+    } finally {
+      resetSharedBrowserRuntimes();
+    }
   });
 });

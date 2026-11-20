@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fixtureContext, jsonResponse } from "../__fixtures__/context";
 import { decodeHNText, handleHackerNews } from "./hackernews";
-import { handleReddit } from "./reddit";
 import { getSiteParam, handleStackOverflow } from "./stackoverflow";
 
 describe("getSiteParam", () => {
@@ -51,47 +50,6 @@ describe("handleStackOverflow", () => {
     expect(result?.content).toContain("How do I widget?");
     expect(result?.content).toContain("## Answers");
     expect(result?.content).toContain("(Accepted)");
-  });
-});
-
-describe("handleReddit", () => {
-  it("renders a post with top comments", async () => {
-    const ctx = fixtureContext((url) => {
-      if (url.endsWith(".json")) {
-        return jsonResponse([
-          {
-            data: {
-              children: [
-                {
-                  data: {
-                    title: "A post",
-                    selftext: "Body text",
-                    author: "alice",
-                    score: 10,
-                    num_comments: 1,
-                    created_utc: 1_700_000_000,
-                    subreddit: "test",
-                    url: "https://reddit.com/r/test",
-                    is_self: true,
-                  },
-                },
-              ],
-            },
-          },
-          {
-            data: {
-              children: [{ kind: "t1", data: { body: "A comment", author: "bob", score: 2 } }],
-            },
-          },
-        ]);
-      }
-      return undefined;
-    });
-    const result = await handleReddit("https://www.reddit.com/r/test/comments/1/a_post/", ctx);
-    expect(result?.method).toBe("reddit");
-    expect(result?.content).toContain("# A post");
-    expect(result?.content).toContain("## Top Comments");
-    expect(result?.content).toContain("A comment");
   });
 });
 

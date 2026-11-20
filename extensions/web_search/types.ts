@@ -6,6 +6,9 @@ import type { SearxngConfig } from "../../lib/config";
 import type { StructuredQuery } from "./query";
 
 export type FetchImpl = typeof fetch;
+
+/** Spend the shared pacing budget before a request leaves the process. */
+export type PaceFn = (url: string, signal?: AbortSignal) => Promise<void>;
 export type Recency = "day" | "week" | "month" | "year";
 export type SearchEngineId =
   "duckduckgo" | "startpage" | "searxng" | "google" | "ecosia" | "mojeek";
@@ -49,6 +52,8 @@ export interface EngineSearchParams {
   signal?: AbortSignal;
   timeoutMs: number;
   fetch: FetchImpl;
+  /** Per-host and global pacing, shared with the fetch transport. */
+  pace?: PaceFn;
   /** SearXNG connection settings, when the engine is SearXNG. */
   searxng?: SearxngConfig;
   /** Browser renderer, when the engine needs one. */

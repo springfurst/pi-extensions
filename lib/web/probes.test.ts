@@ -137,21 +137,24 @@ describe("probe", () => {
     expect(calls[0]?.cookies).toBe("session=abc");
   });
 
-  it("resolves the cookie source once per call", async () => {
-    let resolves = 0;
-    const { fetch } = transport({
+  it("resolves the cookie source for each candidate URL", async () => {
+    const asked: string[] = [];
+    const { fetch, calls } = transport({
       "https://example.com/llms.txt": "",
       "https://example.com/page.md": LONG,
     });
     await probe("https://example.com/page", {
       fetch,
       kinds: ["llms", "md"],
-      cookies: () => {
-        resolves++;
+      cookies: (url) => {
+        asked.push(url);
         return "session=abc";
       },
     });
-    expect(resolves).toBe(1);
+    expect(asked.length).toBeGreaterThanOrEqual(2);
+    expect(asked[0]).toContain("llms.txt");
+    expect(asked.at(-1)).toContain("page.md");
+    expect(calls.every((call) => call.cookies === "session=abc")).toBe(true);
   });
 
   it("does not probe the same representation twice", async () => {

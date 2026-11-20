@@ -16,6 +16,7 @@ import type { IsolationMode, SessionHandle, SessionOptions } from "../web/types"
 import {
   closeChrome,
   connectChrome,
+  disposeChromeSync,
   ensureChrome,
   type ChromeLaunchConfig,
   type EnsureChromeOptions,
@@ -86,6 +87,12 @@ export interface BrowserRuntimeOptions {
   isPidAlive?: (pid: number) => boolean;
 }
 
+/** The pacing budget one caller spends before a navigation. */
+export interface NavigationBudget {
+  limiter: RequestLimiter;
+  store: HostStateStore;
+}
+
 /** A tab open refused by the per-session or global tab budget. */
 export class TabLimitError extends Error {
   constructor(
@@ -116,10 +123,21 @@ interface SessionState {
   isolation: IsolationMode;
   slot: Slot;
   context?: ContextLike;
+  /** Per-session tab cap and open-rate window. */
+  maxTabs: number;
+  tabs: SlidingWindow;
   /** Pages this session owns. */
   owned: Set<PageLike>;
   /** Pool slot release for each page this session created. */
   releases: Map<PageLike, () => void>;
+}
+
+/** Per-session limits a caller may override when it leases the browser. */
+export interface SessionLimits {
+  /** Tabs this session may hold open at once. */
+  maxTabs?: number;
+  /** Tabs this session may open per minute. */
+  tabsPerMinute?: number;
 }
 
 const TAB_WINDOW_MS = 60_000;
@@ -152,9 +170,10 @@ export class BrowserRuntime {
   private readonly clock?: Clock;
   private readonly pool: PagePool;
   private readonly globalTabs: SlidingWindow;
-  private readonly sessionTabs = new Map<string, SlidingWindow>();
   private readonly slots = new Map<string, Slot>();
   private readonly sessions = new Map<string, SessionState>();
+  /** Pages currently being opened; target watchers must not claim them. */
+  private pendingOpens = 0;
 
   constructor(private readonly options: BrowserRuntimeOptions) {
     this.ensure = options.ensure ?? ensureChrome;
@@ -172,19 +191,16 @@ export class BrowserRuntime {
   /** Lease the browser and return a handle bound to one session id. */
   async openSession(
     sessionId: string,
-    options: SessionOptions & { signal?: AbortSignal },
+    options: SessionOptions & SessionLimits & { signal?: AbortSignal },
   ): Promise<RuntimeSessionHandle> {
-    await this.acquire(sessionId, {
-      isolation: options.isolation,
-      signal: options.signal,
-    });
+    await this.acquire(sessionId, options);
     return new RuntimeSession(this, sessionId, options.isolation);
   }
 
   /** Lease the profile's browser for a session, attaching when it is live. */
   async acquire(
     sessionId: string,
-    options: { isolation?: IsolationMode; signal?: AbortSignal } = {},
+    options: { isolation?: IsolationMode; signal?: AbortSignal } & SessionLimits = {},
   ): Promise<RuntimeLease> {
     const existing = this.sessions.get(sessionId);
     if (existing) return this.leaseOf(existing.slot);
@@ -204,6 +220,12 @@ export class BrowserRuntime {
       id: sessionId,
       isolation,
       slot,
+      maxTabs: options.maxTabs ?? this.options.maxTabsPerSession,
+      tabs: new SlidingWindow({
+        limit: options.tabsPerMinute ?? this.options.tabsPerMinutePerSession ?? 2,
+        windowMs: TAB_WINDOW_MS,
+        clock: this.clock,
+      }),
       owned: new Set(),
       releases: new Map(),
     };
@@ -219,9 +241,17 @@ export class BrowserRuntime {
     return this.leaseOf(slot);
   }
 
-  /** Spend the host's navigation budget before a browser navigation. */
-  async beforeNavigation(url: string, signal?: AbortSignal): Promise<void> {
-    const navigation = this.options.navigation;
+  /**
+   * Spend the host's navigation budget before a browser navigation. A caller
+   * may supply its own budget so a shared process does not inherit another
+   * tool's learned host intervals.
+   */
+  async beforeNavigation(
+    url: string,
+    signal?: AbortSignal,
+    budget: NavigationBudget | undefined = this.options.navigation,
+  ): Promise<void> {
+    const navigation = budget;
     if (!navigation) return;
     let host: string;
     try {
@@ -240,18 +270,44 @@ export class BrowserRuntime {
   async createPage(sessionId: string, signal?: AbortSignal): Promise<PageLike> {
     const state = this.sessionState(sessionId);
     this.takeTabSlot(state);
-    const release = await this.pool.acquire(sessionId, signal);
+    return this.openPage(state, signal);
+  }
+
+  /**
+   * Open a short-lived page for a tool render. Render pages use the page pool
+   * and ownership rules but not the tab-per-minute windows, which exist to keep
+   * user-visible tab opening from tripping challenge services; renders are
+   * paced by the host navigation budget instead.
+   */
+  async createRenderPage(sessionId: string, signal?: AbortSignal): Promise<PageLike> {
+    return this.openPage(this.sessionState(sessionId), signal);
+  }
+
+  private async openPage(state: SessionState, signal?: AbortSignal): Promise<PageLike> {
+    const release = await this.pool.acquire(state.id, signal);
     let page: PageLike | undefined;
+    this.pendingOpens++;
     try {
       page = state.context ? await state.context.newPage() : await state.slot.browser.newPage();
       state.owned.add(page);
-      state.slot.owner.set(page, sessionId);
+      state.slot.owner.set(page, state.id);
       state.releases.set(page, release);
       return page;
     } catch (error) {
       release();
       throw error;
+    } finally {
+      this.pendingOpens--;
     }
+  }
+
+  /**
+   * True while a session is opening a page. Browser target watchers check this
+   * before claiming an unowned page, because the browser announces a new page
+   * before the opening session records ownership.
+   */
+  pageOpenInFlight(): boolean {
+    return this.pendingOpens > 0;
   }
 
   /** Close a session's page and free its pool slot. */
@@ -354,6 +410,28 @@ export class BrowserRuntime {
     for (const id of [...this.sessions.keys()]) await this.release(id);
   }
 
+  /** Kill processes this runtime launched, for synchronous exit cleanup. */
+  disposeSync(): void {
+    for (const slot of this.slots.values()) {
+      if (slot.launchedHere) disposeChromeSync(slot.instance.pid);
+    }
+    this.slots.clear();
+    this.sessions.clear();
+  }
+
+  /** The connected browser this process already has open, if any. */
+  liveBrowser(): BrowserLike | undefined {
+    for (const slot of this.slots.values()) {
+      if (slot.browser.connected && !slot.closed) return slot.browser;
+    }
+    return undefined;
+  }
+
+  /** True when another session still leases the browser this session uses. */
+  hasOtherLeases(sessionId: string): boolean {
+    return this.otherLeases(sessionId).length > 0;
+  }
+
   private async openSlot(
     profile: ProfileInfo,
     sessionId: string,
@@ -410,27 +488,18 @@ export class BrowserRuntime {
   }
 
   private takeTabSlot(state: SessionState): void {
-    let sessionWindow = this.sessionTabs.get(state.id);
-    if (!sessionWindow) {
-      sessionWindow = new SlidingWindow({
-        limit: this.options.tabsPerMinutePerSession ?? 2,
-        windowMs: TAB_WINDOW_MS,
-        clock: this.clock,
-      });
-      this.sessionTabs.set(state.id, sessionWindow);
-    }
     this.prune(state);
     const openTabs = state.owned.size;
-    if (openTabs >= this.options.maxTabsPerSession) {
+    if (openTabs >= state.maxTabs) {
       throw new TabLimitError(
-        `This session already has ${openTabs} tabs open (maxTabs ${this.options.maxTabsPerSession}).`,
+        `This session already has ${openTabs} tabs open (maxTabs ${state.maxTabs}).`,
         0,
       );
     }
-    if (!sessionWindow.take()) {
+    if (!state.tabs.take()) {
       throw new TabLimitError(
-        `Tab creation is limited to ${this.options.tabsPerMinutePerSession ?? 2} per minute per session.`,
-        sessionWindow.nextAvailableAt() - (this.clock?.now() ?? Date.now()),
+        `Tab creation is limited to ${state.tabs.limit} per minute per session.`,
+        state.tabs.nextAvailableAt() - (this.clock?.now() ?? Date.now()),
       );
     }
     if (!this.globalTabs.take()) {
@@ -450,6 +519,57 @@ export class BrowserRuntime {
     if (!state) throw new Error(`No browser session is open for ${sessionId}.`);
     return state;
   }
+}
+
+const sharedRuntimes = new Map<string, BrowserRuntime>();
+let exitHandlerRegistered = false;
+
+/**
+ * The process-wide runtime for a profile. Callers that would launch the same
+ * profile share one runtime, one page pool, and one browser process. The first
+ * caller decides the launch configuration; later callers attach to what runs.
+ */
+export function sharedBrowserRuntime(options: BrowserRuntimeOptions): BrowserRuntime {
+  const key = runtimeKey(options);
+  let runtime = sharedRuntimes.get(key);
+  if (runtime) return runtime;
+  runtime = new BrowserRuntime(options);
+  sharedRuntimes.set(key, runtime);
+  registerRuntimeExitHandler();
+  return runtime;
+}
+
+/** Drop the process-wide runtimes; tests call this between cases. */
+export function resetSharedBrowserRuntimes(): void {
+  sharedRuntimes.clear();
+}
+
+/** The runtimes this process opened, for status and tests. */
+export function sharedRuntimeEntries(): Array<[string, BrowserRuntime]> {
+  return [...sharedRuntimes.entries()];
+}
+
+function runtimeKey(options: BrowserRuntimeOptions): string {
+  return JSON.stringify([
+    options.agentDir,
+    options.cwd,
+    options.config.profile,
+    options.attach,
+    options.maxPages,
+    Boolean(options.ensure),
+    Boolean(options.connect),
+    Boolean(options.closeBrowser),
+    Boolean(options.clock),
+  ]);
+}
+
+function registerRuntimeExitHandler(): void {
+  if (exitHandlerRegistered) return;
+  exitHandlerRegistered = true;
+  process.once("exit", () => {
+    for (const runtime of sharedRuntimes.values()) runtime.disposeSync();
+    sharedRuntimes.clear();
+  });
 }
 
 /** A bound view of the runtime for one session. */

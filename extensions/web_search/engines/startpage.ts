@@ -93,6 +93,7 @@ async function fetchFormInputs(
   try {
     const page = await fetchPage(STARTPAGE_HOME_URL, {
       fetch: params.fetch,
+      pace: params.pace,
       signal: params.signal,
       timeoutMs: params.timeoutMs,
     });
@@ -116,6 +117,7 @@ async function callStartpageHtml(params: EngineSearchParams): Promise<string> {
     if (withDate) form.set("with_date", withDate);
     page = await fetchPage(STARTPAGE_SEARCH_URL, {
       fetch: params.fetch,
+      pace: params.pace,
       signal: params.signal,
       timeoutMs: params.timeoutMs,
       referer: STARTPAGE_HOME_URL,
@@ -129,6 +131,7 @@ async function callStartpageHtml(params: EngineSearchParams): Promise<string> {
     if (withDate) url.searchParams.set("with_date", withDate);
     page = await fetchPage(url.href, {
       fetch: params.fetch,
+      pace: params.pace,
       signal: params.signal,
       timeoutMs: params.timeoutMs,
       referer: STARTPAGE_HOME_URL,

@@ -61,4 +61,6 @@ export interface FetchContext {
   readonly exec?: ExecFn;
   /** Optional headless-browser renderer; when absent the browser backend is skipped. */
   readonly renderPage?: BrowserRenderer;
+  /** Cookie header from a warm browser profile, used by probes. */
+  readonly cookiesFor?: (url: string) => Promise<string | undefined>;
 }

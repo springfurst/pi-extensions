@@ -3,7 +3,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Browser, Dialog, Frame, HTTPRequest, Page, Target } from "puppeteer-core";
 import { connectChrome, disposeChromeSync } from "./launcher";
 import { blockingEnabled, shouldBlockRequest } from "../../lib/browser/blocking";
-import { BrowserRuntime, TabLimitError } from "../../lib/browser/runtime";
+import { BrowserRuntime, TabLimitError, sharedBrowserRuntime } from "../../lib/browser/runtime";
 import { findHostPolicy, sharedPoliteness } from "../../lib/web/politeness";
 import { expandTilde } from "../../lib/logging";
 import { detectChallenge } from "./challenge";
@@ -158,6 +158,8 @@ export class BrowserPilotSession {
     try {
       lease = await runtime.acquire(this.sessionId, {
         isolation: this.config.runtime.isolation,
+        maxTabs: this.config.maxTabs,
+        tabsPerMinute: 2,
         signal,
       });
     } catch (error) {
@@ -688,6 +690,8 @@ export class BrowserPilotSession {
     if (!page || page.isClosed()) return;
     const url = page.url();
     if (url.startsWith("chrome://") || url.startsWith("devtools://")) return;
+    // A page another session is opening has no owner yet; it will claim it.
+    if (this.runtimeInstance?.pageOpenInFlight()) return;
     // Another session's tab: leave it alone, including its tab count.
     if (this.runtimeInstance && !this.runtimeInstance.visible(this.sessionId, page)) return;
     const targetId = targetIdOf(page);
@@ -1106,37 +1110,19 @@ export class BrowserPilotSession {
   }
 }
 
-/** One runtime per profile and launch configuration. */
-const runtimes = new Map<string, BrowserRuntime>();
-
+/** The process-wide runtime for this profile, shared with the web tools. */
 function sharedRuntime(options: {
   agentDir: string;
   cwd: string;
   config: BrowserPilotConfig;
 }): BrowserRuntime {
   const { config } = options;
-  const key = JSON.stringify([
-    options.agentDir,
-    options.cwd,
-    config.profile,
-    config.executablePath ?? "",
-    config.headless,
-    config.locale ?? "",
-    config.stealth,
-    config.noSandbox,
-    config.args,
-    config.runtime.attach,
-    config.runtime.maxPages,
-    config.maxTabs,
-  ]);
-  const existing = runtimes.get(key);
-  if (existing) return existing;
   const politeness = sharedPoliteness({
     dir: join(options.agentDir, "web-tools"),
     politeness: config.politeness,
     hosts: config.hosts,
   });
-  const runtime = new BrowserRuntime({
+  return sharedBrowserRuntime({
     agentDir: options.agentDir,
     cwd: options.cwd,
     config: {
@@ -1156,8 +1142,6 @@ function sharedRuntime(options: {
     tabsPerMinuteGlobal: 10,
     navigation: { limiter: politeness.limiter, store: politeness.store },
   });
-  runtimes.set(key, runtime);
-  return runtime;
 }
 
 /** One session per pi session id. */
