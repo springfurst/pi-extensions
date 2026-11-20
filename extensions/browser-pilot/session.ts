@@ -1,13 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Browser, Dialog, Frame, HTTPRequest, Page, Target } from "puppeteer-core";
-import {
-  closeChrome,
-  connectChrome,
-  disposeChromeSync,
-  ensureChrome,
-  instanceRecordPath,
-} from "./launcher";
+import { connectChrome, disposeChromeSync } from "./launcher";
+import { BrowserRuntime, TabLimitError } from "../../lib/browser/runtime";
 import { expandTilde } from "../../lib/logging";
 import { detectChallenge } from "./challenge";
 import { DownloadTracker } from "./session-downloads";
@@ -106,6 +101,7 @@ export class BrowserPilotSession {
   private networkDetails = new NetworkDetailStore();
   private idleTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
+  private runtimeInstance?: BrowserRuntime;
   readonly recording = new RecordingController(this);
 
   constructor(options: {
@@ -131,11 +127,7 @@ export class BrowserPilotSession {
     if (this.browser?.connected) return;
 
     if (this.browser) {
-      try {
-        if (!this.instance?.external) await this.browser.close();
-      } catch {
-        // The browser may already be gone.
-      }
+      // A shared browser may serve other sessions; never close it here.
       this.browser = undefined;
     }
 
@@ -159,25 +151,22 @@ export class BrowserPilotSession {
       return;
     }
 
-    const { instance, profile } = await ensureChrome({
-      config: this.config,
-      sessionId: this.sessionId,
-      agentDir: this.agentDir,
-      cwd: this.cwd,
-      signal,
-    });
-    this.instance = instance;
-    this.profile = profile;
+    const runtime = this.runtime();
+    let lease;
     try {
-      this.browser = await connectChrome(instance);
+      lease = await runtime.acquire(this.sessionId, {
+        isolation: this.config.runtime.isolation,
+        signal,
+      });
     } catch (error) {
       throw new BrowserPilotError(
-        `Could not connect to Chrome on port ${instance.port}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `Could not open a browser: ${error instanceof Error ? error.message : String(error)}`,
         "Run status to inspect the instance, or close the browser and try again.",
       );
     }
+    this.instance = lease.instance;
+    this.profile = lease.profile;
+    this.browser = lease.browser as unknown as Browser;
     this.browser.on("disconnected", () => {
       this.browser = undefined;
       this.downloads.reset();
@@ -185,6 +174,16 @@ export class BrowserPilotSession {
     this.watchTargets();
     await this.restoreOrCreate(signal);
     await this.configureDownloads();
+  }
+
+  /** The process, profile, and page pool shared with other sessions. */
+  private runtime(): BrowserRuntime {
+    this.runtimeInstance ??= sharedRuntime({
+      agentDir: this.agentDir,
+      cwd: this.cwd,
+      config: this.config,
+    });
+    return this.runtimeInstance;
   }
 
   /** Attach to an existing Chrome DevTools endpoint instead of launching Chrome. */
@@ -478,7 +477,7 @@ export class BrowserPilotSession {
       }
     }
 
-    const page = await this.browser!.newPage();
+    const page = await this.openPage(signal);
     const tab = await this.attachPage(page, true);
     tab.owned = true;
     this.current = tab.handle;
@@ -489,6 +488,22 @@ export class BrowserPilotSession {
     }
     this.persist();
     return tab;
+  }
+
+  /** Open a page through the shared pool and tab budgets. */
+  private async openPage(signal?: AbortSignal): Promise<Page> {
+    if (!this.runtimeInstance) return this.browser!.newPage();
+    try {
+      return (await this.runtimeInstance.createPage(this.sessionId, signal)) as unknown as Page;
+    } catch (error) {
+      if (error instanceof TabLimitError) {
+        throw new BrowserPilotError(
+          error.message,
+          "Wait before opening more tabs, or close one first.",
+        );
+      }
+      throw error;
+    }
   }
 
   private tabLimitError(openTabs: ManagedTab[]): BrowserPilotError {
@@ -508,6 +523,12 @@ export class BrowserPilotSession {
     handle?: number,
     configure = true,
   ): Promise<ManagedTab> {
+    if (this.runtimeInstance && !this.runtimeInstance.claim(this.sessionId, page)) {
+      throw new BrowserPilotError(
+        "That tab belongs to another session.",
+        "Each session can only address the tabs it opened.",
+      );
+    }
     const targetId = targetIdOf(page);
     for (const existing of this.tabs.values()) {
       if (existing.targetId === targetId) {
@@ -660,6 +681,8 @@ export class BrowserPilotSession {
     if (!page || page.isClosed()) return;
     const url = page.url();
     if (url.startsWith("chrome://") || url.startsWith("devtools://")) return;
+    // Another session's tab: leave it alone, including its tab count.
+    if (this.runtimeInstance && !this.runtimeInstance.visible(this.sessionId, page)) return;
     const targetId = targetIdOf(page);
     if ([...this.tabs.values()].some((tab) => tab.targetId === targetId)) return;
     const openTabs = [...this.tabs.values()].filter((tab) => !tab.page.isClosed());
@@ -745,7 +768,9 @@ export class BrowserPilotSession {
   /** Reconnect to an existing tab set, or create a fresh tab. */
   private async restoreOrCreate(signal?: AbortSignal): Promise<void> {
     const record = this.readSessionRecord();
-    const pages = await this.browser!.pages();
+    const pages = (await this.browser!.pages()).filter(
+      (page) => !this.runtimeInstance || this.runtimeInstance.visible(this.sessionId, page),
+    );
     if (record && this.instance && record.wsEndpoint === this.instance.wsEndpoint) {
       for (const saved of record.tabs) {
         const page = pages.find((candidate) => targetIdOf(candidate) === saved.targetId);
@@ -876,7 +901,8 @@ export class BrowserPilotSession {
         'Run {action:"tabs", params:{operation:"list"}} to see open tabs.',
       );
     }
-    if (!tab.page.isClosed()) await tab.page.close().catch(() => undefined);
+    if (this.runtimeInstance) await this.runtimeInstance.closePage(this.sessionId, tab.page);
+    else if (!tab.page.isClosed()) await tab.page.close().catch(() => undefined);
     this.tabs.delete(handle);
     this.clearRefsForTab(handle);
     if (this.current === handle) {
@@ -1005,7 +1031,6 @@ export class BrowserPilotSession {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = undefined;
     const instance = this.instance;
-    const profile = this.profile;
     const browser = this.browser;
     this.browser = undefined;
     this.instance = undefined;
@@ -1018,23 +1043,78 @@ export class BrowserPilotSession {
     }
     if (instance?.external) {
       browser?.disconnect();
-    } else if (instance) {
-      await closeChrome({
-        browser,
-        pid: instance.pid,
-        recordPath: instanceRecordPath(this.agentDir, profile?.key ?? "shared"),
-        userDataDir: instance.userDataDir,
-        deleteProfile: profile ? !profile.persistent : false,
-      });
+    } else if (this.runtimeInstance) {
+      await this.runtimeInstance.release(this.sessionId);
     }
+  }
+
+  /**
+   * Release this session. The browser process closes only when no other
+   * session leases it and this process started it.
+   */
+  async closeBrowser(): Promise<{ sharedWith: string[] }> {
+    const result = this.runtimeInstance
+      ? await this.runtimeInstance.closeBrowser(this.sessionId)
+      : { sharedWith: [] };
+    await this.dispose();
+    return result;
   }
 
   /** Synchronously kill the browser for process-exit cleanup. */
   disposeSync(force = false): void {
     if (!force && !this.config.closeOnExit) return;
     this.disposed = true;
-    if (this.instance) disposeChromeSync(this.instance.pid);
+    const owned = !this.runtimeInstance || this.runtimeInstance.ownsProcess(this.sessionId);
+    if (this.instance && owned) disposeChromeSync(this.instance.pid);
   }
+}
+
+/** One runtime per profile and launch configuration. */
+const runtimes = new Map<string, BrowserRuntime>();
+
+function sharedRuntime(options: {
+  agentDir: string;
+  cwd: string;
+  config: BrowserPilotConfig;
+}): BrowserRuntime {
+  const { config } = options;
+  const key = JSON.stringify([
+    options.agentDir,
+    options.cwd,
+    config.profile,
+    config.executablePath ?? "",
+    config.headless,
+    config.locale ?? "",
+    config.stealth,
+    config.noSandbox,
+    config.args,
+    config.runtime.attach,
+    config.runtime.maxPages,
+    config.maxTabs,
+  ]);
+  const existing = runtimes.get(key);
+  if (existing) return existing;
+  const runtime = new BrowserRuntime({
+    agentDir: options.agentDir,
+    cwd: options.cwd,
+    config: {
+      profile: config.profile,
+      executablePath: config.executablePath,
+      headless: config.headless,
+      viewport: config.viewport,
+      locale: config.locale,
+      stealth: config.stealth,
+      noSandbox: config.noSandbox,
+      args: config.args,
+    },
+    attach: config.runtime.attach === "auto",
+    maxPages: config.runtime.maxPages,
+    maxTabsPerSession: config.maxTabs,
+    tabsPerMinutePerSession: 2,
+    tabsPerMinuteGlobal: 10,
+  });
+  runtimes.set(key, runtime);
+  return runtime;
 }
 
 /** One session per pi session id. */

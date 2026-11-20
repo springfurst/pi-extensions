@@ -721,31 +721,57 @@ describe("browser-pilot profiles and tabs live", () => {
     return dir;
   }
 
-  it("fails a second session on the shared profile, then succeeds after close", async () => {
+  it("shares one browser between sessions and keeps their tabs apart", async () => {
+    const text = (result: { content: Array<{ type: string; text?: string }> }): string =>
+      result.content
+        .filter((block): block is { type: "text"; text: string } => block.type === "text")
+        .map((block) => block.text)
+        .join("\n");
+
     const first = await executeBrowserPilot(
-      { action: "open", params: { url: `${server.origin}/` } },
+      { action: "open", params: { url: `${server.origin}/first` } },
       ctx("profile-a"),
     );
     expect(first.isError).toBeUndefined();
 
-    const second = await executeBrowserPilot({ action: "open" }, ctx("profile-b"));
-    expect(second.isError).toBe(true);
-    expect(
-      second.content
-        .filter((block): block is { type: "text"; text: string } => block.type === "text")
-        .map((block) => block.text)
-        .join("\n"),
-    ).toContain("already in use");
+    const second = await executeBrowserPilot(
+      { action: "open", params: { url: `${server.origin}/second` } },
+      ctx("profile-b"),
+    );
+    expect(second.isError).toBeUndefined();
 
-    const closed = await executeBrowserPilot(
+    const tabsA = await executeBrowserPilot(
+      { action: "tabs", params: { operation: "list" } },
+      ctx("profile-a"),
+    );
+    const tabsB = await executeBrowserPilot(
+      { action: "tabs", params: { operation: "list" } },
+      ctx("profile-b"),
+    );
+    expect(text(tabsA)).toContain("/first");
+    expect(text(tabsA)).not.toContain("/second");
+    expect(text(tabsB)).toContain("/second");
+    expect(text(tabsB)).not.toContain("/first");
+
+    const closedA = await executeBrowserPilot(
       { action: "close", params: { target: "browser" } },
       ctx("profile-a"),
     );
-    expect(closed.isError).toBeUndefined();
+    expect(closedA.isError).toBeUndefined();
+    expect(text(closedA)).toContain("stays open");
 
-    const retry = await executeBrowserPilot({ action: "open" }, ctx("profile-b"));
-    expect(retry.isError).toBeUndefined();
-    await executeBrowserPilot({ action: "close", params: { target: "browser" } }, ctx("profile-b"));
+    const stillB = await executeBrowserPilot(
+      { action: "tabs", params: { operation: "list" } },
+      ctx("profile-b"),
+    );
+    expect(stillB.isError).toBeUndefined();
+    expect(text(stillB)).toContain("/second");
+
+    const closedB = await executeBrowserPilot(
+      { action: "close", params: { target: "browser" } },
+      ctx("profile-b"),
+    );
+    expect(closedB.isError).toBeUndefined();
   });
 
   it("attaches to an existing DevTools endpoint and disconnects without closing it", async () => {

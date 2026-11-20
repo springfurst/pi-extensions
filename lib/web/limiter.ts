@@ -156,3 +156,39 @@ export class RequestLimiter {
     this.lastRefill = now;
   }
 }
+
+/** A fixed budget of events per sliding window, as used by tab creation caps. */
+export class SlidingWindow {
+  private readonly limit: number;
+  private readonly windowMs: number;
+  private readonly clock: Clock;
+  private stamps: number[] = [];
+
+  constructor(options: { limit: number; windowMs: number; clock?: Clock }) {
+    this.limit = Math.max(1, options.limit);
+    this.windowMs = Math.max(1, options.windowMs);
+    this.clock = options.clock ?? systemClock;
+  }
+
+  /** Take one slot, or return false when the window is full. */
+  take(): boolean {
+    const now = this.clock.now();
+    this.stamps = this.stamps.filter((stamp) => now - stamp < this.windowMs);
+    if (this.stamps.length >= this.limit) return false;
+    this.stamps.push(now);
+    return true;
+  }
+
+  /** Epoch milliseconds when the next slot frees up. */
+  nextAvailableAt(): number {
+    const oldest = this.stamps[0];
+    return oldest === undefined ? this.clock.now() : oldest + this.windowMs;
+  }
+
+  /** Slots currently used. */
+  get used(): number {
+    const now = this.clock.now();
+    this.stamps = this.stamps.filter((stamp) => now - stamp < this.windowMs);
+    return this.stamps.length;
+  }
+}

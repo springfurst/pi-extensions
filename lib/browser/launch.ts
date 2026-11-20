@@ -283,7 +283,7 @@ export interface EnsureChromeOptions {
 /** Resolve the binary, then reuse or spawn the profile's Chrome process. */
 export async function ensureChrome(
   options: EnsureChromeOptions,
-): Promise<{ instance: ChromeInstance; profile: ProfileInfo }> {
+): Promise<{ instance: ChromeInstance; profile: ProfileInfo; attached: boolean }> {
   const attach = options.attach ?? true;
   const profile = resolveProfile(
     options.config.profile,
@@ -304,7 +304,7 @@ export async function ensureChrome(
     });
     if (decision.action === "reuse") {
       writeInstanceRecord(recordPath, { ...decision.instance, schema: INSTANCE_SCHEMA });
-      return { profile, instance: decision.instance };
+      return { profile, instance: decision.instance, attached: true };
     }
     if (decision.action === "refuse") {
       throw new ProfileInUseError(profile, decision.instance);
@@ -338,7 +338,7 @@ export async function ensureChrome(
     signal: options.signal,
   });
   writeInstanceRecord(recordPath, { ...instance, schema: INSTANCE_SCHEMA });
-  return { instance, profile };
+  return { instance, profile, attached: false };
 }
 
 async function maybeProbe(
