@@ -219,38 +219,45 @@ Use the id to fetch headers, request data, timing, and a body preview:
 
 `browser-pilot` reads `browser-pilot.json` from the pi agent directory (`~/.pi/agent/browser-pilot.json`) and, when the project is trusted, from `<cwd>/.pi/browser-pilot.json`. Project values override global values. Malformed values are ignored.
 
-| Key                        | Default                                | Effect                                                                                        |
-| -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `executablePath`           | detected Chrome/Chromium/Edge          | Pin the browser binary; an explicit value wins over the environment.                          |
-| `profile`                  | `shared`                               | `shared`, `session`, a named profile, or an absolute path.                                    |
-| `headless`                 | `auto`                                 | Headful when a display exists, new headless otherwise.                                        |
-| `viewport`                 | `{ "width": 1365, "height": 768 }`     | Default viewport.                                                                             |
-| `locale`                   | unset                                  | Chrome locale and page locale override.                                                       |
-| `timezone`                 | unset                                  | Page timezone override.                                                                       |
-| `userAgent`                | derived from the Chrome version        | Override the user agent.                                                                      |
-| `maxTabs`                  | `8`                                    | Per-session tab cap.                                                                          |
-| `tabOverflow`              | `nudge`                                | `nudge`, `close-lru`, or `reuse-blank`.                                                       |
-| `navigationTimeoutSeconds` | `30`                                   | Navigation deadline.                                                                          |
-| `actionTimeoutSeconds`     | `15`                                   | Click/type/wait deadline.                                                                     |
-| `challengeWaitSeconds`     | `300`                                  | Default `{action:"wait", params:{until:"human"}}` deadline.                                   |
-| `idleCloseSeconds`         | `0`                                    | Close the browser after this idle time; `0` disables idle close.                              |
-| `closeOnExit`              | `true`                                 | Close the session browser when pi shuts down.                                                 |
-| `restoreTabs`              | `true`                                 | Reopen the last URL after a crash or relaunch.                                                |
-| `stealth`                  | `basic`                                | `off`, `basic`, or `careful` (reserved for additional patches).                               |
-| `humanize`                 | `false`                                | Default for click/type mouse movement and key delays.                                         |
-| `allowPrivateHosts`        | `true`                                 | Permit localhost and private hosts; metadata endpoints stay blocked for top-level navigation. |
-| `allowLocalFiles`          | `false`                                | Permit navigation to local files that match `localFileGlobs`.                                 |
-| `localFileGlobs`           | `[]`                                   | Globs of allowed local files, relative to the working directory unless absolute.              |
-| `screenshotsDir`           | `<agentDir>/browser-pilot/screenshots` | Default screenshot directory.                                                                 |
-| `downloadsDir`             | `<agentDir>/browser-pilot/downloads`   | Directory for files downloaded by the browser.                                                |
-| `exportsDir`               | `<agentDir>/browser-pilot/exports`     | Default directory for PDF, HAR, and trace exports.                                            |
-| `maxReadChars`             | `50000`                                | Default `read` cap.                                                                           |
-| `maxEvalChars`             | `20000`                                | Default `eval` cap.                                                                           |
-| `maxSnapshotNodes`         | `200`                                  | Default snapshot node cap.                                                                    |
-| `consoleBuffer`            | `200`                                  | Console entries kept per tab.                                                                 |
-| `networkBuffer`            | `200`                                  | Network entries kept per tab.                                                                 |
-| `args`                     | `[]`                                   | Extra Chrome command-line flags.                                                              |
-| `noSandbox`                | `false`                                | Add `--no-sandbox` for root/container environments.                                           |
+| Key                          | Default                                | Effect                                                                                        |
+| ---------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `executablePath`             | detected Chrome/Chromium/Edge          | Pin the browser binary; an explicit value wins over the environment.                          |
+| `profile`                    | `shared`                               | `shared`, `session`, a named profile, or an absolute path.                                    |
+| `headless`                   | `auto`                                 | Headful when a display exists, new headless otherwise.                                        |
+| `viewport`                   | `{ "width": 1365, "height": 768 }`     | Default viewport.                                                                             |
+| `locale`                     | unset                                  | Chrome locale and page locale override.                                                       |
+| `timezone`                   | unset                                  | Page timezone override.                                                                       |
+| `userAgent`                  | unset                                  | Override the user agent; unset keeps the real binary's identity and matching client hints.    |
+| `maxTabs`                    | `8`                                    | Per-session tab cap.                                                                          |
+| `runtime.profile`            | `shared`                               | Profile name; shared with `web_fetch` and `web_search`.                                       |
+| `runtime.attach`             | `auto`                                 | Attach to a live DevTools endpoint instead of failing on a busy profile.                      |
+| `runtime.isolation`          | `tabs`                                 | `tabs` shares the warm cookie jar, `contexts` gives the session its own cookie jar.           |
+| `runtime.maxPages`           | `6`                                    | Pages allowed across every session sharing the browser.                                       |
+| `blocking.<category>`        | `third-party`                          | `off` or `third-party` for `ads`, `analytics`, `images`, `media`, and `fonts`.                |
+| `hosts.<host>.allow`         | unset                                  | Blocking categories this host may load despite `blocking`.                                    |
+| `hosts.<host>.minIntervalMs` | curated                                | Minimum navigation gap for that host.                                                         |
+| `tabOverflow`                | `nudge`                                | `nudge`, `close-lru`, or `reuse-blank`.                                                       |
+| `navigationTimeoutSeconds`   | `30`                                   | Navigation deadline.                                                                          |
+| `actionTimeoutSeconds`       | `15`                                   | Click/type/wait deadline.                                                                     |
+| `challengeWaitSeconds`       | `300`                                  | Default `{action:"wait", params:{until:"human"}}` deadline.                                   |
+| `idleCloseSeconds`           | `0`                                    | Close the browser after this idle time; `0` disables idle close.                              |
+| `closeOnExit`                | `true`                                 | Close the session browser when pi shuts down.                                                 |
+| `restoreTabs`                | `true`                                 | Reopen the last URL after a crash or relaunch.                                                |
+| `stealth`                    | `basic`                                | `off`, `basic`, or `careful` (reserved for additional patches).                               |
+| `humanize`                   | `false`                                | Default for click/type mouse movement and key delays.                                         |
+| `allowPrivateHosts`          | `true`                                 | Permit localhost and private hosts; metadata endpoints stay blocked for top-level navigation. |
+| `allowLocalFiles`            | `false`                                | Permit navigation to local files that match `localFileGlobs`.                                 |
+| `localFileGlobs`             | `[]`                                   | Globs of allowed local files, relative to the working directory unless absolute.              |
+| `screenshotsDir`             | `<agentDir>/browser-pilot/screenshots` | Default screenshot directory.                                                                 |
+| `downloadsDir`               | `<agentDir>/browser-pilot/downloads`   | Directory for files downloaded by the browser.                                                |
+| `exportsDir`                 | `<agentDir>/browser-pilot/exports`     | Default directory for PDF, HAR, and trace exports.                                            |
+| `maxReadChars`               | `50000`                                | Default `read` cap.                                                                           |
+| `maxEvalChars`               | `20000`                                | Default `eval` cap.                                                                           |
+| `maxSnapshotNodes`           | `200`                                  | Default snapshot node cap.                                                                    |
+| `consoleBuffer`              | `200`                                  | Console entries kept per tab.                                                                 |
+| `networkBuffer`              | `200`                                  | Network entries kept per tab.                                                                 |
+| `args`                       | `[]`                                   | Extra Chrome command-line flags.                                                              |
+| `noSandbox`                  | `false`                                | Add `--no-sandbox` for root/container environments.                                           |
 
 Environment variables fill the binary and profile defaults when the configuration leaves them unset: `BROWSER_PILOT_EXECUTABLE_PATH`, `PUPPETEER_EXECUTABLE_PATH`, `CHROME_PATH`, and `BROWSER_PILOT_PROFILE`. An explicit `executablePath` in `browser-pilot.json` wins over the environment. Secrets stay in the environment; `type` can read a value with `text_env`.
 
@@ -276,7 +283,9 @@ A profile is a Chrome user-data-dir. Chrome permits one process per profile.
 - A name such as `work` lives at `<agentDir>/browser-pilot/profiles/work`.
 - An absolute path is used directly.
 
-Each session launches its own Chrome process and its own DevTools port. If another live session already owns the requested profile, the second session fails with the owner's pid, port, and session id instead of attaching or cloning the profile. Use `profile:"session"` or a named profile for parallel work.
+One Chrome process serves a profile. Sessions in one pi process share it, and a second pi process attaches to the live DevTools endpoint instead of failing on the profile lock. Sessions see only the tabs they opened: a page created by one session is invisible and unreachable from another, and the tab count of one session never closes another's page. Set `runtime.isolation: "contexts"` when a session needs its own cookies and storage rather than the shared warm jar.
+
+`close` ends a session and closes its tabs. The browser process closes only when no other session is using it and this process started it; when another session still leases it, the call reports that the browser stays open. A process that attached to someone else's browser disconnects without closing it.
 
 Chrome 136 and later refuse remote debugging on the default user-data-dir. Always use a dedicated profile, as this tool does.
 
@@ -299,7 +308,9 @@ The record includes the shared usage envelope, the action, profile, pid, port, C
 
 - **Ports.** Chrome is spawned with `--remote-debugging-port=0`. The tool reads the actual port from the profile's `DevToolsActivePort` file, so it never scans for a free port or collides with another window.
 - **Reconnects.** A per-profile instance record and a per-session tab record let the tool reconnect after a reload or a closed window. Stale records are validated by pid and DevTools endpoint before reuse; a dead process is replaced on the next call.
-- **Tabs.** Handles are stable integers. Tabs created by the agent are marked as owned; tabs opened by the user are left alone by cleanup. Popups, including `noopener` windows, are attached as new tabs automatically. The `maxTabs` cap applies to popups and user-opened tabs as well as `tabs new`.
+- **Tabs.** Handles are stable integers. Tabs created by the agent are marked as owned; tabs opened by the user are left alone by cleanup. Popups, including `noopener` windows, are attached as new tabs automatically. The `maxTabs` cap applies to popups and user-opened tabs as well as `tabs new`. Tab creation is additionally limited to two per minute per session and ten per minute across sessions, so a loop cannot trip challenge services.
+- **Subresource blocking.** Third-party ads, analytics, images, media, and fonts are blocked by default through request interception. First-party requests are untouched, and a host entry can opt out with `hosts.<host>.allow`. Route rules still win over the default policy.
+- **Identity.** The browser keeps the real binary's user agent and client hints unless `userAgent` is configured; navigation and tab creation consume the same per-host politeness budget as HTTP requests (`hosts.<host>.minIntervalMs`, learned limits).
 - **Refs.** `snapshot` clears old refs, assigns `data-pi-ref` attributes, and returns one line per visible interactive element across the main document, open shadow roots, and child frames. `selector` scopes the walk to matching subtrees; `ref` is rejected because refs come from the snapshot itself. Refs from iframes are resolved inside that frame; shadow refs use Puppeteer's piercing selector. Refs are scoped to the tab that created them. `read`, `screenshot`, and `{action:"wait", params:{until:"selector"}}` also accept refs. A navigation, a tab close, or a new snapshot invalidates the old refs.
 - **Downloads.** The browser saves downloads to `downloadsDir`. `{action:"download", params:{operation:"wait"}}` waits for the newest matching file and resolves the path Chrome actually wrote, including collision suffixes. `{action:"download", params:{operation:"clear"}}` clears the history, not the files. Download capture is available for browsers launched by the tool, not for `connect` attachments.
 - **Uploads.** `upload` sets one or more local files on a file input and reports the absolute paths.

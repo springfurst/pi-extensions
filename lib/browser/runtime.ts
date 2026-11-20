@@ -10,7 +10,8 @@
  */
 
 import type { Clock } from "../web/clock";
-import { SlidingWindow } from "../web/limiter";
+import { SlidingWindow, type RequestLimiter } from "../web/limiter";
+import type { HostStateStore } from "../web/politeness";
 import type { IsolationMode } from "../web/types";
 import {
   closeChrome,
@@ -72,6 +73,8 @@ export interface BrowserRuntimeOptions {
   tabsPerMinutePerSession?: number;
   tabsPerMinuteGlobal?: number;
   clock?: Clock;
+  /** Pacing budget for navigations, shared with the HTTP transport. */
+  navigation?: { limiter: RequestLimiter; store: HostStateStore };
   /** Injectable process/connection functions, for tests and embedding. */
   ensure?: (options: EnsureChromeOptions) => Promise<{
     instance: ChromeInstance;
@@ -182,6 +185,23 @@ export class BrowserRuntime {
     slot.leases.add(sessionId);
     this.sessions.set(sessionId, state);
     return this.leaseOf(slot);
+  }
+
+  /** Spend the host's navigation budget before a browser navigation. */
+  async beforeNavigation(url: string, signal?: AbortSignal): Promise<void> {
+    const navigation = this.options.navigation;
+    if (!navigation) return;
+    let host: string;
+    try {
+      host = new URL(url).host;
+    } catch {
+      return;
+    }
+    if (!host) return;
+    await navigation.limiter.schedule(
+      { host, minIntervalMs: navigation.store.intervalMs(host), signal },
+      async () => undefined,
+    );
   }
 
   /** Open a page for a session within the tab and page budgets. */

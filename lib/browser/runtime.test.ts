@@ -331,6 +331,28 @@ describe("BrowserRuntime", () => {
     await test.runtime.releaseAll();
   });
 
+  it("paces navigations through the shared host budget", async () => {
+    const calls: Array<{ host: string; minIntervalMs?: number }> = [];
+    const test = harness({
+      navigation: {
+        limiter: {
+          schedule: async (
+            request: { host: string; minIntervalMs?: number },
+            task: () => Promise<unknown>,
+          ) => {
+            calls.push({ host: request.host, minIntervalMs: request.minIntervalMs });
+            return task();
+          },
+        } as never,
+        store: { intervalMs: () => 500 } as never,
+      },
+    });
+    await test.runtime.beforeNavigation("https://example.com/page");
+    expect(calls).toEqual([{ host: "example.com", minIntervalMs: 500 }]);
+    await test.runtime.beforeNavigation("not a url");
+    expect(calls.length).toBe(1);
+  });
+
   it("rejects work for a session that was never acquired", async () => {
     const test = harness();
     await expect(test.runtime.createPage("ghost")).rejects.toThrow(/No browser session/);

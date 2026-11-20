@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `web_fetch`: requests no longer rotate through `curl`, bot, and browser user agents. One honest, configurable user agent is sent (`politeness.userAgent`, default `pi-web-tools/1.0 (+https://github.com/springfurst/pi-extensions)`), with an optional `From` contact (`politeness.contact`). A blocked response is reported instead of retried with a different identity.
 - `web_fetch`: `Retry-After` is parsed in full, as delay-seconds or an HTTP-date, and no longer clamped to ten seconds. A delay within `politeness.maxRetryWaitSeconds` (default 30) is waited out and retried once; a longer delay fails immediately and names the retry time.
 - `web_fetch`: a CAPTCHA or interstitial is reported as a challenge with its family rather than treated as a retryable bot block.
+- `browser-pilot`: the browser no longer overrides its user agent by default. The real binary's identity is kept, and a configured `userAgent` is sent with client hints derived from the same Chrome version.
 
 ### Added
 

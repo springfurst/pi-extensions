@@ -2,7 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Browser, Dialog, Frame, HTTPRequest, Page, Target } from "puppeteer-core";
 import { connectChrome, disposeChromeSync } from "./launcher";
+import { blockingEnabled, shouldBlockRequest } from "../../lib/browser/blocking";
 import { BrowserRuntime, TabLimitError } from "../../lib/browser/runtime";
+import { findHostPolicy, sharedPoliteness } from "../../lib/web/politeness";
 import { expandTilde } from "../../lib/logging";
 import { detectChallenge } from "./challenge";
 import { DownloadTracker } from "./session-downloads";
@@ -593,7 +595,12 @@ export class BrowserPilotSession {
       this.networkDetails.touch(entry.id, { request });
       tab.network.push(entry);
       trim(tab.network, this.config.networkBuffer);
+      if (this.shouldBlock(tab, request)) {
+        void request.abort("blockedbyclient").catch(() => undefined);
+        return;
+      }
       if (this.routeRules.length > 0) void this.routeController.apply(tab, request);
+      else void request.continue().catch(() => undefined);
     });
     page.on("response", (response) => {
       const entry = this.requestEntries.get(response.request());
@@ -760,9 +767,35 @@ export class BrowserPilotSession {
       await page.evaluateOnNewDocument(STEALTH_SCRIPT);
     }
     await this.applyEmulation(page);
-    if (this.routeController.hasRules) {
+    if (this.requiresInterception()) {
       await page.setRequestInterception(true).catch(() => undefined);
     }
+  }
+
+  /** True when interception is needed for route rules or default blocking. */
+  requiresInterception(): boolean {
+    return this.routeRules.length > 0 || blockingEnabled(this.config.blocking);
+  }
+
+  /** The blocking category for a request, honoring a per-host allow list. */
+  private shouldBlock(tab: ManagedTab, request: HTTPRequest): string | undefined {
+    if (!blockingEnabled(this.config.blocking)) return undefined;
+    const documentUrl = tab.page.url();
+    let host = "";
+    try {
+      host = new URL(documentUrl).host;
+    } catch {
+      // about:blank and other non-web pages have no site context.
+    }
+    return shouldBlockRequest(
+      {
+        url: request.url(),
+        documentUrl: documentUrl.startsWith("http") ? documentUrl : undefined,
+        resourceType: safeResourceType(request),
+      },
+      this.config.blocking,
+      host ? findHostPolicy(host, this.config.hosts) : undefined,
+    );
   }
 
   /** Reconnect to an existing tab set, or create a fresh tab. */
@@ -949,6 +982,10 @@ export class BrowserPilotSession {
   ): Promise<NavigateResult> {
     const tab = await this.ensureTab(tabHandle);
     const page = tab.page;
+    const budgetTarget = url ?? page.url();
+    if (budgetTarget.startsWith("http")) {
+      await this.runtimeInstance?.beforeNavigation(budgetTarget, signal);
+    }
     const timeout = timeoutMs ?? this.config.navigationTimeoutSeconds * 1000;
     const wait = waitUntil ?? "domcontentloaded";
     let status = 200;
@@ -1094,6 +1131,11 @@ function sharedRuntime(options: {
   ]);
   const existing = runtimes.get(key);
   if (existing) return existing;
+  const politeness = sharedPoliteness({
+    dir: join(options.agentDir, "web-tools"),
+    politeness: config.politeness,
+    hosts: config.hosts,
+  });
   const runtime = new BrowserRuntime({
     agentDir: options.agentDir,
     cwd: options.cwd,
@@ -1112,6 +1154,7 @@ function sharedRuntime(options: {
     maxTabsPerSession: config.maxTabs,
     tabsPerMinutePerSession: 2,
     tabsPerMinuteGlobal: 10,
+    navigation: { limiter: politeness.limiter, store: politeness.store },
   });
   runtimes.set(key, runtime);
   return runtime;

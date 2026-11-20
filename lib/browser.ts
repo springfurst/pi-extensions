@@ -6,6 +6,7 @@ import { accessSync, constants, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import type { BrowserConfig } from "./config";
+import { DEFAULT_BLOCKING, shouldBlockRequest } from "./browser/blocking";
 import { checkUrlAllowed, isBlockedHostname, isPrivateAddress, type ResolveHost } from "./security";
 
 /** One page rendered through a real browser: final HTML, status, and URL. */
@@ -44,6 +45,10 @@ export interface InterceptableRequest {
   abort(errorCode?: string): Promise<void>;
   /** True for top-level and iframe navigations; used for the asynchronous DNS guard. */
   isNavigationRequest?(): boolean;
+  /** Browser-reported resource type, used by subresource blocking. */
+  resourceType?(): string;
+  /** Frame that made the request, for the third-party decision. */
+  frame?(): { url(): string } | null;
 }
 
 /** The subset of a Puppeteer page the renderer uses. */
@@ -535,6 +540,18 @@ export class BrowserSession {
       if (isBlockedRequestUrl(url, this.allowPrivateHosts)) {
         await request.abort();
         return;
+      }
+      if (request.resourceType?.() !== "document") {
+        const documentUrl = request.frame?.()?.url();
+        if (
+          shouldBlockRequest(
+            { url, documentUrl, resourceType: request.resourceType?.() },
+            DEFAULT_BLOCKING,
+          )
+        ) {
+          await request.abort("blockedbyclient");
+          return;
+        }
       }
       if (!this.allowPrivateHosts && request.isNavigationRequest?.()) {
         // The literal check above misses a public hostname that resolves to a

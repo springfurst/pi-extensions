@@ -1,5 +1,5 @@
 import type { Page, Permission } from "puppeteer-core";
-import { platformToken } from "./session-helpers";
+import { fingerprintFor } from "../../lib/browser/fingerprint";
 import type { BrowserPilotSession } from "./session";
 import type { EmulationState, TabInfo } from "./types";
 import { BrowserPilotError } from "./types";
@@ -39,7 +39,16 @@ export class EmulationController {
       isMobile: viewport.isMobile ?? false,
       hasTouch: viewport.hasTouch ?? false,
     });
-    await page.setUserAgent(state.userAgent ?? this.userAgent());
+    // Only override the user agent when one was configured or emulated; the
+    // real binary's identity is the consistent default.
+    const userAgent = state.userAgent ?? this.session.config.userAgent;
+    if (userAgent) {
+      const fingerprint = fingerprintFor(this.session.instance?.chromeVersion ?? "");
+      await page.setUserAgent({
+        userAgent,
+        userAgentMetadata: fingerprint.metadata,
+      });
+    }
     const client = await page.createCDPSession();
     try {
       await client.send("Emulation.setEmulatedMedia", {
@@ -98,13 +107,6 @@ export class EmulationController {
   /** Build the network emulation condition for a named profile. */
   networkProfile(name: NetworkProfileName) {
     return NETWORK_PROFILES[name];
-  }
-
-  private userAgent(): string {
-    if (this.session.config.userAgent) return this.session.config.userAgent;
-    const version = /Chrome\/([\d.]+)/.exec(this.session.instance?.chromeVersion ?? "")?.[1];
-    const chromeVersion = version ?? "131.0.0.0";
-    return `Mozilla/5.0 (${platformToken()}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
   }
 
   /** Grant or clear browser permissions for one origin. */
