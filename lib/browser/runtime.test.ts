@@ -331,6 +331,21 @@ describe("BrowserRuntime", () => {
     await test.runtime.releaseAll();
   });
 
+  it("hands out a session handle bound to one id", async () => {
+    const test = harness();
+    const handle = await test.runtime.openSession("a", { isolation: "tabs" });
+    expect(handle.id).toBe("a");
+    expect(handle.isolation).toBe("tabs");
+    const page = await handle.createPage();
+    expect(handle.owns(page)).toBe(true);
+    expect(handle.visible(page)).toBe(true);
+    expect(await handle.pages()).toEqual([page]);
+    await handle.closePage(page);
+    expect(page.isClosed()).toBe(true);
+    await handle.close();
+    expect(await handle.pages()).toEqual([]);
+  });
+
   it("paces navigations through the shared host budget", async () => {
     const calls: Array<{ host: string; minIntervalMs?: number }> = [];
     const test = harness({

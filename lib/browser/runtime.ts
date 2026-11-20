@@ -12,7 +12,7 @@
 import type { Clock } from "../web/clock";
 import { SlidingWindow, type RequestLimiter } from "../web/limiter";
 import type { HostStateStore } from "../web/politeness";
-import type { IsolationMode } from "../web/types";
+import type { IsolationMode, SessionHandle, SessionOptions } from "../web/types";
 import {
   closeChrome,
   connectChrome,
@@ -124,6 +124,26 @@ interface SessionState {
 
 const TAB_WINDOW_MS = 60_000;
 
+/** A session's handle on the shared browser. */
+export interface RuntimeSessionHandle extends SessionHandle {
+  /** Open a page within the tab and page budgets. */
+  createPage(signal?: AbortSignal): Promise<PageLike>;
+  /** Pages this session owns. */
+  pages(): Promise<PageLike[]>;
+  /** Close one of this session's pages and free its slot. */
+  closePage(page: PageLike): Promise<void>;
+  /** Claim a page the browser opened, unless another session owns it. */
+  claim(page: PageLike): boolean;
+  /** True when the page belongs to this session. */
+  owns(page: PageLike): boolean;
+  /** True when this session may address the page. */
+  visible(page: PageLike): boolean;
+  /** Release this session; the browser closes only when it is the last lease. */
+  close(): Promise<void>;
+  /** Release this session and report who else is still using the browser. */
+  closeBrowser(): Promise<{ sharedWith: string[] }>;
+}
+
 /** Process and page lifecycle shared by every web tool. */
 export class BrowserRuntime {
   private readonly ensure: NonNullable<BrowserRuntimeOptions["ensure"]>;
@@ -147,6 +167,18 @@ export class BrowserRuntime {
       windowMs: TAB_WINDOW_MS,
       clock: options.clock,
     });
+  }
+
+  /** Lease the browser and return a handle bound to one session id. */
+  async openSession(
+    sessionId: string,
+    options: SessionOptions & { signal?: AbortSignal },
+  ): Promise<RuntimeSessionHandle> {
+    await this.acquire(sessionId, {
+      isolation: options.isolation,
+      signal: options.signal,
+    });
+    return new RuntimeSession(this, sessionId, options.isolation);
   }
 
   /** Lease the profile's browser for a session, attaching when it is live. */
@@ -417,5 +449,46 @@ export class BrowserRuntime {
     const state = this.sessions.get(sessionId);
     if (!state) throw new Error(`No browser session is open for ${sessionId}.`);
     return state;
+  }
+}
+
+/** A bound view of the runtime for one session. */
+class RuntimeSession implements RuntimeSessionHandle {
+  constructor(
+    private readonly runtime: BrowserRuntime,
+    readonly id: string,
+    readonly isolation: IsolationMode,
+  ) {}
+
+  createPage(signal?: AbortSignal): Promise<PageLike> {
+    return this.runtime.createPage(this.id, signal);
+  }
+
+  pages(): Promise<PageLike[]> {
+    return this.runtime.sessionPages(this.id);
+  }
+
+  closePage(page: PageLike): Promise<void> {
+    return this.runtime.closePage(this.id, page);
+  }
+
+  claim(page: PageLike): boolean {
+    return this.runtime.claim(this.id, page);
+  }
+
+  owns(page: PageLike): boolean {
+    return this.runtime.owns(this.id, page);
+  }
+
+  visible(page: PageLike): boolean {
+    return this.runtime.visible(this.id, page);
+  }
+
+  close(): Promise<void> {
+    return this.runtime.release(this.id);
+  }
+
+  closeBrowser(): Promise<{ sharedWith: string[] }> {
+    return this.runtime.closeBrowser(this.id);
   }
 }
