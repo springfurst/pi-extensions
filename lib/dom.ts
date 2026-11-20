@@ -14,3 +14,17 @@ export function parseDocument(html: string): ParsedDocument {
 export function parseXmlDocument(xml: string): ParsedDocument {
   return new DOMParser().parseFromString(xml, "text/xml") as unknown as ParsedDocument;
 }
+
+/**
+ * True when content starts like an HTML document rather than prose or markdown.
+ * Used to reject a probe response that is really the page shell.
+ */
+export function looksLikeHtml(content: string): boolean {
+  const trimmed = content.trimStart().slice(0, 16).toLowerCase();
+  return (
+    trimmed.startsWith("<!doctype") ||
+    trimmed.startsWith("<html") ||
+    trimmed.startsWith("<head") ||
+    trimmed.startsWith("<body")
+  );
+}

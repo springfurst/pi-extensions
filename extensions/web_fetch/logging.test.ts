@@ -99,6 +99,25 @@ describe("buildFetchBody", () => {
     });
   });
 
+  it("records cache and pacing facts from the transport", () => {
+    const body = buildFetchBody(
+      {
+        params: { url: result.url },
+        result: {
+          ...result,
+          cache: "hit",
+          limiter: { waitedMs: 250, minIntervalMs: 500 },
+        },
+        truncated: false,
+      },
+      false,
+    );
+    expect(body).toMatchObject({
+      cache: "hit",
+      limiter: { waitedMs: 250, minIntervalMs: 500 },
+    });
+  });
+
   it("includes the selector and saved path when present", () => {
     const body = buildFetchBody(
       {

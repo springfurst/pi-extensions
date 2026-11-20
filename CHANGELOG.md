@@ -15,6 +15,9 @@ All notable changes to this project are documented here. The format follows [Kee
 - `web_fetch`: `robots.txt` is parsed, cached per origin for an hour, and honored. `politeness.robots` defaults to `warn`, which notes a disallowed rule and continues; `strict` refuses with the rule named. `Crawl-delay` and `Request-rate` become per-host spacing floors, and `hosts.<host>.robots` overrides the mode for one host.
 - `web_fetch`: requests are paced by a per-host gap plus global concurrency and requests-per-second budgets (`politeness.globalConcurrency`, `politeness.globalRequestsPerSecond`). Host gaps start from a curated table and `hosts.<host>.minIntervalMs`, learn from `429`/`503`/`Retry-After`/rate-limit resets within a bounded range, decay on success, and persist to `<agentDir>/web-tools/host-state.json`.
 - `web_fetch`: a sustained latency rise over a host's baseline raises a warning, widens that host's spacing one notch, and makes the next block learn faster (`politeness.latencyWarningFactor`).
+- `web_fetch`: responses with an `ETag` or `Last-Modified` are cached under `<agentDir>/web-tools/http/` and revalidated on the next fetch, so an unchanged page transfers no body. Requests carrying cookies and bodies cut at the byte cap are not stored.
+- `web_fetch`: alternate representations (`.md` variant, content negotiation, scoped `llms.txt`) share one probe chain, never repeat a candidate within a call, and inherit the configured cookie source; compression is negotiated per origin instead of being disabled everywhere.
+- `web_fetch`: usage records include `cache` (`hit`, `miss`, or `bypass`) and `limiter` (`waitedMs` and `minIntervalMs`).
 
 ## [0.4.0] - 2026-11-15
 

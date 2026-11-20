@@ -110,6 +110,8 @@ export function buildFetchBody(
     if (input.result.status !== undefined) body.status = input.result.status;
     body.notes = input.result.notes;
   }
+  if (input.result?.cache) body.cache = input.result.cache;
+  if (input.result?.limiter) body.limiter = input.result.limiter;
   if (input.charCount !== undefined) body.charCount = input.charCount;
   if (input.truncationBinding) body.truncationBinding = input.truncationBinding;
   if (input.savedPath) body.savedPath = input.savedPath;

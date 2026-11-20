@@ -2,13 +2,8 @@
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
 import { formatBytes } from "../../lib/format";
-import {
-  parseAlternateLinks,
-  parseFeedToMarkdown,
-  tryContentNegotiation,
-  tryLlmEndpoints,
-  tryMdSuffix,
-} from "./digest";
+import { probe, type ProbeFetch, type ProbeOptions } from "../../lib/web/probes";
+import { parseAlternateLinks, parseFeedToMarkdown } from "./digest";
 import { isLowQualityOutput, looksLikeHtml, renderHtmlToText } from "./extract";
 import { finalizeOutput } from "./output";
 import { specialHandlers } from "./scrapers";
@@ -31,6 +26,21 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
   ctx.signal?.throwIfAborted();
 
   const normalized = normalizeUrl(url);
+  const probeFetch: ProbeFetch = (candidate, options = {}) =>
+    ctx.loadPage(candidate, {
+      signal: ctx.signal,
+      headers: options.headers,
+      timeoutSeconds: options.timeoutSeconds,
+      cookies: options.cookies,
+    });
+  const probeOptions: ProbeOptions = {
+    fetch: probeFetch,
+    signal: ctx.signal,
+    timeoutSeconds: ctx.timeoutMs / 1000,
+  };
+
+  // Transport facts from the main response, recorded on whatever stage wins.
+  const transportFacts: Pick<RenderResult, "cache" | "limiter"> = {};
 
   const finish = (
     content: string,
@@ -51,6 +61,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
       fetchedAt,
       truncated: output.truncated,
       notes,
+      ...transportFacts,
     };
   };
 
@@ -138,17 +149,23 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     }
 
     // 5B: `/path.md` suffix.
-    const mdSuffix = await tryMdSuffix(finalUrl, ctx);
+    const mdSuffix = await probe(finalUrl, { ...probeOptions, kinds: ["md"] });
     if (mdSuffix) {
       notes.push("Found .md suffix version");
-      return finish(mdSuffix, "md-suffix", "text/markdown", url, finalUrl);
+      return finish(mdSuffix.content, "md-suffix", "text/markdown", url, finalUrl);
     }
 
     // 5C: content negotiation.
-    const negotiated = await tryContentNegotiation(normalized, ctx);
+    const negotiated = await probe(normalized, { ...probeOptions, kinds: ["negotiation"] });
     if (negotiated) {
-      notes.push(`Content negotiation returned ${negotiated.type}`);
-      return finish(negotiated.content, "content-negotiation", negotiated.type, url, finalUrl);
+      notes.push(`Content negotiation returned ${negotiated.contentType}`);
+      return finish(
+        negotiated.content,
+        "content-negotiation",
+        negotiated.contentType,
+        url,
+        finalUrl,
+      );
     }
 
     // 5D: feed alternates.
@@ -180,18 +197,18 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     }
     if (!htmlResult.ok) {
       notes.push("html rendering failed (no reader backend produced usable output)");
-      const llm = await tryLlmEndpoints(finalUrl, ctx);
+      const llm = await probe(finalUrl, { ...probeOptions, kinds: ["llms"] });
       if (llm) {
-        notes.push(`Used llms.txt fallback: ${llm.endpoint}`);
+        notes.push(`Used llms.txt fallback: ${llm.url}`);
         return finish(llm.content, "llms.txt", "text/plain", url, finalUrl);
       }
       return finish(rawContent, "raw-html", mime, url, finalUrl, response.status);
     }
 
     if (isLowQualityOutput(htmlResult.content)) {
-      const llm = await tryLlmEndpoints(finalUrl, ctx);
+      const llm = await probe(finalUrl, { ...probeOptions, kinds: ["llms"] });
       if (llm) {
-        notes.push(`Used llms.txt fallback: ${llm.endpoint}`);
+        notes.push(`Used llms.txt fallback: ${llm.url}`);
         return finish(llm.content, "llms.txt", "text/plain", url, finalUrl);
       }
       notes.push("Page appears to require JavaScript or is mostly navigation");

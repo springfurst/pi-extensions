@@ -4,6 +4,7 @@
 import type { BrowserRenderer } from "../../lib/browser";
 import type { FetchConfig } from "../../lib/config";
 import type { ResolveHost } from "../../lib/security";
+import type { LimiterStats } from "../../lib/web/limiter";
 import type { FetchImpl, TransferOptions, TransferResult } from "../../lib/web/transfer";
 
 export type { FetchImpl, ResolveHost, TransferOptions, TransferResult };
@@ -25,6 +26,10 @@ export interface RenderResult {
   /** True when the render cap cut the content. */
   truncated: boolean;
   notes: string[];
+  /** How the HTTP cache behaved for the main request. */
+  cache?: "hit" | "miss" | "bypass";
+  /** What the pacing budget cost for the main request. */
+  limiter?: LimiterStats;
 }
 
 export type LoadPage = (url: string, options?: TransferOptions) => Promise<TransferResult>;

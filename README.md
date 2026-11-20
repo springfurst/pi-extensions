@@ -44,7 +44,7 @@ The agent directory is `~/.pi/agent` unless `PI_CODING_AGENT_DIR` overrides it. 
 
 Every record shares an envelope: `schema`, `timestamp`, `tool`, `toolVersion`, `piVersion`, `sessionId`, `sessionFile`, `sessionName`, `toolCallId`, `cwd`, `mode`, `durationMs`, `outcome`, and `error`.
 
-A `web_fetch` record adds `requestedUrl`, `finalUrl`, `host`, `contentType`, `status`, `parser` (the pipeline method, such as `readability`, `browser`, `github-repo`, `json`, or `raw-html`), `parserKind` (`site`, `reader`, `format`, `raw`, or `error`), `charCount`, `truncated`, `truncationBinding`, `savedPath`, `selector`, and `notes`.
+A `web_fetch` record adds `requestedUrl`, `finalUrl`, `host`, `contentType`, `status`, `parser` (the pipeline method, such as `readability`, `browser`, `github-repo`, `json`, or `raw-html`), `parserKind` (`site`, `reader`, `format`, `raw`, or `error`), `charCount`, `truncated`, `truncationBinding`, `savedPath`, `selector`, `notes`, `cache` (`hit`, `miss`, or `bypass`), and `limiter` (`waitedMs` and `minIntervalMs`).
 
 A `web_search` record adds `provider`, `enginesRequested`, `enginesUsed`, `aggregate`, `cacheHit`, `resultCount`, `relaxedConstraints`, and `perEngine`. Each `perEngine` entry has a `status` (`ok`, `empty`, `error`, `timeout`, `cooldown`, `skipped`, or `cached`), `returned` (the raw count before deduplication), `contributed` (the count of unique results after deduplication), and `durationMs`.
 

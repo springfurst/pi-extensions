@@ -128,15 +128,7 @@ function commandAvailable(command: string, exec: ExecFn): Promise<boolean> {
 }
 
 /** Check whether content looks like HTML from its leading tag. */
-export function looksLikeHtml(content: string): boolean {
-  const trimmed = content.trimStart().slice(0, 16).toLowerCase();
-  return (
-    trimmed.startsWith("<!doctype") ||
-    trimmed.startsWith("<html") ||
-    trimmed.startsWith("<head") ||
-    trimmed.startsWith("<body")
-  );
-}
+export { looksLikeHtml } from "../../lib/dom";
 
 /** Heuristic for JS-gated or navigation-heavy reader output. */
 export function isLowQualityOutput(content: string): boolean {

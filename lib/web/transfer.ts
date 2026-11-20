@@ -470,7 +470,7 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
       }
     }
 
-    if (args.cache && cacheKey && !truncated) {
+    if (args.cache && cacheKey && !truncated && classification.outcome === "ok") {
       args.cache.store(cacheKey, {
         url: currentUrl,
         etag: response.headers.get("etag") ?? undefined,

@@ -98,7 +98,7 @@ A profile can be warmed before use: launch the same browser with `--user-data-di
 
 ### Usage logging
 
-`web_fetch` records one JSONL line per call when `logging.enabled` is set. The line carries the tool input (unless `logging.includeArgs` is `false`), the parser that produced the content and its `parserKind`, the HTTP `status`, `contentType`, `finalUrl`, `charCount`, truncation binding, `savedPath`, and the pipeline `notes`. See the root [README](../../README.md#usage-logging) for the shared config keys and record format.
+`web_fetch` records one JSONL line per call when `logging.enabled` is set. The line carries the tool input (unless `logging.includeArgs` is `false`), the parser that produced the content and its `parserKind`, the HTTP `status`, `contentType`, `finalUrl`, `charCount`, truncation binding, `savedPath`, the pipeline `notes`, `cache` (`hit`, `miss`, or `bypass`), and `limiter` (`waitedMs` and `minIntervalMs`) so pacing and revalidation can be analyzed offline. See the root [README](../../README.md#usage-logging) for the shared config keys and record format.
 
 ## Behavior and fallbacks
 
@@ -120,6 +120,12 @@ Requests are paced by three budgets: the per-host gap, a global concurrency cap,
 `Retry-After` is parsed in full, both delay-seconds and HTTP-date. A delay within `politeness.maxRetryWaitSeconds` is waited out and the request retried once. A longer delay fails immediately with the retry time named, so the caller can use a different source instead of stalling.
 
 A CAPTCHA or interstitial is detected before the body is shaped and reported as a challenge with its family (Cloudflare, Anubis, reCAPTCHA, hCaptcha, PerimeterX, DataDome); it is never treated as something another user agent can get past.
+
+### Caching and alternative representations
+
+Responses that carry an `ETag` or `Last-Modified` are stored under `<agentDir>/web-tools/http/` and revalidated on the next fetch of the same URL and representation. A `304 Not Modified` returns the stored body, so a repeat fetch transfers no body; anything without a validator is fetched in full. Requests that carry a cookie jar, and responses cut at the byte cap, are not stored.
+
+Alternate representations are probed without repeating a candidate within one call: the `/path.md` variant first, then HTTP content negotiation on the original URL, and — only when the reader chain fails or its output is too thin — the scoped `llms.txt`/`llms.md` files. A probe is only accepted when it returns real text (not an HTML shell) above a minimum length, and probe requests inherit the same pacing, robots handling, and cookie source as the main fetch. Compression is negotiated normally, except for origins known to return corrupt compressed bodies, which are asked for an identity encoding.
 
 - **Safety**: only `http` and `https` are allowed, and loopback, private, link-local, and cloud-metadata ranges are rejected unless `fetch.allowPrivateHosts` is set. Redirects are re-checked on every hop, and credential headers (`Authorization`, `Cookie`) are dropped when a redirect changes origin. External readers re-fetch the URL themselves, so they are skipped when the URL fails the guard. The browser re-checks the initial URL, resolves the DNS for every navigation (redirects and scripted navigation included) with the same guard, and aborts non-`http(s)` and private/metadata requests during navigation.
 
