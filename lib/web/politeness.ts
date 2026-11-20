@@ -122,9 +122,7 @@ export function sharedPoliteness(options: {
   const key = [
     options.dir,
     options.clock ? "fake" : "system",
-    options.politeness.globalConcurrency,
-    options.politeness.globalRequestsPerSecond,
-    options.politeness.latencyWarningFactor,
+    JSON.stringify(options.politeness),
     JSON.stringify(options.hosts ?? {}),
   ].join("|");
   const existing = shared.get(key);

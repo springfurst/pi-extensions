@@ -275,6 +275,7 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
             "",
             undefined,
             `robots.txt disallows ${path} on ${host} (rule: ${decision.rule})`,
+            { outcome: "robots-disallow" },
           );
         }
         if (args.politeness.robots.noteWarned(origin)) {

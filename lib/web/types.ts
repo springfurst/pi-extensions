@@ -59,10 +59,17 @@ export interface WebRequest {
   purpose: WebPurpose;
   /** Session that owns the request, for tab ownership and per-session budgets. */
   sessionId: string;
-  /** Explicit tier; the runtime clamps it to the effective ceiling. */
+  /**
+   * Highest tier this call may reach. Every call still starts at tier 0, so a
+   * `robots.txt` refusal is seen before any escalation.
+   */
   tier?: Tier;
   /** `profile` sends the warm cookie jar, `none` starts without cookies. */
   cookies?: CookiePolicy;
+  /** Extra request headers, such as a probe's `Accept`. */
+  headers?: Record<string, string>;
+  /** Request body for `POST`. */
+  body?: string;
 }
 
 /** One classified response. */
@@ -98,6 +105,12 @@ export interface SessionOptions {
   isolation: IsolationMode;
   /** Upper bound on pages this session may hold open at once. */
   maxPages?: number;
+}
+
+/** The two entry points every web tool uses. */
+export interface WebRuntime {
+  request(request: WebRequest & { signal?: AbortSignal }): Promise<WebResult>;
+  openSession(id: string, options: SessionOptions): Promise<SessionHandle>;
 }
 
 /**
