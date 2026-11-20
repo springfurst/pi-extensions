@@ -45,6 +45,7 @@ const FORMAT_METHODS = new Set<string>([
   "content-negotiation",
   "alternate-feed",
   "llms.txt",
+  "consent",
 ]);
 
 export type ParserKind = "site" | "reader" | "format" | "raw" | "error" | "unknown";

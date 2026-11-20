@@ -87,6 +87,10 @@ export interface WebResult {
   body?: string;
   /** True when the body came from the HTTP cache instead of a transfer. */
   cached?: boolean;
+  /** How the HTTP cache behaved, when one is configured. */
+  cache?: "hit" | "miss" | "bypass";
+  /** What the pacing budget cost, for usage reporting. */
+  limiter?: { waitedMs: number; minIntervalMs: number };
   /** True when the body was cut at the configured byte or character cap. */
   truncated?: boolean;
   /** Delay the host asked for, in milliseconds; present on `throttled`. */

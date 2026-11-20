@@ -36,12 +36,30 @@ describe("EngineCooldown", () => {
     let now = 0;
     const cooldown = new EngineCooldown(() => now);
     expect(cooldown.isCoolingDown("duckduckgo")).toBe(false);
-    cooldown.mark("duckduckgo", 60_000);
+    const duration = cooldown.mark("duckduckgo", { retryAfterMs: 60_000 });
+    expect(duration).toBe(2 * 60_000);
     expect(cooldown.isCoolingDown("duckduckgo")).toBe(true);
-    now += 60_001;
+    now += duration + 1;
     expect(cooldown.isCoolingDown("duckduckgo")).toBe(false);
-    cooldown.mark("x", 1000);
+    cooldown.mark("x", { retryAfterMs: 1_000 });
     cooldown.clear();
     expect(cooldown.isCoolingDown("x")).toBe(false);
+  });
+
+  it("escalates the cooldown ladder and resets after a success", () => {
+    const now = 0;
+    const cooldown = new EngineCooldown(() => now);
+    expect(cooldown.mark("google")).toBe(2 * 60_000);
+    expect(cooldown.mark("google")).toBe(5 * 60_000);
+    expect(cooldown.mark("google")).toBe(15 * 60_000);
+    expect(cooldown.mark("google")).toBe(15 * 60_000);
+    cooldown.succeeded("google");
+    expect(cooldown.mark("google")).toBe(2 * 60_000);
+  });
+
+  it("honors a longer Retry-After than the ladder step", () => {
+    const cooldown = new EngineCooldown(() => 0);
+    expect(cooldown.mark("google", { retryAfterMs: 20 * 60_000 })).toBe(20 * 60_000);
+    expect(cooldown.remainingMs("google")).toBe(20 * 60_000);
   });
 });

@@ -293,7 +293,7 @@ describe("executeWebSearch usage logging", () => {
 
   it("marks a cooling-down engine in the recorded outcomes", async () => {
     writeConfig({ search: { engines: ["duckduckgo", "startpage"], aggregate: true } });
-    engineCooldown.mark("duckduckgo", 60_000);
+    engineCooldown.mark("duckduckgo", { retryAfterMs: 60_000 });
     const { logger, events } = capture();
     const result = await executeWebSearch(
       { query: "example" },

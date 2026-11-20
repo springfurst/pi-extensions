@@ -170,6 +170,7 @@ async function callGoogleHtml(params: EngineSearchParams, numResults: number): P
       "google",
       "Google blocked the browser search with an automated-traffic challenge. Try another web search provider or retry later.",
       429,
+      { challenge: true },
     );
   }
   if (page.status < 200 || page.status >= 300) {

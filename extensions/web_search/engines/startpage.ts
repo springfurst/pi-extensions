@@ -140,10 +140,16 @@ async function callStartpageHtml(params: EngineSearchParams): Promise<string> {
       "startpage",
       "Startpage blocked the request with a bot challenge (CAPTCHA or Anubis proof-of-work). Startpage throttles automated searches from datacenter IPs.",
       429,
+      { challenge: true, retryAfterMs: page.retryAfterMs },
     );
   }
   if (page.status < 200 || page.status >= 300) {
-    const classified = classifyProviderHttpError("startpage", page.status, page.html);
+    const classified = classifyProviderHttpError(
+      "startpage",
+      page.status,
+      page.html,
+      page.retryAfterMs,
+    );
     if (classified) throw classified;
     throw new SearchProviderError(
       "startpage",

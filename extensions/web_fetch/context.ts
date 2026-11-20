@@ -1,8 +1,11 @@
 import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
 import type { BrowserConfig, FetchConfig } from "../../lib/config";
 import { HttpCache } from "../../lib/web/cache";
+import { classifyResponse } from "../../lib/web/outcome";
 import { sharedPoliteness, type Politeness } from "../../lib/web/politeness";
 import type { HostPolicy, PolitenessConfig } from "../../lib/web/config";
+import { WebRuntime, type BrowserTransport } from "../../lib/web/runtime";
+import type { WebResult } from "../../lib/web/types";
 import { loadPage } from "./fetch";
 import type {
   ExecFn,
@@ -30,6 +33,8 @@ export interface CreateFetchContextOptions {
   politeness?: PolitenessConfig;
   /** Per-host overrides applied to pacing and robots handling. */
   hosts?: Record<string, HostPolicy>;
+  /** Session id recorded with requests; defaults to a stable fetch id. */
+  sessionId?: string;
 }
 
 /** Build a browser renderer from config; injectable so tests can observe laziness. */
@@ -60,22 +65,36 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
   // Conditional GETs keep a repeat fetch cheap; entries are revalidated, so a
   // stale body is never served as fresh.
   const cache = options.cacheDir ? new HttpCache({ dir: options.cacheDir }) : undefined;
-  const loadPageBound: LoadPage = (url: string, loadOptions: LoadPageOptions = {}) =>
-    loadPage(url, {
-      timeoutSeconds: options.config.timeoutSeconds,
-      maxBytes: options.config.maxBytes,
-      allowPrivateHosts: options.config.allowPrivateHosts,
-      fetch: fetchImpl,
-      resolve: options.resolve,
-      politeness,
-      cache,
-      ...loadOptions,
-      signal: loadOptions.signal ?? signal,
-    });
-
   const renderPage =
     options.renderPage ??
     lazyBrowserRenderer(options.browserConfig, options.createRenderer ?? defaultBrowserRenderer);
+  const runtime = politeness
+    ? new WebRuntime({
+        politeness,
+        cache,
+        fetchImpl,
+        allowPrivateHosts: options.config.allowPrivateHosts,
+        resolve: options.resolve,
+        timeoutSeconds: options.config.timeoutSeconds,
+        maxBytes: options.config.maxBytes,
+        browser: renderPage ? browserTransport(renderPage) : undefined,
+      })
+    : undefined;
+  const sessionId = options.sessionId ?? "web-fetch";
+  const loadPageBound: LoadPage = (url: string, loadOptions: LoadPageOptions = {}) =>
+    runtime
+      ? runtimePage(runtime, sessionId, url, loadOptions, signal)
+      : loadPage(url, {
+          timeoutSeconds: options.config.timeoutSeconds,
+          maxBytes: options.config.maxBytes,
+          allowPrivateHosts: options.config.allowPrivateHosts,
+          fetch: fetchImpl,
+          resolve: options.resolve,
+          politeness,
+          cache,
+          ...loadOptions,
+          signal: loadOptions.signal ?? signal,
+        });
 
   return {
     timeoutMs: options.config.timeoutSeconds * 1000,
@@ -92,6 +111,77 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
 
 const defaultBrowserRenderer: BrowserRendererFactory = (config) =>
   createBrowserRenderer({ config });
+
+/** Render through the shared runtime and map its result to the pipeline shape. */
+async function runtimePage(
+  runtime: WebRuntime,
+  sessionId: string,
+  url: string,
+  loadOptions: LoadPageOptions,
+  signal: AbortSignal,
+): Promise<import("./types").LoadPageResult> {
+  const result = await runtime.request({
+    url,
+    purpose: "fetch",
+    sessionId,
+    method: (loadOptions.method as "GET" | "HEAD" | "POST" | undefined) ?? "GET",
+    headers: loadOptions.headers,
+    body: loadOptions.body,
+    signal: loadOptions.signal ?? signal,
+  });
+  return {
+    content: result.body ?? "",
+    contentType: result.contentType ?? "",
+    finalUrl: result.url,
+    ok: isUsable(result),
+    status: result.status || undefined,
+    truncated: result.truncated,
+    error: result.reason,
+    notes: result.notes,
+    retryAfterMs: result.retryAfterMs,
+    outcome: result.outcome,
+    challenge: result.challenge,
+    cache: result.cache,
+    limiter: result.limiter,
+  };
+}
+
+/**
+ * Outcomes that carry a body the pipeline may still shape. A challenge, a
+ * robots refusal, a throttle, and a hard block never do.
+ */
+function isUsable(result: WebResult): boolean {
+  return (
+    result.outcome === "ok" ||
+    result.outcome === "js-shell" ||
+    result.outcome === "quality-fail" ||
+    result.outcome === "consent"
+  );
+}
+
+/** Browser tier transport: render the page and classify the live document. */
+function browserTransport(renderPage: BrowserRenderer): BrowserTransport {
+  return async (request, call) => {
+    const rendered = await renderPage(request.url, { signal: call.signal });
+    const classification = classifyResponse({
+      status: rendered.status,
+      url: rendered.finalUrl,
+      body: rendered.html,
+      contentType: "text/html",
+    });
+    return {
+      url: rendered.finalUrl,
+      status: rendered.status,
+      outcome: classification.outcome,
+      tier: call.tier,
+      transport: "browser",
+      contentType: "text/html",
+      body: rendered.html,
+      challenge: classification.challenge,
+      reason: classification.reason,
+    };
+  };
+}
 
 /**
  * Build the renderer on first use, so a fetch that never reaches the browser

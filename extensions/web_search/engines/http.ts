@@ -2,6 +2,7 @@
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
 import { readLimitedText, withHardTimeout } from "../../../lib/http";
+import { classifyResponse, retryAfterFromHeaders } from "../../../lib/web/outcome";
 import {
   SEARCH_ENGINE_LABELS,
   SearchProviderError,
@@ -42,6 +43,8 @@ export interface LoadedPage {
   html: string;
   status: number;
   url: string;
+  /** Delay the engine asked for, when the response carried one. */
+  retryAfterMs?: number;
 }
 
 export interface FetchPageOptions {
@@ -67,17 +70,38 @@ export async function fetchPage(url: string, options: FetchPageOptions): Promise
     signal: withHardTimeout(options.signal, options.timeoutMs ?? 60_000),
   });
   const { text } = await readLimitedText(response, SEARCH_PAGE_MAX_BYTES);
-  return { html: text, status: response.status, url: response.url || url };
+  const retryAfterMs = retryAfterFromHeaders(response.headers);
+  return {
+    html: text,
+    status: response.status,
+    url: response.url || url,
+    ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+  };
 }
 
 const CREDIT_BODY_PATTERN = /credits?\s*(?:exhausted|exceeded)|quota|insufficient/i;
 
 /** Map quota and auth responses to compact, provider-tagged errors. */
+/**
+ * Map quota, auth, and bot-challenge responses to compact, provider-tagged
+ * errors. Challenge detection is shared with the fetch transport, so a new
+ * challenge family is recognized everywhere at once.
+ */
 export function classifyProviderHttpError(
   provider: SearchProviderId,
   status: number,
   body: string,
+  retryAfterMs?: number,
 ): SearchProviderError | null {
+  const challenge = classifyResponse({ status, body });
+  if (challenge.outcome === "challenge") {
+    return new SearchProviderError(
+      provider,
+      `${SEARCH_ENGINE_LABELS[provider]}: ${challenge.reason ?? "bot challenge"}`,
+      status,
+      { challenge: true, retryAfterMs },
+    );
+  }
   if (CREDIT_BODY_PATTERN.test(body)) {
     return new SearchProviderError(
       provider,

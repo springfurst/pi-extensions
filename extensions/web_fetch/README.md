@@ -49,32 +49,36 @@ Notes: <semicolon-joined notes, omitted when empty>
 
 `web_fetch` reads `web-tools.json` from the pi agent directory and, when the project is trusted, from `<cwd>/.pi/`. Values in the project file override the global file; per-call arguments override both.
 
-| Key                                  | Default | Effect                                                                          |
-| ------------------------------------ | ------- | ------------------------------------------------------------------------------- |
-| `fetch.maxChars`                     | 500000  | Maximum rendered characters per fetch.                                          |
-| `fetch.timeoutSeconds`               | 30      | Wall-clock fetch deadline.                                                      |
-| `fetch.maxBytes`                     | 50 MiB  | Maximum response bytes read.                                                    |
-| `fetch.remoteFallbacks`              | `false` | Enable the Jina remote reader.                                                  |
-| `fetch.externalReaders`              | `true`  | Use `trafilatura`/`lynx` when on `PATH`.                                        |
-| `fetch.allowPrivateHosts`            | `false` | Disable the SSRF guard for local hosts.                                         |
-| `politeness.robots`                  | `warn`  | `robots.txt` handling: report and continue, or `strict` to refuse.              |
-| `politeness.userAgent`               | honest  | One descriptive user agent; no per-request rotation.                            |
-| `politeness.contact`                 | unset   | Contact address sent in the `From` header.                                      |
-| `politeness.globalConcurrency`       | `4`     | Requests in flight across every host.                                           |
-| `politeness.globalRequestsPerSecond` | `8`     | Requests per second across every host, with a short burst.                      |
-| `politeness.latencyWarningFactor`    | `2`     | Latency factor over a host's baseline that raises a warning and widens spacing. |
-| `politeness.maxRetryWaitSeconds`     | `30`    | Longest `Retry-After` the tool waits for; a longer delay fails fast.            |
-| `hosts.<host>.minIntervalMs`         | curated | Minimum gap between two requests to that host, replacing the curated value.     |
-| `hosts.<host>.robots`                | global  | `warn` or `strict` for that host. A host entry also covers its subdomains.      |
-| `browser.enabled`                    | `true`  | Enable browser rendering when a binary resolves.                                |
-| `browser.executablePath`             | unset   | Pin a specific Chrome/Chromium executable.                                      |
-| `browser.userDataDir`                | unset   | Reuse a persistent Chromium profile across launches.                            |
-| `browser.stealth`                    | `false` | Reserved for future stealth patches.                                            |
-| `browser.noSandbox`                  | `false` | Add `--no-sandbox` for root/containers.                                         |
-| `browser.timeoutSeconds`             | `20`    | Upper bound on a single browser navigation; a shorter tool deadline still wins. |
-| `browser.idleCloseSeconds`           | `120`   | Close the shared browser after this idle period; `0` disables idle close.       |
-| `browser.maxPages`                   | `2`     | Maximum concurrent browser pages.                                               |
-| `browser.allowPrivateHosts`          | `false` | Permit private hosts in the browser.                                            |
+| Key                                  | Default  | Effect                                                                                  |
+| ------------------------------------ | -------- | --------------------------------------------------------------------------------------- |
+| `fetch.maxChars`                     | 500000   | Maximum rendered characters per fetch.                                                  |
+| `fetch.timeoutSeconds`               | 30       | Wall-clock fetch deadline.                                                              |
+| `fetch.maxBytes`                     | 50 MiB   | Maximum response bytes read.                                                            |
+| `fetch.remoteFallbacks`              | `false`  | Enable the Jina remote reader.                                                          |
+| `fetch.externalReaders`              | `true`   | Use `trafilatura`/`lynx` when on `PATH`.                                                |
+| `fetch.allowPrivateHosts`            | `false`  | Disable the SSRF guard for local hosts.                                                 |
+| `politeness.robots`                  | `warn`   | `robots.txt` handling: report and continue, or `strict` to refuse.                      |
+| `politeness.userAgent`               | honest   | One descriptive user agent; no per-request rotation.                                    |
+| `politeness.contact`                 | unset    | Contact address sent in the `From` header.                                              |
+| `politeness.globalConcurrency`       | `4`      | Requests in flight across every host.                                                   |
+| `politeness.globalRequestsPerSecond` | `8`      | Requests per second across every host, with a short burst.                              |
+| `politeness.latencyWarningFactor`    | `2`      | Latency factor over a host's baseline that raises a warning and widens spacing.         |
+| `politeness.maxRetryWaitSeconds`     | `30`     | Longest `Retry-After` the tool waits for; a longer delay fails fast.                    |
+| `politeness.tier`                    | `polite` | Highest rung: `polite` stops at a real browser, `evasive` also allows the evasive tier. |
+| `politeness.evasion`                 | `off`    | `on-block` lets a hard block (401/403/451) reach the evasive tier.                      |
+| `politeness.human`                   | `hint`   | `hint`, `transparent`, or `disabled` for a detected challenge.                          |
+| `hosts.<host>.tier`                  | global   | Per-host tier ceiling; a host entry also covers its subdomains.                         |
+| `hosts.<host>.minIntervalMs`         | curated  | Minimum gap between two requests to that host, replacing the curated value.             |
+| `hosts.<host>.robots`                | global   | `warn` or `strict` for that host. A host entry also covers its subdomains.              |
+| `browser.enabled`                    | `true`   | Enable browser rendering when a binary resolves.                                        |
+| `browser.executablePath`             | unset    | Pin a specific Chrome/Chromium executable.                                              |
+| `browser.userDataDir`                | unset    | Reuse a persistent Chromium profile across launches.                                    |
+| `browser.stealth`                    | `false`  | Reserved for future stealth patches.                                                    |
+| `browser.noSandbox`                  | `false`  | Add `--no-sandbox` for root/containers.                                                 |
+| `browser.timeoutSeconds`             | `20`     | Upper bound on a single browser navigation; a shorter tool deadline still wins.         |
+| `browser.idleCloseSeconds`           | `120`    | Close the shared browser after this idle period; `0` disables idle close.               |
+| `browser.maxPages`                   | `2`      | Maximum concurrent browser pages.                                                       |
+| `browser.allowPrivateHosts`          | `false`  | Permit private hosts in the browser.                                                    |
 
 Secrets stay in the environment: `GITHUB_TOKEN` or `GH_TOKEN`, `NCBI_API_KEY`, and `JINA_API_KEY`. `PUPPETEER_EXECUTABLE_PATH` overrides the browser binary and takes precedence over `browser.executablePath`.
 
@@ -120,6 +124,12 @@ Requests are paced by three budgets: the per-host gap, a global concurrency cap,
 `Retry-After` is parsed in full, both delay-seconds and HTTP-date. A delay within `politeness.maxRetryWaitSeconds` is waited out and the request retried once. A longer delay fails immediately with the retry time named, so the caller can use a different source instead of stalling.
 
 A CAPTCHA or interstitial is detected before the body is shaped and reported as a challenge with its family (Cloudflare, Anubis, reCAPTCHA, hCaptcha, PerimeterX, DataDome); it is never treated as something another user agent can get past.
+
+### Routing and challenges
+
+Every request starts on the honest HTTP tier and climbs only when the outcome calls for it. A JavaScript shell or a failed quality gate may climb to a real browser; a hard 401/403/451 block climbs to the evasive tier only when `politeness.tier` is `evasive` and `politeness.evasion` is `on-block`. A host may escalate at most once per ten minutes, and a per-call ceiling cannot exceed the configured one. A `robots.txt` refusal is never overridden by a higher tier.
+
+A detected challenge is not a routing problem, because escalation cannot clear it. `politeness.human` decides what happens: `hint` (the default) returns the challenge with its family and the page is not shaped, `transparent` waits for a human and retries once the challenge clears, and `disabled` fails cleanly with the reason. A challenge is never sent to the evasive tier. Consent walls are reported and never accepted automatically.
 
 ### Caching and alternative representations
 

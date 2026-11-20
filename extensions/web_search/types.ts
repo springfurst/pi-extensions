@@ -78,9 +78,20 @@ export class SearchProviderError extends Error {
     public readonly provider: SearchProviderId,
     message: string,
     public readonly status?: number,
+    public readonly options: { challenge?: boolean; retryAfterMs?: number } = {},
   ) {
     super(message);
     this.name = "SearchProviderError";
+  }
+
+  /** True when the engine answered with a bot challenge rather than a failure. */
+  get isChallenge(): boolean {
+    return this.options.challenge === true || this.status === 429 || this.status === 503;
+  }
+
+  /** Delay the engine asked for, when its response carried one. */
+  get retryAfterMs(): number | undefined {
+    return this.options.retryAfterMs;
   }
 }
 

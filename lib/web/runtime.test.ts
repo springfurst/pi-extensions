@@ -169,7 +169,8 @@ describe("WebRuntime", () => {
     test.queue(challenged());
     const result = await test.runtime.request(request());
     expect(result.outcome).toBe("challenge");
-    expect(result.reason).toContain("human handling is disabled");
+    expect(result.reason).toContain("challenge detected");
+    expect(result.notes?.join("\n")).toContain("human handling is disabled");
   });
 
   it("waits in transparent mode and retries after a human clears it", async () => {

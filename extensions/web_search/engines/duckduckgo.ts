@@ -252,7 +252,12 @@ async function callDuckDuckGoHtml(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
   });
   if (page.status < 200 || page.status >= 300) {
-    const classified = classifyProviderHttpError("duckduckgo", page.status, page.html);
+    const classified = classifyProviderHttpError(
+      "duckduckgo",
+      page.status,
+      page.html,
+      page.retryAfterMs,
+    );
     if (classified) throw classified;
     throw new SearchProviderError(
       "duckduckgo",
@@ -265,6 +270,7 @@ async function callDuckDuckGoHtml(
       "duckduckgo",
       "DuckDuckGo blocked the request with a bot-detection challenge. DuckDuckGo throttles automated HTML searches from datacenter IPs.",
       429,
+      { challenge: true, retryAfterMs: page.retryAfterMs },
     );
   }
   return page.html;

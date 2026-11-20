@@ -121,6 +121,7 @@ async function callEcosiaHtml(params: EngineSearchParams): Promise<string> {
       "ecosia",
       "Ecosia blocked the request with a Cloudflare bot challenge. Try another web search provider or retry later.",
       429,
+      { challenge: true },
     );
   }
   if (page.status < 200 || page.status >= 300) {

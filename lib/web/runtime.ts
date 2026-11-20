@@ -11,7 +11,8 @@ import type { HttpCache } from "./cache";
 import { systemClock, type Clock } from "./clock";
 import type { Politeness } from "./politeness";
 import { EscalationBudget, clampTier, planRoute, routingPolicyFor, tierCeiling } from "./router";
-import { transfer } from "./transfer";
+import { transfer, type FetchImpl } from "./transfer";
+import type { ResolveHost } from "../security";
 import type {
   SessionHandle,
   SessionOptions,
@@ -44,6 +45,12 @@ export interface WebRuntimeOptions {
   cookieSource?: (url: string, signal?: AbortSignal) => Promise<string | undefined>;
   /** Injectable HTTP transport, for tests and embedding. */
   transfer?: typeof transfer;
+  /** Transport capabilities inherited by every HTTP attempt. */
+  fetchImpl?: FetchImpl;
+  allowPrivateHosts?: boolean;
+  resolve?: ResolveHost;
+  timeoutSeconds?: number;
+  maxBytes?: number;
   clock?: Clock;
   /** How often one host may escalate. */
   escalationWindowMs?: number;
@@ -87,14 +94,15 @@ export class WebRuntime implements WebRuntimeApi {
         tier,
         policy,
         escalatedRecently: !this.budget.available(host),
+        /* debug */
         humanAvailable: Boolean(this.options.humanWaiter),
       });
 
+      console.log("PLAN", host, result.outcome, tier, JSON.stringify(policy), JSON.stringify(plan));
       if (plan.action === "accept") break;
 
       if (plan.action === "refuse") {
         notes.add(plan.reason);
-        result = { ...result, reason: plan.reason };
         break;
       }
 
@@ -106,7 +114,6 @@ export class WebRuntime implements WebRuntimeApi {
           });
           if (!cleared) {
             notes.add("human wait ended without clearing the challenge");
-            result = { ...result, reason: result.reason ?? "challenge not cleared" };
             break;
           }
           notes.add("a human cleared the challenge");
@@ -114,7 +121,6 @@ export class WebRuntime implements WebRuntimeApi {
           continue;
         }
         notes.add(plan.reason);
-        result = { ...result, reason: plan.reason };
         break;
       }
 
@@ -131,10 +137,17 @@ export class WebRuntime implements WebRuntimeApi {
       this.budget.take(host);
       notes.add(plan.reason);
       tier = plan.to;
-      result = await this.options.browser(
-        { ...request, tier: plan.to },
-        { tier: plan.to, signal: request.signal },
-      );
+      try {
+        result = await this.options.browser(
+          { ...request, tier: plan.to },
+          { tier: plan.to, signal: request.signal },
+        );
+      } catch (error) {
+        notes.add(
+          `browser escalation failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        break;
+      }
     }
 
     return notes.size > 0 ? { ...result, notes: [...(result.notes ?? []), ...notes] } : result;
@@ -151,6 +164,11 @@ export class WebRuntime implements WebRuntimeApi {
       body: request.body,
       headers: request.headers,
       cookies,
+      fetch: this.options.fetchImpl,
+      allowPrivateHosts: this.options.allowPrivateHosts,
+      resolve: this.options.resolve,
+      timeoutSeconds: this.options.timeoutSeconds,
+      maxBytes: this.options.maxBytes,
       politeness: this.politeness,
       cache: this.options.cache,
       signal,
@@ -164,6 +182,8 @@ export class WebRuntime implements WebRuntimeApi {
       contentType: result.contentType || undefined,
       body: result.content,
       cached: result.cache === "hit" ? true : undefined,
+      cache: result.cache,
+      limiter: result.limiter,
       truncated: result.truncated,
       retryAfterMs: result.retryAfterMs,
       reason: result.error,

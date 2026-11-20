@@ -90,8 +90,15 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
   if (response.notes) notes.push(...response.notes);
 
   if (!response.ok) {
-    if (response.status) notes.push(`Failed to fetch URL (HTTP ${response.status})`);
-    else notes.push("Failed to fetch URL");
+    if (response.outcome === "challenge") {
+      notes.push(
+        `Challenge detected${response.status ? ` (HTTP ${response.status})` : ""}; content was not shaped`,
+      );
+    } else if (response.status) {
+      notes.push(`Failed to fetch URL (HTTP ${response.status})`);
+    } else {
+      notes.push("Failed to fetch URL");
+    }
     if (response.error) notes.push(`Cause: ${response.error}`);
     return {
       url,
@@ -111,6 +118,11 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
     notes.push(
       `Response body exceeded ${formatBytes(ctx.config.maxBytes)} and was cut mid-stream; content is incomplete`,
     );
+  }
+
+  if (response.outcome === "consent" && !raw) {
+    notes.push("Consent wall: not accepted automatically; no content returned");
+    return finish("", "consent", mime, url, finalUrl, response.status);
   }
 
   if (raw) return finish(rawContent, "raw", mime, url, finalUrl, response.status);

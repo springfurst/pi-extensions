@@ -4,7 +4,7 @@ import { loadConfig } from "../../lib/config";
 import { USAGE_SCHEMA_VERSION, createFileUsageLogger, type UsageLogger } from "../../lib/logging";
 import { PI_VERSION, TOOL_VERSION } from "../../lib/version";
 import { AggregateFailureError, aggregateSearch, type SearchFailure } from "./aggregate";
-import { CHALLENGE_COOLDOWN_MS, EngineCooldown, SearchCache, cacheKey } from "./cache";
+import { EngineCooldown, SearchCache, cacheKey } from "./cache";
 import {
   ENGINES,
   ENGINE_PRIORITY,
@@ -98,7 +98,7 @@ function toStructured(sources: readonly SearchSource[]): StructuredContent {
 }
 
 function isChallenge(error: unknown): boolean {
-  return error instanceof SearchProviderError && error.status === 429;
+  return error instanceof SearchProviderError && error.isChallenge;
 }
 
 function messageOf(error: unknown): string {
@@ -375,9 +375,16 @@ export async function executeWebSearch(
     const notes: string[] = [];
     for (const failure of failures) {
       if (!isChallenge(failure.error)) continue;
-      engineCooldown.mark(failure.provider.id, CHALLENGE_COOLDOWN_MS);
+      const retryAfterMs =
+        failure.error instanceof SearchProviderError ? failure.error.retryAfterMs : undefined;
+      engineCooldown.mark(failure.provider.id, { retryAfterMs });
       if (isEngineId(failure.provider.id) && engineRequiresBrowser(failure.provider.id)) {
         notes.push(`${ENGINES[failure.provider.id].label} blocked the browser with a challenge.`);
+      }
+    }
+    for (const outcome of outcomes.values()) {
+      if (outcome.status === "ok" || outcome.status === "empty") {
+        engineCooldown.succeeded(outcome.id);
       }
     }
     if (enginesUsed.some((id) => isEngineId(id) && engineRequiresBrowser(id))) {
