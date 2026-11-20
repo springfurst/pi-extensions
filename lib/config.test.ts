@@ -172,4 +172,88 @@ describe("loadConfig", () => {
     expect(config.logging.dir).toBeUndefined();
     expect(config.logging.includeArgs).toBe(false);
   });
+
+  it("defaults the shared runtime, politeness, host, and blocking sections", () => {
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.runtime).toEqual(DEFAULT_CONFIG.runtime);
+    expect(config.politeness).toEqual(DEFAULT_CONFIG.politeness);
+    expect(config.hosts).toEqual({});
+    expect(config.blocking).toEqual(DEFAULT_CONFIG.blocking);
+  });
+
+  it("reads the shared sections from the global file", () => {
+    writeGlobalConfig({
+      runtime: { profile: "work", attach: "off", isolation: "contexts", maxPages: 4 },
+      politeness: { robots: "strict", globalConcurrency: 2, latencyWarningFactor: 3 },
+      hosts: { "github.com": { minIntervalMs: 750, robots: "strict" } },
+      blocking: { media: "off", ads: "off" },
+    });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.runtime).toEqual({
+      profile: "work",
+      attach: "off",
+      isolation: "contexts",
+      maxPages: 4,
+    });
+    expect(config.politeness.robots).toBe("strict");
+    expect(config.politeness.globalConcurrency).toBe(2);
+    expect(config.politeness.latencyWarningFactor).toBe(3);
+    expect(config.politeness.human).toBe("hint");
+    expect(config.hosts["github.com"]).toEqual({ minIntervalMs: 750, robots: "strict" });
+    expect(config.blocking.media).toBe("off");
+    expect(config.blocking.images).toBe("third-party");
+  });
+
+  it("lets the trusted project file override the shared sections", () => {
+    writeGlobalConfig({
+      runtime: { profile: "work" },
+      politeness: { robots: "strict", human: "transparent" },
+      hosts: { "github.com": { minIntervalMs: 500, robots: "strict" } },
+      blocking: { images: "off" },
+    });
+    writeProjectConfig({
+      runtime: { maxPages: 2 },
+      politeness: { robots: "warn" },
+      hosts: { "github.com": { minIntervalMs: 1500 } },
+    });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.runtime.profile).toBe("work");
+    expect(config.runtime.maxPages).toBe(2);
+    expect(config.politeness.robots).toBe("warn");
+    expect(config.politeness.human).toBe("transparent");
+    expect(config.hosts["github.com"]).toEqual({ minIntervalMs: 1500, robots: "strict" });
+    expect(config.blocking.images).toBe("off");
+  });
+
+  it("ignores shared sections from an untrusted project", () => {
+    writeProjectConfig({
+      runtime: { profile: "project" },
+      politeness: { human: "transparent" },
+      hosts: { "example.com": { robots: "strict" } },
+      blocking: { ads: "off" },
+    });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: false });
+    expect(config.runtime).toEqual(DEFAULT_CONFIG.runtime);
+    expect(config.politeness).toEqual(DEFAULT_CONFIG.politeness);
+    expect(config.hosts).toEqual({});
+    expect(config.blocking).toEqual(DEFAULT_CONFIG.blocking);
+  });
+
+  it("ignores malformed shared values but keeps valid siblings", () => {
+    writeGlobalConfig({
+      runtime: { maxPages: 0, attach: "always" },
+      politeness: { globalRequestsPerSecond: 0, human: "ask" },
+      hosts: { "not a host": { robots: "strict" } },
+      blocking: { fonts: "sometimes" },
+    });
+    const config = loadConfig(cwd, { agentDir, projectTrusted: true });
+    expect(config.runtime.maxPages).toBe(DEFAULT_CONFIG.runtime.maxPages);
+    expect(config.runtime.attach).toBe("auto");
+    expect(config.politeness.globalRequestsPerSecond).toBe(
+      DEFAULT_CONFIG.politeness.globalRequestsPerSecond,
+    );
+    expect(config.politeness.human).toBe("hint");
+    expect(config.hosts).toEqual({});
+    expect(config.blocking.fonts).toBe("third-party");
+  });
 });

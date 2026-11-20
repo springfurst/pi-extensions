@@ -1,6 +1,12 @@
 import type { Page } from "puppeteer-core";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import type { LoggingConfig } from "../../lib/config";
+import type {
+  BlockingConfig,
+  HostPolicy,
+  PolitenessConfig,
+  RuntimeConfig,
+} from "../../lib/web/config";
 import type { ActionName } from "./actions";
 
 /** An expected failure with an optional, non-binding hint for the agent. */
@@ -377,6 +383,10 @@ export interface BrowserPilotConfig {
   args: string[];
   noSandbox: boolean;
   logging: BrowserPilotLoggingConfig;
+  runtime: RuntimeConfig;
+  politeness: PolitenessConfig;
+  hosts: Record<string, HostPolicy>;
+  blocking: BlockingConfig;
 }
 
 /** Options for loading the config. */

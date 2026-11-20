@@ -1,5 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  DEFAULT_BLOCKING_CONFIG,
+  DEFAULT_POLITENESS_CONFIG,
+  DEFAULT_RUNTIME_CONFIG,
+  mergeWebSections,
+} from "./web/config";
+import type { BlockingConfig, HostPolicy, PolitenessConfig, RuntimeConfig } from "./web/config";
 
 /** Default engine priority when Aggregation is on and no explicit selection is configured. */
 export const DEFAULT_SEARCH_ENGINES = [
@@ -95,6 +102,10 @@ export interface WebToolsConfig {
   searxng: SearxngConfig;
   browser: BrowserConfig;
   logging: LoggingConfig;
+  runtime: RuntimeConfig;
+  politeness: PolitenessConfig;
+  hosts: Record<string, HostPolicy>;
+  blocking: BlockingConfig;
 }
 
 /** Built-in defaults, before any config file. */
@@ -128,6 +139,10 @@ export const DEFAULT_CONFIG: WebToolsConfig = {
     enabled: false,
     includeArgs: true,
   },
+  runtime: { ...DEFAULT_RUNTIME_CONFIG },
+  politeness: { ...DEFAULT_POLITENESS_CONFIG },
+  hosts: {},
+  blocking: { ...DEFAULT_BLOCKING_CONFIG },
 };
 
 export interface LoadConfigOptions {
@@ -151,59 +166,48 @@ export function loadConfig(cwd: string, options: LoadConfigOptions): WebToolsCon
   const project = options.projectTrusted
     ? readConfigFile(join(cwd, PROJECT_CONFIG_DIR, CONFIG_FILE_NAME))
     : undefined;
+  const shared = mergeWebSections(global, project);
 
   const config: WebToolsConfig = {
     fetch: {
       ...DEFAULT_CONFIG.fetch,
-      ...pickFetch(global?.fetch),
-      ...pickFetch(project?.fetch),
+      ...pickFetch(asRecord(global?.fetch)),
+      ...pickFetch(asRecord(project?.fetch)),
     },
     search: {
       ...DEFAULT_CONFIG.search,
-      ...pickSearch(global?.search),
-      ...pickSearch(project?.search),
+      ...pickSearch(asRecord(global?.search)),
+      ...pickSearch(asRecord(project?.search)),
     },
     searxng: {
-      ...pickSearxng(global?.searxng),
-      ...pickSearxng(project?.searxng),
+      ...pickSearxng(asRecord(global?.searxng)),
+      ...pickSearxng(asRecord(project?.searxng)),
     },
     browser: {
       ...DEFAULT_CONFIG.browser,
-      ...pickBrowser(global?.browser),
-      ...pickBrowser(project?.browser),
+      ...pickBrowser(asRecord(global?.browser)),
+      ...pickBrowser(asRecord(project?.browser)),
     },
     logging: {
       ...DEFAULT_CONFIG.logging,
-      ...pickLogging(global?.logging),
-      ...pickLogging(project?.logging),
+      ...pickLogging(asRecord(global?.logging)),
+      ...pickLogging(asRecord(project?.logging)),
     },
+    runtime: shared.runtime,
+    politeness: shared.politeness,
+    hosts: shared.hosts,
+    blocking: shared.blocking,
   };
 
   config.searxng = { ...config.searxng, ...searxngFromEnv(config.searxng) };
   return config;
 }
 
-interface RawConfig {
-  fetch?: Record<string, unknown>;
-  search?: Record<string, unknown>;
-  searxng?: Record<string, unknown>;
-  browser?: Record<string, unknown>;
-  logging?: Record<string, unknown>;
-}
-
-function readConfigFile(path: string): RawConfig | undefined {
+function readConfigFile(path: string): Record<string, unknown> | undefined {
   if (!existsSync(path)) return undefined;
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-    const record = asRecord(parsed);
-    if (!record) return undefined;
-    return {
-      fetch: asRecord(record.fetch),
-      search: asRecord(record.search),
-      searxng: asRecord(record.searxng),
-      browser: asRecord(record.browser),
-      logging: asRecord(record.logging),
-    };
+    return asRecord(parsed);
   } catch {
     // A malformed or unreadable config file falls back to the defaults.
     return undefined;

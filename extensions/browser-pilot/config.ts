@@ -1,5 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  DEFAULT_BLOCKING_CONFIG,
+  DEFAULT_POLITENESS_CONFIG,
+  DEFAULT_RUNTIME_CONFIG,
+  mergeWebSections,
+} from "../../lib/web/config";
 import type {
   BrowserPilotConfig,
   BrowserPilotLoggingConfig,
@@ -41,6 +47,10 @@ export const DEFAULT_BROWSER_PILOT_CONFIG: BrowserPilotConfig = {
     outputs: "summary",
     maxOutputChars: 2_000,
   },
+  runtime: { ...DEFAULT_RUNTIME_CONFIG },
+  politeness: { ...DEFAULT_POLITENESS_CONFIG },
+  hosts: {},
+  blocking: { ...DEFAULT_BLOCKING_CONFIG },
 };
 
 const CONFIG_FILE_NAME = "browser-pilot.json";
@@ -73,6 +83,7 @@ export function loadBrowserPilotConfig(
       ...pickLogging(global?.logging),
       ...pickLogging(project?.logging),
     },
+    ...mergeWebSections(global, project),
   };
 
   const env = options.env ?? process.env;
