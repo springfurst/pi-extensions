@@ -14,6 +14,7 @@ import { dirname } from "node:path";
 import { systemClock, type Clock } from "./clock";
 import type { HostPolicy, PolitenessConfig } from "./config";
 import { RequestLimiter } from "./limiter";
+import { RobotsCache } from "./robots";
 
 /** Version of the persisted host-state document. */
 export const HOST_STATE_SCHEMA = 1;
@@ -95,10 +96,13 @@ export interface HostUpdate {
   warningRaised: boolean;
 }
 
-/** One store per agent directory, shared across tool calls. */
+/** Everything one directory shares across tool calls. */
 export interface Politeness {
+  readonly config: PolitenessConfig;
+  readonly hosts: Record<string, HostPolicy>;
   readonly store: HostStateStore;
   readonly limiter: RequestLimiter;
+  readonly robots: RobotsCache;
 }
 
 const shared = new Map<string, Politeness>();
@@ -127,6 +131,9 @@ export function sharedPoliteness(options: {
   if (existing) return existing;
 
   const politeness: Politeness = {
+    config: options.politeness,
+    hosts: options.hosts ?? {},
+    robots: new RobotsCache({ clock }),
     store: new HostStateStore({
       path: options.dir ? `${options.dir}/host-state.json` : undefined,
       clock,

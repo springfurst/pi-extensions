@@ -1,5 +1,7 @@
 import { createBrowserRenderer, type BrowserRenderer } from "../../lib/browser";
 import type { BrowserConfig, FetchConfig } from "../../lib/config";
+import { sharedPoliteness, type Politeness } from "../../lib/web/politeness";
+import type { HostPolicy, PolitenessConfig } from "../../lib/web/config";
 import { loadPage } from "./fetch";
 import type {
   ExecFn,
@@ -23,6 +25,10 @@ export interface CreateFetchContextOptions {
   browserConfig?: BrowserConfig;
   /** Renderer factory override; defaults to `createBrowserRenderer`. */
   createRenderer?: BrowserRendererFactory;
+  /** Politeness policy; absent leaves requests unpaced and robots-unchecked. */
+  politeness?: PolitenessConfig;
+  /** Per-host overrides applied to pacing and robots handling. */
+  hosts?: Record<string, HostPolicy>;
 }
 
 /** Build a browser renderer from config; injectable so tests can observe laziness. */
@@ -41,6 +47,15 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
   // cannot bound tool latency.
   const deadline = AbortSignal.timeout(options.config.timeoutSeconds * 1000);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;
+  // One limiter and host-state store per process and cache directory, so
+  // pacing and learned limits survive between tool calls.
+  const politeness: Politeness | undefined = options.politeness
+    ? sharedPoliteness({
+        dir: options.cacheDir ?? "",
+        politeness: options.politeness,
+        hosts: options.hosts,
+      })
+    : undefined;
   const loadPageBound: LoadPage = (url: string, loadOptions: LoadPageOptions = {}) =>
     loadPage(url, {
       timeoutSeconds: options.config.timeoutSeconds,
@@ -48,6 +63,7 @@ export function createFetchContext(options: CreateFetchContextOptions): FetchCon
       allowPrivateHosts: options.config.allowPrivateHosts,
       fetch: fetchImpl,
       resolve: options.resolve,
+      politeness,
       ...loadOptions,
       signal: loadOptions.signal ?? signal,
     });

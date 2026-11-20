@@ -60,6 +60,12 @@ export interface PolitenessConfig {
   globalRequestsPerSecond: number;
   /** Latency factor over the host baseline that raises a warning. */
   latencyWarningFactor: number;
+  /** User agent for honest requests; defaults to the descriptive built-in. */
+  userAgent?: string;
+  /** Contact address sent in the `From` header. */
+  contact?: string;
+  /** Longest `Retry-After` the tools wait for; a longer delay fails fast. */
+  maxRetryWaitSeconds: number;
 }
 
 /** Per-host overrides; absent fields fall back to the global sections. */
@@ -100,6 +106,7 @@ export const DEFAULT_POLITENESS_CONFIG: PolitenessConfig = {
   globalConcurrency: 4,
   globalRequestsPerSecond: 8,
   latencyWarningFactor: 2,
+  maxRetryWaitSeconds: 30,
 };
 
 export const DEFAULT_BLOCKING_CONFIG: BlockingConfig = {
@@ -174,6 +181,12 @@ function pickPoliteness(raw: Record<string, unknown> | undefined): Partial<Polit
   }
   const latencyWarningFactor = asNumberAboveOne(raw.latencyWarningFactor);
   if (latencyWarningFactor !== undefined) out.latencyWarningFactor = latencyWarningFactor;
+  const userAgent = asNonEmptyString(raw.userAgent);
+  if (userAgent !== undefined) out.userAgent = userAgent;
+  const contact = asNonEmptyString(raw.contact);
+  if (contact !== undefined) out.contact = contact;
+  const maxRetryWaitSeconds = asPositiveNumber(raw.maxRetryWaitSeconds);
+  if (maxRetryWaitSeconds !== undefined) out.maxRetryWaitSeconds = maxRetryWaitSeconds;
   return out;
 }
 

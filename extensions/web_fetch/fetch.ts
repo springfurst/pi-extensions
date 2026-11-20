@@ -2,18 +2,17 @@
 // Adapted from oh-my-pi (https://omp.sh), MIT. See THIRD_PARTY_NOTICES.md.
 
 import { DEFAULT_MAX_BYTES } from "../../lib/config";
-import { normalizeMime, readLimitedBytes, withHardTimeout } from "../../lib/http";
+import { normalizeMime, readLimitedBytes, readLimitedText, withHardTimeout } from "../../lib/http";
 import { checkUrlAllowed } from "../../lib/security";
+import { systemClock } from "../../lib/web/clock";
+import { classifyResponse, formatDelay, planRetry } from "../../lib/web/outcome";
+import type { Politeness } from "../../lib/web/politeness";
+import { robotsAllows, robotsIntervalMs, robotsTxtUrl } from "../../lib/web/robots";
+import { DEFAULT_USER_AGENT, identityHeaders, productToken } from "../../lib/web/user-agent";
 import type { FetchImpl, LoadPageOptions, LoadPageResult, ResolveHost } from "./types";
 
-export const USER_AGENTS = [
-  "curl/8.0",
-  "Mozilla/5.0 (compatible; TextBot/1.0)",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-];
-
 const MAX_REDIRECTS = 10;
-const RETRY_AFTER_MAX_MS = 10_000;
+const ROBOTS_MAX_BYTES = 512 * 1024;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"]);
 
@@ -34,27 +33,54 @@ function originOf(url: string): string | undefined {
   }
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function pathAndQueryOf(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
+
+interface RequestIdentity {
+  userAgent: string;
+  contact?: string;
+}
+
 interface AttemptArgs {
   url: string;
   method: string;
   body?: string;
   headers: Record<string, string>;
-  userAgent: string;
+  identity: RequestIdentity;
   timeoutSeconds: number;
   maxBytes: number;
+  maxRetryWaitMs: number;
   fetchImpl: FetchImpl;
   signal?: AbortSignal;
   allowPrivateHosts: boolean;
   resolve?: ResolveHost;
-  retried429: boolean;
+  politeness?: Politeness;
+  /** False once the single throttle retry has been spent. */
+  allowRetry: boolean;
+  notes: string[];
 }
 
-type AttemptOutcome = { kind: "response"; result: LoadPageResult } | { kind: "retry429" };
+type AttemptOutcome =
+  { kind: "response"; result: LoadPageResult } | { kind: "retry"; delayMs: number };
 
 /**
- * Fetch a URL with rotating user agents, manual redirect following (re-running
- * the SSRF guard on every hop), one `Retry-After`-aware 429 retry, bot-block
- * retry, a streamed byte cap, and charset decoding.
+ * Fetch a URL once, with the SSRF guard on every hop, manual redirect
+ * following, one honest user agent, host pacing, `robots.txt` handling, a
+ * streamed byte cap, charset decoding, and one `Retry-After`-aware retry.
  */
 export async function loadPage(
   url: string,
@@ -66,11 +92,15 @@ export async function loadPage(
   const signal = options.signal;
   const allowPrivateHosts = options.allowPrivateHosts ?? false;
   const resolve = options.resolve;
+  const politeness = options.politeness;
+  const identity: RequestIdentity = {
+    userAgent: politeness?.config.userAgent ?? DEFAULT_USER_AGENT,
+    contact: politeness?.config.contact,
+  };
+  const maxRetryWaitMs = (politeness?.config.maxRetryWaitSeconds ?? 30) * 1000;
+  const notes: string[] = [];
 
-  let lastError: string | undefined;
-  let retried429 = false;
-
-  for (let attempt = 0; attempt < USER_AGENTS.length; attempt++) {
+  for (let attempt = 0; ; attempt++) {
     signal?.throwIfAborted();
     try {
       const outcome = await attemptOnce({
@@ -78,34 +108,29 @@ export async function loadPage(
         method: options.method ?? "GET",
         body: options.body,
         headers: options.headers ?? {},
-        userAgent: USER_AGENTS[attempt]!,
+        identity,
         timeoutSeconds,
         maxBytes,
+        maxRetryWaitMs,
         fetchImpl,
         signal,
         allowPrivateHosts,
         resolve,
-        retried429,
+        politeness,
+        allowRetry: attempt === 0,
+        notes,
       });
-      if (outcome.kind === "retry429") {
-        retried429 = true;
-        attempt--;
-        continue;
-      }
-      const retryable =
-        outcome.result.status === 403 ||
-        isBotBlocked(outcome.result.status, outcome.result.content);
-      if (retryable && attempt < USER_AGENTS.length - 1) {
+      if (outcome.kind === "retry") {
+        await systemClock.sleep(outcome.delayMs, signal);
         continue;
       }
       return outcome.result;
     } catch (error) {
       if (signal?.aborted) signal.throwIfAborted();
-      lastError = error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
+      return failure(url, "", undefined, message, notes);
     }
   }
-
-  return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
 }
 
 async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
@@ -114,6 +139,16 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
   let body = args.body;
   let headers = { ...args.headers };
   let previousOrigin = originOf(currentUrl);
+  const fail = (
+    finalUrl: string,
+    contentType: string,
+    status: number | undefined,
+    error: string,
+    extra: Partial<LoadPageResult> = {},
+  ): AttemptOutcome => ({
+    kind: "response",
+    result: failure(finalUrl, contentType, status, error, args.notes, extra),
+  });
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     args.signal?.throwIfAborted();
@@ -123,33 +158,78 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
       resolve: args.resolve,
     });
     if (!guard.allowed) {
-      return {
-        kind: "response",
-        result: {
-          content: "",
-          contentType: "",
-          finalUrl: currentUrl,
-          ok: false,
-          error: guard.reason,
-        },
-      };
+      return fail(currentUrl, "", undefined, guard.reason ?? "blocked by the URL guard");
     }
 
-    const requestSignal = withHardTimeout(args.signal, args.timeoutSeconds * 1000);
-    const response = await args.fetchImpl(currentUrl, {
-      signal: requestSignal,
-      method,
-      headers: {
-        "User-Agent": args.userAgent,
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        // Cloudflare's Markdown-for-Agents returns corrupted bytes with compression.
-        "Accept-Encoding": "identity",
-        ...headers,
-      },
-      redirect: "manual",
-      body,
-    });
+    const host = hostOf(currentUrl);
+    const origin = originOf(currentUrl);
+    let minIntervalMs = 0;
+
+    if (args.politeness && origin) {
+      console.log("robots start");
+      const rules = await args.politeness.robots.rules(
+        origin,
+        () => fetchRobots(origin, args),
+        productToken(args.identity.userAgent),
+      );
+      console.log("robots done");
+      const path = pathAndQueryOf(currentUrl);
+      const decision = robotsAllows(rules, path);
+      const mode = args.politeness.store.policyFor(host)?.robots ?? args.politeness.config.robots;
+      if (decision.matched && !decision.allowed) {
+        if (mode === "strict") {
+          return fail(
+            currentUrl,
+            "",
+            undefined,
+            `robots.txt disallows ${path} on ${host} (rule: ${decision.rule})`,
+          );
+        }
+        if (args.politeness.robots.noteWarned(origin)) {
+          args.notes.push(
+            `robots.txt disallows ${path} on ${host} (rule: ${decision.rule}); fetched anyway because politeness.robots is "warn"`,
+          );
+        }
+      }
+      minIntervalMs = Math.max(
+        args.politeness.store.intervalMs(host),
+        robotsIntervalMs(rules) ?? 0,
+      );
+
+      const blockedForMs = args.politeness.store.remainingBlockMs(host);
+      if (blockedForMs > 0) {
+        if (blockedForMs > args.maxRetryWaitMs) {
+          return fail(
+            currentUrl,
+            "",
+            undefined,
+            `${host} asked us to back off for ${formatDelay(blockedForMs)}, beyond the ${formatDelay(args.maxRetryWaitMs)} wait cap`,
+          );
+        }
+        await systemClock.sleep(blockedForMs, args.signal);
+      }
+    }
+
+    const latencyStarted = Date.now();
+    const send = () =>
+      args.fetchImpl(currentUrl, {
+        signal: withHardTimeout(args.signal, args.timeoutSeconds * 1000),
+        method,
+        headers: {
+          ...identityHeaders(args.identity),
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
+          // Cloudflare's Markdown-for-Agents returns corrupted bytes with compression.
+          "Accept-Encoding": "identity",
+          ...headers,
+        },
+        redirect: "manual",
+        body,
+      });
+    const response = args.politeness
+      ? await args.politeness.limiter.schedule({ host, minIntervalMs, signal: args.signal }, send)
+      : await send();
+    const latencyMs = Date.now() - latencyStarted;
 
     const rawContentType = response.headers.get("content-type") ?? "";
     const contentType = normalizeMime(rawContentType);
@@ -159,46 +239,26 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
       const location = response.headers.get("location");
       await response.body?.cancel().catch(() => undefined);
       if (!location) {
-        return {
-          kind: "response",
-          result: {
-            content: "",
-            contentType,
-            finalUrl,
-            ok: false,
-            status: response.status,
-            error: `Redirect without Location from ${currentUrl}`,
-          },
-        };
+        return fail(
+          finalUrl,
+          contentType,
+          response.status,
+          `Redirect without Location from ${currentUrl}`,
+        );
       }
       let next: URL;
       try {
         next = new URL(location, currentUrl);
       } catch {
-        return {
-          kind: "response",
-          result: {
-            content: "",
-            contentType,
-            finalUrl,
-            ok: false,
-            status: response.status,
-            error: `Invalid redirect target: ${location}`,
-          },
-        };
+        return fail(finalUrl, contentType, response.status, `Invalid redirect target: ${location}`);
       }
       if (next.protocol !== "http:" && next.protocol !== "https:") {
-        return {
-          kind: "response",
-          result: {
-            content: "",
-            contentType,
-            finalUrl,
-            ok: false,
-            status: response.status,
-            error: `Unsupported redirect scheme: ${next.protocol}`,
-          },
-        };
+        return fail(
+          finalUrl,
+          contentType,
+          response.status,
+          `Unsupported redirect scheme: ${next.protocol}`,
+        );
       }
       // 301/302/303 downgrade a non-idempotent method to GET, matching browsers.
       if (
@@ -218,69 +278,138 @@ async function attemptOnce(args: AttemptArgs): Promise<AttemptOutcome> {
       continue;
     }
 
-    if (response.status === 429 && !args.retried429) {
-      const delayMs = parseRetryAfterMs(response.headers.get("retry-after"));
-      await response.body?.cancel().catch(() => undefined);
-      await sleep(delayMs, args.signal);
-      return { kind: "retry429" };
-    }
-
     const { bytes, truncated } = await readLimitedBytes(response, args.maxBytes);
     const content = decodeBody(bytes, rawContentType);
-    if (!response.ok) {
-      return {
-        kind: "response",
-        result: {
-          content,
-          contentType,
+    const classification = classifyResponse({
+      status: response.status,
+      headers: response.headers,
+      body: content,
+      contentType,
+    });
+
+    if (classification.outcome === "throttled") {
+      const plan = planRetry(classification.retryAfterMs, args.maxRetryWaitMs);
+      args.politeness?.store.noteThrottle(host, plan.delayMs);
+      if (plan.action === "fail") {
+        return fail(
           finalUrl,
-          ok: false,
-          status: response.status,
-          truncated,
-          error: `HTTP ${response.status}`,
-        },
-      };
+          contentType,
+          response.status,
+          `HTTP ${response.status}: ${plan.reason}`,
+          {
+            retryAfterMs: plan.delayMs,
+            outcome: classification.outcome,
+          },
+        );
+      }
+      if (!args.allowRetry) {
+        return fail(
+          finalUrl,
+          contentType,
+          response.status,
+          `HTTP ${response.status}: still ${classification.reason}`,
+          { retryAfterMs: plan.delayMs, outcome: classification.outcome },
+        );
+      }
+      return { kind: "retry", delayMs: plan.delayMs };
     }
+
+    if (!response.ok) {
+      const extra: Partial<LoadPageResult> = {
+        truncated,
+        outcome: classification.outcome,
+      };
+      if (classification.challenge) extra.challenge = classification.challenge;
+      return fail(
+        finalUrl,
+        contentType,
+        response.status,
+        classification.challenge
+          ? `HTTP ${response.status}: ${classification.reason}`
+          : `HTTP ${response.status}`,
+        extra,
+      );
+    }
+
+    if (args.politeness && classification.outcome === "ok") {
+      const update = args.politeness.store.noteSuccess(host, latencyMs);
+      if (update.warningRaised) {
+        args.notes.push(
+          `Latency on ${host} rose above ${args.politeness.config.latencyWarningFactor}x its baseline; spacing raised to ${update.intervalMs} ms`,
+        );
+      }
+    }
+
     return {
       kind: "response",
-      result: { content, contentType, finalUrl, ok: true, status: response.status, truncated },
+      result: {
+        content,
+        contentType,
+        finalUrl,
+        ok: true,
+        status: response.status,
+        truncated,
+        outcome: classification.outcome,
+        notes: args.notes.length > 0 ? [...args.notes] : undefined,
+      },
     };
   }
 
   return {
     kind: "response",
-    result: {
-      content: "",
-      contentType: "",
-      finalUrl: currentUrl,
-      ok: false,
-      error: `Too many redirects (${MAX_REDIRECTS})`,
-    },
+    result: failure(currentUrl, "", undefined, `Too many redirects (${MAX_REDIRECTS})`, args.notes),
   };
 }
 
-/** Parse a `Retry-After` header (seconds or HTTP-date) into a bounded delay. */
-export function parseRetryAfterMs(value: string | null): number {
-  if (!value) return 1_000;
-  const seconds = Number(value);
-  if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, RETRY_AFTER_MAX_MS);
-  const date = Date.parse(value);
-  if (!Number.isNaN(date)) return Math.min(Math.max(date - Date.now(), 0), RETRY_AFTER_MAX_MS);
-  return 1_000;
+/**
+ * Read one origin's `robots.txt`. The read is cached per origin for an hour and
+ * never consults the file itself, so it stays outside the pacing budget.
+ */
+async function fetchRobots(origin: string, args: AttemptArgs): Promise<string | undefined> {
+  const target = robotsTxtUrl(origin);
+  if (!target) return undefined;
+  const guard = await checkUrlAllowed(target, {
+    allowPrivateHosts: args.allowPrivateHosts,
+    resolve: args.resolve,
+  });
+  if (!guard.allowed) return undefined;
+  const response = await args.fetchImpl(target, {
+    signal: withHardTimeout(args.signal, args.timeoutSeconds * 1000),
+    headers: {
+      ...identityHeaders(args.identity),
+      Accept: "text/plain,*/*;q=0.8",
+      "Accept-Encoding": "identity",
+    },
+    redirect: "follow",
+  });
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    return undefined;
+  }
+  console.log("robots response", response.status);
+  const { text } = await readLimitedText(response, ROBOTS_MAX_BYTES);
+  console.log("robots text", text.length);
+  return text;
 }
 
-/** True when a 403/503 body looks like an anti-bot challenge rather than real content. */
-export function isBotBlocked(status: number | undefined, content: string): boolean {
-  if (status !== 403 && status !== 503) return false;
-  const lower = content.toLowerCase();
-  return (
-    lower.includes("cloudflare") ||
-    lower.includes("captcha") ||
-    lower.includes("challenge") ||
-    lower.includes("blocked") ||
-    lower.includes("access denied") ||
-    lower.includes("bot detection")
-  );
+function failure(
+  finalUrl: string,
+  contentType: string,
+  status: number | undefined,
+  error: string,
+  notes: string[],
+  extra: Partial<LoadPageResult> = {},
+): LoadPageResult {
+  return {
+    content: "",
+    contentType,
+    finalUrl,
+    ok: false,
+    status,
+    error,
+    notes: notes.length > 0 ? [...notes] : undefined,
+    ...extra,
+  };
 }
 
 function charsetFromContentType(header: string): string | undefined {
@@ -297,7 +426,7 @@ function decodeBody(bytes: Uint8Array, contentTypeHeader: string): string {
     const prefix = Buffer.from(bytes.subarray(0, 2048)).toString("latin1");
     label = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(prefix)?.[1];
   }
-  if (label && !/^utf-?8$/i.test(label)) {
+  if (label && !/^utf-8$/i.test(label)) {
     try {
       return new TextDecoder(label).decode(bytes);
     } catch {
@@ -305,23 +434,4 @@ function decodeBody(bytes: Uint8Array, contentTypeHeader: string): string {
     }
   }
   return new TextDecoder().decode(bytes);
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      cleanup();
-      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
-    };
-    const cleanup = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
 }

@@ -76,6 +76,7 @@ export async function renderUrl(url: string, options: RenderUrlOptions): Promise
 
   const response = await ctx.loadPage(normalized, { signal: ctx.signal });
   ctx.signal?.throwIfAborted();
+  if (response.notes) notes.push(...response.notes);
 
   if (!response.ok) {
     if (response.status) notes.push(`Failed to fetch URL (HTTP ${response.status})`);

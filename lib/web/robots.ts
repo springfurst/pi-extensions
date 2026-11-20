@@ -172,6 +172,7 @@ export class RobotsCache {
   private readonly failureTtlMs: number;
   private readonly entries = new Map<string, CacheEntry>();
   private readonly inflight = new Map<string, Promise<RobotsRules>>();
+  private readonly warned = new Set<string>();
 
   constructor(options: RobotsCacheOptions = {}) {
     this.clock = options.clock ?? systemClock;
@@ -221,10 +222,21 @@ export class RobotsCache {
     return pending;
   }
 
+  /**
+   * Mark a disallowed origin as reported. Returns true only the first time, so
+   * a warning reaches the caller once per origin per process.
+   */
+  noteWarned(origin: string): boolean {
+    if (this.warned.has(origin)) return false;
+    this.warned.add(origin);
+    return true;
+  }
+
   /** Drop every cached origin; tests call this between cases. */
   reset(): void {
     this.entries.clear();
     this.inflight.clear();
+    this.warned.clear();
   }
 }
 

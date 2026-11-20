@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the repository's tag-based release policy.
 
+## [Unreleased]
+
+### Changed
+
+- `web_fetch`: requests no longer rotate through `curl`, bot, and browser user agents. One honest, configurable user agent is sent (`politeness.userAgent`, default `pi-web-tools/1.0 (+https://github.com/springfurst/pi-extensions)`), with an optional `From` contact (`politeness.contact`). A blocked response is reported instead of retried with a different identity.
+- `web_fetch`: `Retry-After` is parsed in full, as delay-seconds or an HTTP-date, and no longer clamped to ten seconds. A delay within `politeness.maxRetryWaitSeconds` (default 30) is waited out and retried once; a longer delay fails immediately and names the retry time.
+- `web_fetch`: a CAPTCHA or interstitial is reported as a challenge with its family rather than treated as a retryable bot block.
+
+### Added
+
+- `web_fetch`: `robots.txt` is parsed, cached per origin for an hour, and honored. `politeness.robots` defaults to `warn`, which notes a disallowed rule and continues; `strict` refuses with the rule named. `Crawl-delay` and `Request-rate` become per-host spacing floors, and `hosts.<host>.robots` overrides the mode for one host.
+- `web_fetch`: requests are paced by a per-host gap plus global concurrency and requests-per-second budgets (`politeness.globalConcurrency`, `politeness.globalRequestsPerSecond`). Host gaps start from a curated table and `hosts.<host>.minIntervalMs`, learn from `429`/`503`/`Retry-After`/rate-limit resets within a bounded range, decay on success, and persist to `<agentDir>/web-tools/host-state.json`.
+- `web_fetch`: a sustained latency rise over a host's baseline raises a warning, widens that host's spacing one notch, and makes the next block learn faster (`politeness.latencyWarningFactor`).
+
 ## [0.4.0] - 2026-11-15
 
 ### Changed

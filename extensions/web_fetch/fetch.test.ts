@@ -1,6 +1,47 @@
 import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_POLITENESS_CONFIG,
+  type HostPolicy,
+  type PolitenessConfig,
+} from "../../lib/web/config";
+import { RequestLimiter } from "../../lib/web/limiter";
+import { HostStateStore, type Politeness } from "../../lib/web/politeness";
+import { RobotsCache } from "../../lib/web/robots";
+import { DEFAULT_USER_AGENT } from "../../lib/web/user-agent";
 import { startServer } from "./__fixtures__/test-server";
 import { loadPage } from "./fetch";
+
+function politeness(
+  overrides: Partial<PolitenessConfig> = {},
+  hosts: Record<string, HostPolicy> = {},
+): Politeness {
+  const config = { ...DEFAULT_POLITENESS_CONFIG, ...overrides };
+  return {
+    config,
+    hosts,
+    store: new HostStateStore({ hosts, latencyWarningFactor: config.latencyWarningFactor }),
+    limiter: new RequestLimiter({
+      globalConcurrency: config.globalConcurrency,
+      globalRequestsPerSecond: config.globalRequestsPerSecond,
+      jitterFraction: 0,
+    }),
+    robots: new RobotsCache(),
+  };
+}
+
+async function robotsServer(body: string) {
+  const seen: string[] = [];
+  const server = await startServer((req, res) => {
+    seen.push(req.url ?? "");
+    if (req.url === "/robots.txt") {
+      res.setHeader("Content-Type", "text/plain");
+      res.end(body);
+      return;
+    }
+    res.end("page");
+  });
+  return { server, seen };
+}
 
 describe("loadPage", () => {
   it("fetches a body and content type", async () => {
@@ -86,23 +127,181 @@ describe("loadPage", () => {
     }
   });
 
-  it("retries a 403 with the next user agent", async () => {
+  it("sends one honest user agent and does not rotate on a 403", async () => {
     const seen: string[] = [];
     const server = await startServer((req, res) => {
-      const userAgent = req.headers["user-agent"] ?? "";
-      seen.push(userAgent);
-      if (userAgent.startsWith("curl/")) {
-        res.writeHead(403);
-        res.end();
+      seen.push(req.headers["user-agent"] ?? "");
+      res.writeHead(403);
+      res.end("blocked");
+    });
+    try {
+      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(403);
+      expect(seen).toEqual([DEFAULT_USER_AGENT]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("sends the configured identity and contact", async () => {
+    let userAgent: string | undefined;
+    let from: string | undefined;
+    const server = await startServer((req, res) => {
+      userAgent = req.headers["user-agent"];
+      from = req.headers["from"];
+      res.end("ok");
+    });
+    try {
+      const result = await loadPage(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        politeness: politeness({ userAgent: "my-bot/2.0", contact: "ops@example.org" }),
+      });
+      expect(result.ok).toBe(true);
+      expect(userAgent).toBe("my-bot/2.0");
+      expect(from).toBe("ops@example.org");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("refuses a disallowed path under robots strict", async () => {
+    const { server, seen } = await robotsServer("User-agent: *\nDisallow: /private\n");
+    try {
+      const result = await loadPage(`${server.origin}/private/secret`, {
+        allowPrivateHosts: true,
+        politeness: politeness({ robots: "strict" }),
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/robots\.txt disallows \/private\/secret/);
+      expect(seen).toEqual(["/robots.txt"]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fetches a disallowed path under robots warn and reports it once", async () => {
+    const { server } = await robotsServer("User-agent: *\nDisallow: /private\n");
+    try {
+      const policy = politeness({ robots: "warn" });
+      const first = await loadPage(`${server.origin}/private/secret`, {
+        allowPrivateHosts: true,
+        politeness: policy,
+      });
+      expect(first.ok).toBe(true);
+      expect(first.content).toBe("page");
+      expect(first.notes?.join("\n")).toMatch(/robots\.txt disallows/);
+
+      const second = await loadPage(`${server.origin}/private/other`, {
+        allowPrivateHosts: true,
+        politeness: policy,
+      });
+      expect(second.ok).toBe(true);
+      expect(second.notes).toBeUndefined();
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("fails fast when Retry-After is longer than the wait cap", async () => {
+    let requests = 0;
+    const server = await startServer((req, res) => {
+      if (req.url === "/robots.txt") {
+        res.end("User-agent: *\n");
+        return;
+      }
+      requests++;
+      res.writeHead(429, { "Retry-After": "3600" });
+      res.end("later");
+    });
+    try {
+      const started = Date.now();
+      const result = await loadPage(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        politeness: politeness({ maxRetryWaitSeconds: 30 }),
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/wait cap/);
+      expect(result.error).toMatch(/1 hour/);
+      expect(result.retryAfterMs).toBe(3_600_000);
+      expect(requests).toBe(1);
+      expect(Date.now() - started).toBeLessThan(2_000);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("waits out a short Retry-After and retries once", async () => {
+    let requests = 0;
+    const server = await startServer((req, res) => {
+      if (req.url === "/robots.txt") {
+        res.end("User-agent: *\n");
+        return;
+      }
+      requests++;
+      if (requests === 1) {
+        res.writeHead(429, { "Retry-After": "0" });
+        res.end("slow down");
         return;
       }
       res.end("ok");
     });
     try {
-      const result = await loadPage(`${server.origin}/`, { allowPrivateHosts: true });
+      const result = await loadPage(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        politeness: politeness({}, {}),
+      });
       expect(result.ok).toBe(true);
       expect(result.content).toBe("ok");
-      expect(seen.length).toBeGreaterThanOrEqual(2);
+      expect(requests).toBe(2);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("reports a challenge without escalating", async () => {
+    let requests = 0;
+    const server = await startServer((req, res) => {
+      if (req.url === "/robots.txt") {
+        res.end("User-agent: *\n");
+        return;
+      }
+      requests++;
+      res.writeHead(403, { "Content-Type": "text/html" });
+      res.end("<html><title>Just a moment...</title><div id='challenge-platform'></div></html>");
+    });
+    try {
+      const result = await loadPage(`${server.origin}/`, {
+        allowPrivateHosts: true,
+        politeness: politeness(),
+      });
+      expect(result.ok).toBe(false);
+      expect(result.outcome).toBe("challenge");
+      expect(result.challenge?.type).toBe("cloudflare");
+      expect(result.error).toMatch(/challenge detected/);
+      expect(requests).toBe(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("spaces repeat requests to one host", async () => {
+    const arrivals: number[] = [];
+    const server = await startServer((req, res) => {
+      if (req.url === "/robots.txt") {
+        res.end("User-agent: *\n");
+        return;
+      }
+      arrivals.push(Date.now());
+      res.end("ok");
+    });
+    try {
+      const policy = politeness({}, { [new URL(server.origin).host]: { minIntervalMs: 120 } });
+      await loadPage(`${server.origin}/`, { allowPrivateHosts: true, politeness: policy });
+      const first = arrivals[0]!;
+      await loadPage(`${server.origin}/`, { allowPrivateHosts: true, politeness: policy });
+      expect(arrivals.length).toBe(2);
+      expect(arrivals[1]! - first).toBeGreaterThanOrEqual(100);
     } finally {
       await server.close();
     }

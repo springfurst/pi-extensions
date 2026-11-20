@@ -29,7 +29,9 @@ export type Outcome =
   /** Rate limited or temporarily unavailable, with or without `Retry-After`. */
   | "throttled"
   /** Refused because `robots.txt` disallows the URL under `strict`. */
-  | "robots-disallow";
+  | "robots-disallow"
+  /** Any other unsuccessful status, such as 404 or 500. */
+  | "http-error";
 
 /** Which transport produced the bytes. */
 export type WebTransport = "http" | "browser";

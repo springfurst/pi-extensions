@@ -141,6 +141,8 @@ export async function executeWebFetch(
   try {
     const fetchContext = createFetchContext({
       config: config.fetch,
+      politeness: config.politeness,
+      hosts: config.hosts,
       signal: toolCtx.signal,
       fetch: toolCtx.fetch,
       resolve: toolCtx.resolve,

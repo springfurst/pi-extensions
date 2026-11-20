@@ -49,23 +49,32 @@ Notes: <semicolon-joined notes, omitted when empty>
 
 `web_fetch` reads `web-tools.json` from the pi agent directory and, when the project is trusted, from `<cwd>/.pi/`. Values in the project file override the global file; per-call arguments override both.
 
-| Key                         | Default | Effect                                                                          |
-| --------------------------- | ------- | ------------------------------------------------------------------------------- |
-| `fetch.maxChars`            | 500000  | Maximum rendered characters per fetch.                                          |
-| `fetch.timeoutSeconds`      | 30      | Wall-clock fetch deadline.                                                      |
-| `fetch.maxBytes`            | 50 MiB  | Maximum response bytes read.                                                    |
-| `fetch.remoteFallbacks`     | `false` | Enable the Jina remote reader.                                                  |
-| `fetch.externalReaders`     | `true`  | Use `trafilatura`/`lynx` when on `PATH`.                                        |
-| `fetch.allowPrivateHosts`   | `false` | Disable the SSRF guard for local hosts.                                         |
-| `browser.enabled`           | `true`  | Enable browser rendering when a binary resolves.                                |
-| `browser.executablePath`    | unset   | Pin a specific Chrome/Chromium executable.                                      |
-| `browser.userDataDir`       | unset   | Reuse a persistent Chromium profile across launches.                            |
-| `browser.stealth`           | `false` | Reserved for future stealth patches.                                            |
-| `browser.noSandbox`         | `false` | Add `--no-sandbox` for root/containers.                                         |
-| `browser.timeoutSeconds`    | `20`    | Upper bound on a single browser navigation; a shorter tool deadline still wins. |
-| `browser.idleCloseSeconds`  | `120`   | Close the shared browser after this idle period; `0` disables idle close.       |
-| `browser.maxPages`          | `2`     | Maximum concurrent browser pages.                                               |
-| `browser.allowPrivateHosts` | `false` | Permit private hosts in the browser.                                            |
+| Key                                  | Default | Effect                                                                          |
+| ------------------------------------ | ------- | ------------------------------------------------------------------------------- |
+| `fetch.maxChars`                     | 500000  | Maximum rendered characters per fetch.                                          |
+| `fetch.timeoutSeconds`               | 30      | Wall-clock fetch deadline.                                                      |
+| `fetch.maxBytes`                     | 50 MiB  | Maximum response bytes read.                                                    |
+| `fetch.remoteFallbacks`              | `false` | Enable the Jina remote reader.                                                  |
+| `fetch.externalReaders`              | `true`  | Use `trafilatura`/`lynx` when on `PATH`.                                        |
+| `fetch.allowPrivateHosts`            | `false` | Disable the SSRF guard for local hosts.                                         |
+| `politeness.robots`                  | `warn`  | `robots.txt` handling: report and continue, or `strict` to refuse.              |
+| `politeness.userAgent`               | honest  | One descriptive user agent; no per-request rotation.                            |
+| `politeness.contact`                 | unset   | Contact address sent in the `From` header.                                      |
+| `politeness.globalConcurrency`       | `4`     | Requests in flight across every host.                                           |
+| `politeness.globalRequestsPerSecond` | `8`     | Requests per second across every host, with a short burst.                      |
+| `politeness.latencyWarningFactor`    | `2`     | Latency factor over a host's baseline that raises a warning and widens spacing. |
+| `politeness.maxRetryWaitSeconds`     | `30`    | Longest `Retry-After` the tool waits for; a longer delay fails fast.            |
+| `hosts.<host>.minIntervalMs`         | curated | Minimum gap between two requests to that host, replacing the curated value.     |
+| `hosts.<host>.robots`                | global  | `warn` or `strict` for that host. A host entry also covers its subdomains.      |
+| `browser.enabled`                    | `true`  | Enable browser rendering when a binary resolves.                                |
+| `browser.executablePath`             | unset   | Pin a specific Chrome/Chromium executable.                                      |
+| `browser.userDataDir`                | unset   | Reuse a persistent Chromium profile across launches.                            |
+| `browser.stealth`                    | `false` | Reserved for future stealth patches.                                            |
+| `browser.noSandbox`                  | `false` | Add `--no-sandbox` for root/containers.                                         |
+| `browser.timeoutSeconds`             | `20`    | Upper bound on a single browser navigation; a shorter tool deadline still wins. |
+| `browser.idleCloseSeconds`           | `120`   | Close the shared browser after this idle period; `0` disables idle close.       |
+| `browser.maxPages`                   | `2`     | Maximum concurrent browser pages.                                               |
+| `browser.allowPrivateHosts`          | `false` | Permit private hosts in the browser.                                            |
 
 Secrets stay in the environment: `GITHUB_TOKEN` or `GH_TOKEN`, `NCBI_API_KEY`, and `JINA_API_KEY`. `PUPPETEER_EXECUTABLE_PATH` overrides the browser binary and takes precedence over `browser.executablePath`.
 
@@ -98,7 +107,20 @@ The pipeline runs hostname-gated site handlers first, then a generic fetch and e
 - **Site handlers** produce structured markdown for GitHub, GitLab, npm, PyPI, crates.io, Wikipedia, arXiv, PubMed, RFC, Semantic Scholar, docs.rs, MDN, Hacker News, Reddit, and Stack Exchange.
 - **Digestible formats** are preferred when available: a `<link rel="alternate" type="text/markdown">`, a `.md` URL variant, HTTP content negotiation, and feed alternates.
 - **Reader chain**: Readability with Turndown first, then `trafilatura`, then `lynx`, then Jina, then a headless browser. Each backend must clear a quality gate before it is accepted. The browser renders the post-redirect URL and re-extracts the live DOM with Readability; when it wins, the method is `browser` and a note records that JavaScript rendering was required.
-- **Fetch** uses rotating user agents, manual redirects, one `Retry-After`-aware 429 retry, a retry of bot challenges and 403s across user agents, a streamed byte cap, and charset decoding. One wall-clock deadline (`fetch.timeoutSeconds`) bounds the whole call, including digest probes and handler fan-out.
+- **Fetch** sends one honest, configurable user agent, follows redirects manually, honors `robots.txt`, paces requests per host and globally, retries a throttled response once within the wait budget, streams the body under a byte cap, and decodes according to the declared charset. One wall-clock deadline (`fetch.timeoutSeconds`) bounds the whole call, including digest probes and handler fan-out.
+
+### Politeness
+
+`web_fetch` identifies itself instead of impersonating a browser: the default user agent is `pi-web-tools/1.0 (+https://github.com/springfurst/pi-extensions)`, and `politeness.userAgent` plus `politeness.contact` replace it when set. A user agent is never rotated to get past a block; a refused request is reported.
+
+Before the first request to an origin, `robots.txt` is read once and cached for an hour. `politeness.robots: "warn"` fetches a disallowed path anyway and notes the rule in the result (`strict` refuses with the rule named). `Crawl-delay` and `Request-rate` set a floor for the host's request spacing.
+
+Requests are paced by three budgets: the per-host gap, a global concurrency cap, and a global requests-per-second bucket. Host gaps start from a curated table, can be set per host, and are learned: a `429`, `503`, `Retry-After`, or rate-limit reset multiplies the gap (bounded to four times the base), successes reduce it again, and a sustained latency rise raises it one notch and makes the next block learn faster. Learned values live in `<agentDir>/web-tools/host-state.json` and survive a restart; values untouched for thirty minutes fall back to the curated base.
+
+`Retry-After` is parsed in full, both delay-seconds and HTTP-date. A delay within `politeness.maxRetryWaitSeconds` is waited out and the request retried once. A longer delay fails immediately with the retry time named, so the caller can use a different source instead of stalling.
+
+A CAPTCHA or interstitial is detected before the body is shaped and reported as a challenge with its family (Cloudflare, Anubis, reCAPTCHA, hCaptcha, PerimeterX, DataDome); it is never treated as something another user agent can get past.
+
 - **Safety**: only `http` and `https` are allowed, and loopback, private, link-local, and cloud-metadata ranges are rejected unless `fetch.allowPrivateHosts` is set. Redirects are re-checked on every hop, and credential headers (`Authorization`, `Cookie`) are dropped when a redirect changes origin. External readers re-fetch the URL themselves, so they are skipped when the URL fails the guard. The browser re-checks the initial URL, resolves the DNS for every navigation (redirects and scripted navigation included) with the same guard, and aborts non-`http(s)` and private/metadata requests during navigation.
 
 Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's model-safe limit. Line selectors and `save_path` run against the full rendered body, and only the text returned to the model is capped: a tail selector reads the true tail, and a saved file is complete. The result names which limit bound it and suggests a selector range or `save_path` for the rest; when `save_path` is set, the saved location is reported. When the rendered document exceeds `fetch.maxChars`, the render cap is reported even if a selector reduced the returned text below it.
@@ -111,7 +133,8 @@ Long output is capped by the lower of `fetch.maxChars`/`max_chars` and pi's mode
 - Browser launches are slow and memory-heavy; a shared browser is idle-closed and its page count is capped by `browser.maxPages`.
 - A persistent `browser.userDataDir` is single-instance: a render fails while a manually launched browser holds the same profile, and the directory keeps cookies and logins on disk.
 - The optional `trafilatura` and `lynx` readers are used only when already installed.
-- Public sites may block automated requests, including browser renders; the tool reports the failure rather than retrying indefinitely.
+- Public sites may block automated requests, including browser renders; the tool reports the failure rather than retrying indefinitely, and never rotates user agents to get past a block.
+- `robots.txt` allows a path by default when the file is missing or unreadable; `politeness.robots: "strict"` refuses a disallowed path but does not check anything else about the site's terms.
 
 ## License and provenance
 

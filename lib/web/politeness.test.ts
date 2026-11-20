@@ -224,6 +224,7 @@ describe("sharedPoliteness", () => {
     globalConcurrency: 4,
     globalRequestsPerSecond: 8,
     latencyWarningFactor: 2,
+    maxRetryWaitSeconds: 30,
   };
 
   it("shares one limiter and store per directory", () => {

@@ -4,6 +4,8 @@
 import type { BrowserRenderer } from "../../lib/browser";
 import type { FetchConfig } from "../../lib/config";
 import type { ResolveHost } from "../../lib/security";
+import type { Politeness } from "../../lib/web/politeness";
+import type { ChallengeSummary, Outcome } from "../../lib/web/types";
 
 export type { ResolveHost };
 
@@ -35,6 +37,8 @@ export interface LoadPageOptions {
   fetch?: FetchImpl;
   allowPrivateHosts?: boolean;
   resolve?: ResolveHost;
+  /** Pacing, robots, and identity policy; absent skips all of it. */
+  politeness?: Politeness;
 }
 
 export interface LoadPageResult {
@@ -47,6 +51,14 @@ export interface LoadPageResult {
   truncated?: boolean;
   /** Last transport-level error when `ok` is false. */
   error?: string;
+  /** Notes worth surfacing to the caller, such as a robots warning. */
+  notes?: string[];
+  /** Delay the host asked for, in milliseconds. */
+  retryAfterMs?: number;
+  /** Classification of the response. */
+  outcome?: Outcome;
+  /** Classifier output when the outcome is `challenge`. */
+  challenge?: ChallengeSummary;
 }
 
 export type FetchImpl = typeof fetch;
