@@ -1,6 +1,8 @@
 import type { Page } from "puppeteer-core";
 import type { AgentToolUpdateCallback } from "@earendil-works/pi-coding-agent";
 import type { LoggingConfig } from "../../lib/config";
+import type { ChromeInstance, InstanceRecord, ProfileInfo } from "../../lib/browser/profile";
+export type { ChromeInstance, InstanceRecord, ProfileInfo };
 import type {
   BlockingConfig,
   HostPolicy,
@@ -18,37 +20,6 @@ export class BrowserPilotError extends Error {
     super(message);
     this.name = "BrowserPilotError";
   }
-}
-
-/** Where a profile lives and whether it survives the session. */
-export interface ProfileInfo {
-  /** Short stable key used for the instance record filename. */
-  key: string;
-  /** Absolute user-data-dir. */
-  userDataDir: string;
-  /** Human-facing profile name or path. */
-  label: string;
-  /** True when the profile is reused across sessions. */
-  persistent: boolean;
-}
-
-/** One live Chrome process and its DevTools endpoint. */
-export interface ChromeInstance {
-  pid: number;
-  port: number;
-  wsEndpoint: string;
-  userDataDir: string;
-  executablePath: string;
-  startedAt: string;
-  ownerSessionId: string;
-  chromeVersion?: string;
-  /** True when the browser was attached to rather than launched. */
-  external?: boolean;
-}
-
-/** Persisted per-profile instance record. */
-export interface InstanceRecord extends ChromeInstance {
-  schema: number;
 }
 
 /** Persisted per-session tab state, used to reattach after a reload. */
